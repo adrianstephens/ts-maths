@@ -3,11 +3,18 @@
 	"tasks": [
 		{
 			"type": "npm",
-			"script": "build",
+			"script": "compile",
 			"group": "build",
 			"problemMatcher": "$tsc",
-			"label": "npm: build",
+			"label": "npm: compile",
 			"detail": "tsc"
+		},
+		{
+			"type": "npm",
+			"script": "watch",
+			"group": "build",
+			"problemMatcher": "$tsc-watch",
+			"label": "npm: watch",
 		},
 		{
 			"type": "shell",
@@ -17,7 +24,7 @@
 				"command": "git add . & npm version ${input:version} --force",
 			},
 			"problemMatcher": [],
-			"dependsOn": "npm: build"
+			"dependsOn": "npm: compile"
 		},
 		{
 			"type": "shell",
@@ -31,7 +38,7 @@
 			"label": "PACKAGE",
 			"command": "npm pack",
 			"problemMatcher": [],
-			"dependsOn": "npm: build"
+			"dependsOn": "npm: compile"
 		},
 	],
 	"inputs": [

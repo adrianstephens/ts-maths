@@ -3,12 +3,13 @@
   "description": "Maths utilties",
   "exports": {
     "./vector": "./dist/vector.js",
-    "./curves": "./dist/curves.js"
+    "./geometry": "./dist/geometry.js",
+    "./polynomial": "./dist/polynomial.js"
   },
   "scripts": {
-    "build": "tsc",
-    "lint": "eslint \"src/**/*.ts\"",
-    "test": "echo \"No tests specified\" && exit 0"
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint \"src/**/*.ts\""
   },
   "keywords": [
     "typescript"
@@ -25,5 +26,5 @@
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.0"
   },
-  "version": "0.0.2"
+  "version": "0.1.0"
 }

@@ -1,23 +1,15 @@
-import {float2, float3} from '../src/vector';
+/* eslint-disable no-restricted-syntax */
 
-interface equal<T> {
-	equal(b: T): boolean;
-}
+import { expect, test } from './test';
+import {float2, float2b, float3} from '../src/vector';
 
-function expect<T extends equal<T>>(v: T) {
-	return {
-		toEqual(v2: T) {
-			if (!v.equal(v2))
-				console.log("fail");
-		}
-	};
-}
+const myVec2 = float2(1,2);
+console.log((myVec2 as any)[Symbol.for('debug.description')]);
 
-function test(name: string, fn: ()=>void) {
-	console.log("testing: " + name);
-	fn();
-	console.log("finished: " + name);
-}
+for (const i of myVec2)
+	console.log(i);
+
+const testy = myVec2.yx[1];
 
 const myVec3 = float3(1,2,3);
 
@@ -36,3 +28,7 @@ test('swizzle properties', () => {
 	expect(myVec3.zxy).toEqual(float3(3, 1, 2));
 	expect(myVec3.zyx).toEqual(float3(3, 2, 1));
 });
+
+
+myVec3.addeq(myVec3);
+console.log(myVec3);

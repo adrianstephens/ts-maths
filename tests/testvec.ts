@@ -1,10 +1,16 @@
 /* eslint-disable no-restricted-syntax */
 
 import { expect, test } from './test';
-import {float2, float2b, float3} from '../src/vector';
+import {float2, float3} from '../src/vector';
+import {bezier2} from '../src/geometry';
+
+
+const b = new bezier2<float2>(float2(0,0), float2(1,1), float2(2,0));
+const c = b.split(0.5);
+const d = c[0];
+console.log(d);
 
 const myVec2 = float2(1,2);
-console.log((myVec2 as any)[Symbol.for('debug.description')]);
 
 for (const i of myVec2)
 	console.log(i);

@@ -7,7 +7,7 @@ function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number,
 		const f_prime	= F_prime(t);
 		const delta		= f / f_prime;
 		t -= delta;
-		if (Math.abs(delta) < tol)
+        if (Math.abs(delta) < tol)
 			break;
 	}
 	return t;
@@ -16,14 +16,6 @@ function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number,
 function GaussLegendre(t: number, F: (t: number) => number, weights: {node: number, weight: number}[]) {
 	return weights.reduce((sum, i) => sum + i.weight * F((t / 2) * (i.node + 1)), 0) * t / 2;
 }
-
-const weights5 = [
-	{node: -0.90618, weight: 0.236927},
-	{node: -0.538469, weight: 0.478629},
-	{node: 0, weight: 0.568889},
-	{node: 0.538469, weight: 0.478629},
-	{node: 0.90618, weight: 0.236927}
-];
 
 export class plane<T extends ops<T>> {
 	static fromVert<T  extends ops<T>>(n: T, p: T) {
@@ -58,7 +50,6 @@ export interface shape<T extends ops<T>> {
 	lengthTo(t: number): number;
 }
 
-/*
 export class offsetShape0<T extends ops<T>, S extends shape<T>> implements shape<T> {
 	offset: number;
 	scale:	number;
@@ -67,40 +58,32 @@ export class offsetShape0<T extends ops<T>, S extends shape<T>> implements shape
 		this.scale	= offset1 - offset0;
 	}
 	getT(t: number)				{ return t * this.scale + this.offset; }
-	evaluate(t: number)			{ return this.shape.evaluate(this.getT(t)); }
-	tangent(t: number)			{ return this.shape.tangent(this.getT(t)).mul(this.scale); }
-	evaluateWithDir(t: number)	{
+    evaluate(t: number)			{ return this.shape.evaluate(this.getT(t)); }
+    tangent(t: number)			{ return this.shape.tangent(this.getT(t)).mul(this.scale); }
+    evaluateWithDir(t: number)	{
 		const result = this.shape.evaluateWithDir(this.getT(t));
 		return {pos: result.pos, dir: result.dir.mul(this.scale)};
 	}
 	lengthTo(t: number)			{ return this.shape.lengthTo(this.getT(t)); }
 }
-*/
-type shapeSlice<S> = S & {
-	getT(t: number): number;
-	slice(t0: number, t1:number): shapeSlice<S>;
-}
 
-export function shapeSlice<T extends ops<T>, S extends shape<T>>(base: S, t0: number, t1: number): shapeSlice<S> {
-	const scale	= t1 - t0;
-	const shape	= Object.create(base);
+export function offsetShape<T extends ops<T>, S extends shape<T>>(baseShape: S, offset0: number, offset1: number): S & {getT(t: number): number} {
+	const scale = offset1 - offset0;
 
-	const getT = (t: number) => t * scale + t0;
-
-	shape.getT			= getT;
-	shape.evaluate		= (t: number) => base.evaluate(getT(t));
-	shape.tangent		= (t: number) => base.tangent(getT(t)).mul(scale);
-	shape.evaluateWithDir = (t: number) => {
-		const result = base.evaluateWithDir(getT(t));
+	const offsetShape = Object.create(baseShape);
+	offsetShape.getT		= (t: number) => t * scale + offset0;
+	offsetShape.evaluate	= (t: number) => baseShape.evaluate(offsetShape.getT(t));
+	offsetShape.tangent		= (t: number) => baseShape.tangent(offsetShape.getT(t)).mul(scale);
+	offsetShape.evaluateWithDir = (t: number) => {
+		const result = baseShape.evaluateWithDir(offsetShape.getT(t));
 		return {
 			pos: result.pos,
 			dir: result.dir.mul(scale)
 		};
 	};
-	shape.lengthTo	= (t: number) => base.lengthTo(getT(t));
-	shape.slice		= (t0: number, t1: number) => { return shapeSlice(base, getT(t0), getT(t1)); };
+	offsetShape.length		= (t: number) => baseShape.lengthTo(offsetShape.getT(t));
 
-	return shape;
+	return offsetShape;
 }
 
 export function distanceToPoint<T extends ops<T>>(b: shape<T>, p: T, steps = 10): number {
@@ -118,11 +101,9 @@ export function distanceToPoint<T extends ops<T>>(b: shape<T>, p: T, steps = 10)
 
 export function distanceToT<T extends ops<T>>(b: shape<T>, distance: number, steps = 10, tol = 1e-6): number {
 	//const length = b.lengthTo;
-	//const S = length(1);
-	const S = b.lengthTo(1);
-	if (distance < 0)
-		distance += S;
-	distance = Math.max(0, Math.min(distance, S));
+    //const S = length(1);
+    const S = b.lengthTo(1);
+    distance = Math.max(0, Math.min(distance, S));
 
 	return NewtonRaphson(
 		t => b.lengthTo(t) - distance,
@@ -158,13 +139,12 @@ export class line<T extends ops<T>> implements shape<T> {
 	}
 }
 
-export class line2 extends line<float2> {
-	intersection(b: line2, colinear = 1e-9) {
-		const	d = this.dir().cross(b.dir());
-		return Math.abs(d) < colinear ? mid(this.p0, b.p0) : this.evaluate(b.p0.sub(this.p0).cross(b.dir()) / d);
-	}
-}
+export class line2 extends line<float2> {}
 
+function intersectionT2(a: line2, b: line2, colinear = 1e-9) {
+	const	d = a.dir().cross(b.dir());
+	return d < colinear ? 0.5 : b.p0.sub(a.p0).cross(b.dir()) / d;
+}
 
 //-----------------------------------------------------------------------------
 //	circle
@@ -187,6 +167,10 @@ export class circle implements shape<float2> {
 	}
 }
 
+//export function triangle(a: float2, b: float2, c: float2) {
+//	return float2x3(b.sub(a), c.sub(a), a);
+//}
+
 //-----------------------------------------------------------------------------
 //	beziers
 //-----------------------------------------------------------------------------
@@ -205,11 +189,15 @@ export class bezier2<T extends ops<T>> implements shape<T> {
 			dir: this.tangent(t)
 		};
 	}
-	lengthTo(t: number) {
-		return GaussLegendre(t, (u: number) => this.tangent(u).len(), weights5);
-	/*
-		// Compute intermediate vectors
+	split(t = 0.5) {
+		const	p0	= lerp(this.c0,	this.c1,	t),
+				p1	= lerp(this.c1,	this.c2,	t),
+				cs	= lerp(p0,		p1,			t);
+		return new bezierSpline2<T>([this.c0, p0, cs, p1, this.c2]);
+	}
 
+	get lengthTo(): (t:number)=>number {
+		// Compute intermediate vectors
 		const c01 = this.c1.sub(this.c0);
 		const c12 = this.c2.sub(this.c1);
 		const A = c01.dot(c01);
@@ -217,23 +205,15 @@ export class bezier2<T extends ops<T>> implements shape<T> {
 		const C = Math.sqrt(A);
 
 		return Math.abs(B) < 1e-10
-			? t => t * this.c2.sub(this.c0).len()	// Simplified case: P1 is equidistant to P0 and P2 (B = 0)
-			: t => {								// General case (closed-form solution)
+			// Simplified case: P1 is equidistant to P0 and P2 (B = 0)
+			? t => t * this.c2.sub(this.c0).len()
+			// General case (closed-form solution)
+			: t => {
 				const sqrtTerm = Math.sqrt(B * B * t * t + 2 * A * B * t + A * A);
 				return (A + B * t) * sqrtTerm / B + (A * C / B) * Math.log((B * (A + B * t + sqrtTerm)) / (A * C));
 			};
-			*/
 	}
-	split(t = 0.5) {
-		const	p0	= lerp(this.c0,	this.c1,	t),
-				p1	= lerp(this.c1,	this.c2,	t),
-				cs	= lerp(p0,		p1,			t);
-		return new bezierSpline2<T>([this.c0, p0, cs, p1, this.c2]);
-	}
-	slice(t0: number, t1: number) {
-		const b = t0 ? this.split(t0)[1] : this;
-		return t1 === 1 ? b : b.split((t1 - t0) / (1 - t0))[0];
-	}
+
 }
 
 export class bezier3<T extends ops<T>> implements shape<T> {
@@ -246,8 +226,8 @@ export class bezier3<T extends ops<T>> implements shape<T> {
 	}
 	public tangent(t: number) {
 		const u  = 1 - t;
-		const u2 = u * u;
 		const t2 = t * t;
+		const u2 = u * u;
 		return this.c0.mul(-3 * u2).add(this.c1.mul(3 * (1 - 4 * t + 3 * t2))).add(this.c2.mul(3 * t * (2 - 3 * t))).add(this.c3.mul(3 * t2));
 	}
 	public evaluateWithDir(t: number) {
@@ -257,9 +237,6 @@ export class bezier3<T extends ops<T>> implements shape<T> {
 		};
 	}
 
-	lengthTo(t: number): number {
-		return GaussLegendre(t, (u: number) => this.tangent(u).len(), weights5);
-	}
 	split(t = 0.5) {
 		const	h	= lerp(this.c1,	this.c2,	t),
 				cl1 = lerp(this.c0,	this.c1,	t),
@@ -268,10 +245,6 @@ export class bezier3<T extends ops<T>> implements shape<T> {
 				cr1 = lerp(h,		cr2,		t),
 				cs	= lerp(cl2,		cr1,		t);
 		return new bezierSpline3([this.c0, cl1, cl2, cs, cr1, cr2, this.c3]);
-	}
-	slice(t0: number, t1: number) {
-		const b = t0 ? this.split(t0)[1] : this;
-		return t1 === 1 ? b : b.split((t1 - t0) / (1 - t0))[0];
 	}
 
 	spline()	{ 
@@ -282,10 +255,18 @@ export class bezier3<T extends ops<T>> implements shape<T> {
 			this.c3.sub(this.c0).add(this.c1.sub(this.c2).mul(3))	//t^3
 		]);
 	}
+
+	lengthTo(t: number): number {
+		return GaussLegendre(t,
+			(u: number) => this.tangent(u).len(),
+			[{node: -0.90618, weight: 0.236927}, {node: -0.538469, weight: 0.478629}, {node: 0, weight: 0.568889}, {node: 0.538469, weight: 0.478629}, {node: 0.90618, weight: 0.236927}]
+		);
+	}
 }
 
+
 //-----------------------------------------------------------------------------
-//	splines (sequence of connected lines or beziers)
+//	splines (sequence of connected shapes)
 //-----------------------------------------------------------------------------
 
 abstract class spline<T extends ops<T>, S extends shape<T>> implements shape<T> {
@@ -328,60 +309,81 @@ export class polygon<T extends ops<T>> extends spline<T, line<T>> {
 	public get length() {
 		return this.control.length;
 	}
-	public get(i: number): line<T> {
-		return new line<T>(this.control[i], this.control[(i + 1) % this.control.length]);
-	}
-	slice(t0: number, t1: number) {
-		const p0 = this.evaluate(t0), p1 = this.evaluate(t1);
-		const i0 = Math.floor(t0 * this.length);
-		const i1 = Math.floor(t1 * this.length);
-		return new bezierSpline2([p0, ...this.control.slice(i0 + 1, i1 + 1), p1]);
-	}
+    public get(index: number): line<T> {
+        return new line<T>(this.control[index], this.control[(index + 1) % this.control.length]);
+    }
 }
 
 export class bezierSpline2<T extends ops<T>> extends spline<T, bezier2<T>> {
-	get length() {
+	public get length() {
 		return (this.control.length - 1) / 2;
 	}
-	get(i: number): bezier2<T> {
-		return new bezier2(this.control[i * 2], this.control[i * 2 + 1], this.control[i * 2 + 2]);
-	}
-	slice(t0: number, t1: number) {
-		const t0a = t0 * this.length, i0 = Math.floor(t0a);
-		const t1a = t1 * this.length, i1 = Math.floor(t1a);
-		if (i0 === i1) {
-			const b0 = this[i0].slice(t0a - i0, t1a - i0);
-			return new bezierSpline2([b0.c0, b0.c1, b0.c2]);
-		}
-		const b0 = this[i0].slice(t0a - i0, 1);
-		const b1 = this[i1].slice(0, t1a - i1);
-		return new bezierSpline2([b0.c0, b0.c1, ...this.control.slice((i0 + 1) * 2, i1 * 2), b1.c0, b1.c1, b1.c2]);
-	}
+    public get(index: number): bezier2<T> {
+        return new bezier2(this.control[index * 2], this.control[index * 2 + 1], this.control[index * 2 + 2]);
+    }
 }
 
 export class bezierSpline3<T extends ops<T>> extends spline<T, bezier3<T>> {
-	get length() {
+	public get length() {
 		return (this.control.length - 1) / 3;
 	}
-	get(i: number): bezier3<T> {
-		return new bezier3(this.control[i * 3], this.control[i * 3 + 1], this.control[i * 3 + 2], this.control[i * 3 + 3]);
+    public get(index: number): bezier3<T> {
+        return new bezier3(this.control[index * 3], this.control[index * 3 + 1], this.control[index * 3 + 2], this.control[index * 3 + 3]);
+    }
+}
+function reduce_simple(b3: bezier3<float2>, p: float2[], max: number, tol2: number) {
+	let c1: float2;
+
+	if (approx_equal(b3.c3, b3.c1)) {
+		c1 = b3.c2;
+	} else if (approx_equal(b3.c2, b3.c3)) {
+		c1 = b3.c1;
+	} else {
+		const	t0	= new line2(b3.c0, b3.c1);
+		const	t1	= new line2(b3.c3, b3.c2);
+		c1	= colinear(t0.dir(), t1.dir()) ? mid(b3.c0, b3.c3) : t0.evaluate(intersectionT2(t0, t1));
 	}
-	slice(t0: number, t1: number) {
-		const t0a = t0 * this.length, i0 = Math.floor(t0a);
-		const t1a = t1 * this.length, i1 = Math.floor(t1a);
-		if (i0 === i1) {
-			const b0 = this[i0].slice(t0a - i0, t1a - i0);
-			return new bezierSpline3([b0.c0, b0.c1, b0.c2, b0.c3]);
+
+	const b2 = new bezier2<float2>(b3.c0, c1, b3.c3);
+
+	if (p.length + 2 * 2 < max) {
+		//auto	p3		= b3.evaluate(half);
+		const	p2		= b2.evaluate(0.5);
+		const	s0		= b3.spline().sub(p2);
+		const	s		= s0.map(c => c.lensq()).deriv();
+		const	root	= s.refine_roots([0.5], 2);
+		const	p3		= b3.evaluate(root[0]);
+
+		if (p3.sub(p2).lensq() > tol2) {
+			const	c	= b3.split(0.5);
+			reduce_simple(c[0], p, (max - p.length) / 2, tol2);
+			reduce_simple(c[1], p, max, tol2);
+			return;
 		}
-		const b0 = this[i0].slice(t0a - i0, 1);
-		const b1 = this[i1].slice(0, t1a - i1);
-		return new bezierSpline3([b0.c0, b0.c1, b0.c2, ...this.control.slice((i0 + 1) * 3, i1 * 3), b1.c0, b1.c1, b1.c2, b1.c3]);
 	}
+	p.push(b2.c1);
+	p.push(b2.c2);
+	return p;
 }
 
-//-----------------------------------------------------------------------------
-//	reduce spline<bezier3> to spline<bezier2>
-//-----------------------------------------------------------------------------
+function reduce_check(b3: bezier3<float2>, p: float2[], max: number, tol2: number) {
+	if (p.length + 2 * 2 < max) {
+		const	t0	= b3.tangent(0);
+		const	s	= b3.spline().deriv();
+		const	s2	= s.map(c => c.dot(t0));
+		const	roots = s2.roots();
+		if (roots.length) {
+			const	root = roots.length > 1 && roots[0] < 0 ? roots[1] : roots[0];
+			if (root > 0 && root < 0.9) {
+				const	c	= b3.split(root);
+				reduce_simple(c[0], p, (max - p.length) / 2, tol2);
+				reduce_check(c[1], p, max, tol2);
+				return;
+			}
+		}
+	}
+	return reduce_simple(b3, p, max, tol2);
+}
 
 function curvature_from_tangent(t: polynomialT<float2>) {
 	const	t2	= t.deriv();
@@ -389,85 +391,34 @@ function curvature_from_tangent(t: polynomialT<float2>) {
 	return new polynomial(p.c.slice(0, t.c.length * 2 - 1));
 }
 
-export function reduce_spline(b: bezier3<float2>, max: number, tol: number) : bezierSpline2<float2> {
+export function reduce_spline(b: bezier3<float2>, max: number, tol: number) {
 	const	p: float2[] = [];
 	const	tol2	= tol * tol;
-
-	function simple(b3: bezier3<float2>, max: number) {
-		let c1: float2;
-	
-		if (approx_equal(b3.c3, b3.c1)) {
-			c1 = b3.c2;
-		} else if (approx_equal(b3.c2, b3.c3)) {
-			c1 = b3.c1;
-		} else {
-			const	t0	= new line2(b3.c0, b3.c1);
-			const	t1	= new line2(b3.c3, b3.c2);
-			//c1	= colinear(t0.dir(), t1.dir()) ? mid(b3.c0, b3.c3) : t0.evaluate(intersectionT2(t0, t1));
-			c1	= t0.intersection(t1);
-		}
-		
-		if (p.length + 2 * 2 < max) {
-			const 	b2 		= new bezier2<float2>(b3.c0, c1, b3.c3);
-			const	p2		= b2.evaluate(0.5);
-			const	s0		= b3.spline().sub(p2);
-			const	s		= s0.map(c => c.lensq()).deriv();
-			const	root	= s.refine_roots([0.5], 2);
-			const	p3		= b3.evaluate(root[0]);
-	
-			if (p3.sub(p2).lensq() > tol2) {
-				const	c	= b3.split(0.5);
-				simple(c[0], (max - p.length) / 2);
-				simple(c[1], max);
-				return;
-			}
-		}
-		p.push(c1);
-		p.push(b3.c3);
-	}
-	
-	function checked(b3: bezier3<float2>, max: number) {
-		if (p.length + 2 * 2 < max) {
-			const	t0	= b3.tangent(0);
-			const	s	= b3.spline().deriv();
-			const	s2	= s.map(c => c.dot(t0));
-			const	roots = s2.roots();
-			if (roots.length) {
-				const	root = roots.length > 1 && roots[0] < 0 ? roots[1] : roots[0];
-				if (root > 0 && root < 0.9) {
-					const	c	= b3.split(root);
-					simple(c[0], (max - p.length) / 2);
-					checked(c[1], max);
-					return;
-				}
-			}
-		}
-		simple(b3, max);
-	}
 
 	// find inflection points
 	const	inflection = curvature_from_tangent(b.spline().deriv()).roots();
 
 	if (inflection[0] > 0.05 && inflection[0] < 0.95) {
 		let	c = b.split(inflection[0]);
+		const b0 = c[0];
+		const b1 = c[1];
 
 		if (inflection[1] < 0.95) {
-			checked(c[0], max / 3);
-			c	= c[1].split((inflection[1] - inflection[0]) / (1 - inflection[0]));
-			checked(c[0], (max - p.length) / 2);
-			checked(c[1], max);
+			reduce_check(b0, p, max / 3, tol2);
+			c	= b1.split((inflection[1] - inflection[0]) / (1 - inflection[0]));
+			reduce_check(c[0], p, (max - p.length) / 2, tol2);
+			reduce_check(c[1], p, max, tol2);
 
 		} else {
-			checked(c[0], max / 2);
-			checked(c[1], max);
+			reduce_check(b0, p, max / 2, tol2);
+			reduce_check(b1, p, max, tol2);
 		}
 
 	} else if (inflection[1] > 0.05 && inflection[1] < 0.95) {
 		const	c = b.split(inflection[1]);
-		checked(c[0], max / 2);
-		checked(c[1], max);
+		reduce_check(c[0], p, max / 2, tol2);
+		reduce_check(c[1], p, max, tol2);
 	} else {
-		checked(b, max);
+		reduce_check(b, p, max, tol2);
 	}
-	return new bezierSpline2(p);
 }

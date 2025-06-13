@@ -1,5 +1,9 @@
 import { expect, test } from './test';
 import {polynomial, aberth, polynomialN} from '../src/polynomial';
+import complex from '../src/complex';
+
+const c = complex(1,2);
+const c2 = complex.ln(c);
 
 //const poly2 = new polynomial([-4, 0, 1]);
 const poly2 = new polynomial([-1, 1]).mul(new polynomial([-2, 1])).mul(new polynomial([-3, 1])).mul(new polynomial([-4, 1])).mul(new polynomial([-5, 1]));

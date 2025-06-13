@@ -2,12 +2,28 @@
   "name": "@isopodlabs/maths",
   "description": "Maths utilties",
   "exports": {
-    "./vector": "./dist/vector.js",
-    "./geometry": "./dist/geometry.js",
-    "./polynomial": "./dist/polynomial.js"
+    "./vector": {
+      "require": "./dist/vector.js",
+      "import": "./esm/vector.js",
+      "browser": "./esm/vector.js"
+    },
+    "./geometry": {
+      "require": "./dist/geometry.js",
+      "import": "./esm/geometry.js",
+      "browser": "./esm/geometry.js"
+    },
+    "./polynomial": {
+      "require": "./dist/polynomial.js",
+      "import": "./esm/polynomial.js",
+      "browser": "./esm/polynomial.js"
+    }
   },
+"files": [
+    "dist/**/*",
+    "esm/**/*"
+  ],
   "scripts": {
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./tsconfig.json & tsc -p ./tsconfig.esm.json",
     "watch": "tsc -watch -p ./",
     "lint": "eslint \"src/**/*.ts\""
   },

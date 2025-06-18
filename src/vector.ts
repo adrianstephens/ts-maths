@@ -274,7 +274,7 @@ Object.assign(float2.prototype, ownProps(ops.prototype), {
 add_swizzles2(float2.prototype, float2);
 
 export class extent2 extends extent<float2> {
-	static fromCentreSize(centre: float2, size: float2) {
+	static fromCentreExtent(centre: float2, size: float2) {
         const half = size.mul(0.5);
         return new extent2(centre.sub(half), centre.add(half));
     }

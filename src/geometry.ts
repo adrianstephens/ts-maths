@@ -1,14 +1,16 @@
-import {ops, float2, normalise, approx_equal, mid, lerp} from './vector.js';
+import {ops, float2, float2x3, normalise, approx_equal, mid, lerp} from './vector.js';
 import {polynomial, polynomialT} from './polynomial.js';
 
 function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number, t: number, maxIter = 20, tol = 1e-6) {
 	for (let i = 0; i < maxIter; i++) {
 		const f			= F(t);
+		if (Math.abs(f) < tol)
+			break;
 		const f_prime	= F_prime(t);
 		const delta		= f / f_prime;
 		t -= delta;
-		if (Math.abs(delta) < tol)
-			break;
+		//if (Math.abs(delta) < tol)
+		//	break;
 	}
 	return t;
 }
@@ -155,6 +157,9 @@ export class line<T extends ops<T>> implements shape<T> {
 	}
 	distanceToPoint(p: T): number {
 		return this.closestPoint(p).sub(p).len();
+	}
+	matrix() {
+		return {x: this.dir(), y: this.dir().perp(), z: this.p0};
 	}
 }
 

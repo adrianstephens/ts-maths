@@ -3,6 +3,7 @@
 export type vec<T, E extends string> = {
 	[K in E]: T;
 }
+export type mat<T, E1 extends string, E2 extends string> = vec<vec<T, E1>, E2>;
 
 /*
 function add_swizzle<O>(obj: O, comps: (keyof O)[], set: boolean, make: (...comps: any[]) => any) {
@@ -13,20 +14,24 @@ function add_swizzle<O>(obj: O, comps: (keyof O)[], set: boolean, make: (...comp
 }
 */
 
-type E2 = 'x'|'y';
-type swiz2<T2, T, E extends string> = {[K in `${E}${E}`]: T2;} & {[Symbol.iterator](): Iterator<T>; [i: number]: T;}
-
 function add_alias<O, K extends keyof O>(obj: O, a: string, k: K, set: boolean) {
-    Object.defineProperty(obj, a, {
-        get(): O[K] { return this[k]; },
-        ...(set ? {set(v: O[K]) { this[k] = v; }} : {})
-    });
+	Object.defineProperty(obj, a, {
+		get(): O[K] { return this[k]; },
+		...(set ? {set(v: O[K]) { this[k] = v; }} : {})
+	});
 }
 
 function add_indices<O, K extends keyof O>(obj: O, k: readonly K[], set: boolean) {
 	k.forEach((k, i) => add_alias(obj, i.toString(), k, set));
 }
 
+type E2 = 'x'|'y';
+type E3 = E2|'z';
+type E4 = E3|'w';
+
+type swiz2<T2, T, E extends string> = {[K in `${E}${E}`]: T2;};// & {[Symbol.iterator](): Iterator<T>;}
+type swiz3<T3, T2, T, E extends string> = swiz2<T2, T, E> & {[K in `${E}${E}${E}`]: T3;}
+type swiz4<T4, T3, T2, T, E extends string> = swiz3<T3, T2, T, E> & {[K in `${E}${E}${E}${E}`]: T4;}
 
 function add_swizzle2<O>(obj: O, x: keyof O, y: keyof O, set: boolean, make: (x: any, y: any) => any) {
 	Object.defineProperty(obj, (x as string) + (y as string), {
@@ -35,8 +40,7 @@ function add_swizzle2<O>(obj: O, x: keyof O, y: keyof O, set: boolean, make: (x:
 	});
 }
 function add_swizzles2<T>(obj: vec<T, E2>, make2: (x: T, y: T) => any) {
-	Object.defineProperty(obj, Symbol.iterator, { value: function () { return Object.values(this)[Symbol.iterator](); } });
-
+//	Object.defineProperty(obj, Symbol.iterator, { value: function () { return Object.values(this)[Symbol.iterator](); } });
 	const fields = ["x", "y"] as const;
 	add_indices(obj, fields, true);
 
@@ -45,9 +49,6 @@ function add_swizzles2<T>(obj: vec<T, E2>, make2: (x: T, y: T) => any) {
 			add_swizzle2(obj, x, y, x !== y, make2);
 	}
 }
-
-type E3 = E2|'z';
-type swiz3<T3, T2, T, E extends string> = swiz2<T2, T, E> & {[K in `${E}${E}${E}`]: T3;}
 
 function add_swizzle3<O>(obj: O, x: keyof O, y: keyof O, z: keyof O, set: boolean, make: (x: any, y: any, z: any) => any) {
 	Object.defineProperty(obj, (x as string) + (y as string) + (z as string), {
@@ -68,9 +69,6 @@ function add_swizzles3<T>(obj: vec<T,E3>, make2: (x: T, y: T) => any, make3: (x:
 		}
 	}
 }
-
-type E4 = E3|'w';
-type swiz4<T4, T2, T3, T, E extends string> = swiz3<T3, T2, T, E> & {[K in `${E}${E}${E}${E}`]: T4;}
 
 function add_swizzle4<O>(obj: O, x: keyof O, y: keyof O, z: keyof O, w: keyof O, set:boolean, make: (x: any, y: any, z: any, w: any) => any) {
 	return {
@@ -96,15 +94,21 @@ function add_swizzles4<T, T2, T3, T4>(obj: vec<T,E4>, make2: (x: T, y: T) => T2,
 	}
 }
 
-//export type vecn<T, K extends 2|3|4> = K extends 2 ? vec<T, E2> : K extends 3 ? vec<T, E3> : vec<T, E4>;
-//export type vec2<T>	= vec<T, E2>;
-//export type vec3<T>	= vec<T, E3>;
-//export type vec4<T>	= vec<T, E4>;
+interface WithZero<T> {
+	zero(): T;
+}
 
 function hasz<T, E extends E2>(a: vec<T, E>): a is vec<T, E3> { return 'z' in a; }
 function hasw<T, E extends E3>(a: vec<T, E>): a is vec<T, E4> { return 'w' in a; }
 
 export abstract class ops<C extends ops<C>> {
+	create(...args: number[]): C {
+		const ctor = this.constructor as new (...args: number[]) => C;
+		return new ctor(...args);
+	}
+	[K:number]: 		number;
+	[Symbol.iterator](): Iterator<number> { return Object.values(this)[Symbol.iterator](); }
+
 	abstract dupe(): 			C;
 	abstract neg(): 			C;
 	abstract abs():	 			C;
@@ -128,14 +132,84 @@ export abstract class ops<C extends ops<C>> {
 	clamp(min: C, max: C)	{ return this.min(max).min(max); }
 }
 
+export function MatrixClass<C extends ops<C>, R extends string>() {
+	return class _mat {
+		x!: C;
+		constructor(cols: vec<C, R>) {
+			return Object.assign(this, cols);
+		}
+		create(...cols: C[]) {
+			return new _mat(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])) as vec<C, R>);
+		}
+
+		columns() {
+			return Object.values(this) as C[];
+		}
+
+		mul(v: C): C {
+			return this.x.create(...this.columns().map(col => col.dot(v)));
+		}
+		matmul(m: _mat) {
+			m.columns().map(col => this.mul(col));
+		}
+
+		// Generic inverse for square matrices (for small N)
+		inverse() {
+			const val	= Object.values(this) as C[];
+			const n		= val.length;
+			const inv	= Array.from({length: n}, (_, i) => this.x.create(...Array.from({length: n}, (_, j) => i === j ? 1 : 0)));
+
+			// Gauss-Jordan elimination
+			for (let i = 0; i < n; ++i) {
+				const pivot = val[i][i];
+				if (pivot === 0)
+					throw new Error("Matrix is singular");
+				val[i].muleq(1 / pivot);
+				inv[i].muleq(1 / pivot);
+
+				for (let k = 0; k < n; ++k) {
+					if (k === i) continue;
+					const factor = val[k][i];
+					val[k].subeq(val[i].mul(factor));
+					inv[k].subeq(inv[i].mul(factor));
+				}
+			}
+
+			return this.create(...inv);
+		}
+		
+		// Generic determinant for square matrices (for small N)
+		det() {
+			function det(m: number[][]) {
+				if (m.length === 1)
+					return m[0][0];
+				if (m.length === 2)
+					return m[0][0] * m[1][1] - m[0][1] * m[1][0];
+
+				let sum = 0;
+				for (let col = 0; col < m.length; ++col) {
+					const minor = m.slice(1).map(row => row.filter((_, j) => j !== col));
+					sum += (col % 2 === 0 ? 1 : -1) * m[0][col] * det(minor);
+				}
+				return sum;
+			}
+			return det(Object.values(this).map(row => Object.values(row) as number[]));
+		}
+
+
+	} as (new(cols: vec<C, R>) => vec<C, R> & {
+		mul(v:C):	C;
+		inverse():	vec<C, R>;
+		det():		number;
+	});
+}
+
+
 function ownProps(obj: Record<string, any>) {
 	return Object.fromEntries(Object.getOwnPropertyNames(obj).filter(name => name !== 'constructor').map(name => [name, obj[name]]));
 }
 
-export function mid<C extends ops<C>>(a: C, b: C) 	{ return a.add(b).mul(0.5); }
-//export function lensq<C extends ops<C>>(a: C)		{ return a.dot(a);}
-//export function len<C extends ops<C>>(a: C)			{ return Math.sqrt(lensq(a));}
-
+export function mid<C extends ops<C>>(a: C, b: C) 				{ return a.add(b).mul(0.5); }
 export function normalise<C extends ops<C>>(a: C)				{ return a.mul(1 / a.len());}
 export function project<C extends ops<C>>(a: C, b: C)			{ return b.mul(a.dot(b) / b.lensq()); }
 export function reflect<C extends ops<C>>(a: C, b: C)			{ return project(a, b).mul(2).sub(a); }
@@ -182,6 +256,16 @@ class extent<C extends ops<C>> {
 //-----------------------------------------------------------------------------
 
 export class extent1 {
+	static fromCentreExtent(centre: number, size: number) {
+		const half = size * 0.5;
+		return new extent1(centre - half, centre + half);
+	}
+	static from<U extends Iterable<number>>(items: U) {
+		const ext = new extent1;
+		for (const i of items)
+			ext.add(i);
+		return ext;
+	}
 	constructor(
 		public min	= Infinity,
 		public max	= -Infinity
@@ -275,9 +359,9 @@ add_swizzles2(float2.prototype, float2);
 
 export class extent2 extends extent<float2> {
 	static fromCentreExtent(centre: float2, size: float2) {
-        const half = size.mul(0.5);
-        return new extent2(centre.sub(half), centre.add(half));
-    }
+		const half = size.mul(0.5);
+		return new extent2(centre.sub(half), centre.add(half));
+	}
 	static from<U extends Iterable<float2>>(items: U) {
 		const ext = new extent2;
 		for (const i of items)
@@ -471,6 +555,20 @@ export function inverse3x4(m: float3x4)	{
 	return float3x4(i.x, i.y, i.z, mul3x3(i, m.w));
 }
 
+/*
+const float3x3b = MatrixClass<float3, E3>();
+
+class float3x3c extends MatrixClass<float3, E3>() {
+
+};
+
+
+const m = new float3x3c({ x:float3(1,0,0), y:float3(0,1,0), z:float3(0,0,1) });
+const i = m.inverse();
+const v = m.mul(float3(1,2,3));
+console.log(m.x, v);
+*/
+
 //-----------------------------------------------------------------------------
 // 4D
 //-----------------------------------------------------------------------------
@@ -567,17 +665,15 @@ export class statistics1 {
 	}
 }
 
-interface WithZero<T> {
-    zero(): T;
-}
-export class statistics<T extends ops<T> & WithZero<T>> {
+
+export class statistics<T extends ops<T>> {
 	sum:	T;
 	sum2:	T;
 	min:	T;
 	max:	T;
 	count	= 0;
 
-	static from<T extends ops<T> & WithZero<T>, U extends Iterable<T>>(items: U, Type?: WithZero<T>) {
+	static from<T extends ops<T>, U extends Iterable<T>>(items: U, Type?: WithZero<T>) {
 		if (!Type) {
 			const first = items[Symbol.iterator]().next();
 			if (first.done)

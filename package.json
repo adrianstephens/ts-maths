@@ -24,7 +24,7 @@
     "!*.map"
   ],
   "scripts": {
-    "compile": "tsc -p ./tsconfig.json & tsc -p ./tsconfig.esm.json",
+    "build": "tsc -p ./tsconfig.json & tsc -p ./tsconfig.esm.json",
     "watch": "tsc -watch -p ./",
     "lint": "eslint \"src/**/*.ts\""
   },
@@ -43,5 +43,5 @@
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.26.0"
   },
-  "version": "0.4.0"
+  "version": "0.4.1"
 }

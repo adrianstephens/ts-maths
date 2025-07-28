@@ -13,7 +13,7 @@
             "args": ["tests/testvec.ts"],
             "sourceMaps": true,
             "customDescriptionGenerator": "this.x;",//this[Symbol.for('debug.description')]??.() ?? def; }",
-            "preLaunchTask": "npm: compile"
+            "preLaunchTask": "npm: build"
         },
         {
             "type": "node",
@@ -23,7 +23,7 @@
             "cwd": "${workspaceFolder}",
             "args": ["tests/testpoly.ts"],
             "sourceMaps": true,
-            "preLaunchTask": "npm: compile"
+            "preLaunchTask": "npm: build"
         },
         {
             "type": "node-terminal",

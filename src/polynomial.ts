@@ -2,7 +2,7 @@ import {ops, extent1} from './vector.js';
 import complex from './complex.js';
 
 const sqrt3	= Math.sqrt(3);
-const epsilon = 1e-9;
+const defaultEpsilon = 1e-9;
 
 function copySign(a: number, b: number) {
 	return b < 0 ? -Math.abs(a) : Math.abs(a);
@@ -71,7 +71,7 @@ export class polynomial {
 		this.c.length = b.c.length - 1;
 		return new polynomial(dc);
 	}
-	normalise() {
+	normalise(epsilon = defaultEpsilon) {
 		let i = this.c.length - 1;
 		while (i && Math.abs(this.c[i]) < epsilon)
 			i--;
@@ -161,15 +161,15 @@ export class polynomialN {
 		this.c.length = b.c.length - 1;
 		return new polynomial(dc);
 	}
-	roots(): number[] {
+	roots(epsilon = defaultEpsilon): number[] {
 		if (this.c.length > 5)
 			return aberth(this).filter(r => Math.abs(r.i) < epsilon).map(r => r.r).sort((a, b)=> a - b);
-		return normPolyRealRoots(this.c);
+		return normPolyRealRoots(this.c, epsilon);
 	}
-	allRoots(): (complex|number)[] {
+	allRoots(epsilon = defaultEpsilon): (complex|number)[] {
 		if (this.c.length > 5)
 			return aberth(this);
-		return normPolyComplexRoots(this.c);
+		return normPolyComplexRoots(this.c, epsilon);
 	}
 }
 
@@ -213,12 +213,13 @@ function _norm_halley(poly: polynomialN, dpoly: polynomialN, ddpoly: polynomialN
 	const	f2	= ddpoly.evaluate(x);// * N * (N - 1);
 	return x.map((x, i) => x - (f[i] * f1[i] * 2) / (f1[i] * f1[i] * N * 2 - f[i] * f2[i] * (N - 1)));
 }
-
+/*
 function halley(poly: polynomial|polynomialN, x: number[]) {
 	const	dpoly	= poly.deriv();
 	const	ddpoly	= dpoly.deriv();
 	return _halley(poly, dpoly, ddpoly, x);
 }
+*/
 
 //	adjust intervals to guarantee convergence of halley's method by using roots of further derivatives
 function adjust_roots(poly: polynomial|polynomialN, dpoly: polynomial|polynomialN, extents: extent1[]) {
@@ -236,7 +237,7 @@ function adjust_roots(poly: polynomial|polynomialN, dpoly: polynomial|polynomial
 	return rootsd.length;
 }
 
-function normPolyRealRoots(k: number[]): number[] {
+function normPolyRealRoots(k: number[], epsilon: number): number[] {
 	switch (k.length) {
 		case 1:
 			return [-k[0]];
@@ -284,7 +285,7 @@ function normPolyRealRoots(k: number[]): number[] {
 		case 4: {
 			//biquadratic case
 			if (k[1] === 0 && k[3] === 0) {
-				const r = normPolyRealRoots([k[0], k[2]]).map(r => Math.sqrt(r));
+				const r = normPolyRealRoots([k[0], k[2]], epsilon).map(r => Math.sqrt(r));
 				return r.length === 1
 					? [-r[0], r[0]]
 					: [-r[1], -r[0], r[0], r[1]];
@@ -305,17 +306,17 @@ function normPolyRealRoots(k: number[]): number[] {
 
 			if (Math.abs(t) < epsilon) {
 				// no absolute term: y(y^3 + py + q) = 0
-				return [0, ...normPolyRealRoots([q, p, 0]).map(r => r - a / 4)];
+				return [0, ...normPolyRealRoots([q, p, 0], epsilon).map(r => r - a / 4)];
 			}
 
 			// solve the resolvent cubic ...
-			const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p]);
+			const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p], epsilon);
 			// ... and take the one real solution to build two quadratic equations
 			const m = r[0];
 			const v = Math.sqrt(m * 2);
 			const u = q / Math.sqrt(m * 8);
 
-			return [...normPolyRealRoots([m + p / 2 - u,  v]), ...normPolyRealRoots([m + p / 2 + u, -v])].map(i => i - a / 4);
+			return [...normPolyRealRoots([m + p / 2 - u,  v], epsilon), ...normPolyRealRoots([m + p / 2 + u, -v], epsilon)].map(i => i - a / 4);
 			//if (ra.length === 0 && rb.length === 0)
 			//	return [];
 			//return halley(new polynomialN(k), [...ra, ...rb].map(i => i - a / 4));
@@ -380,7 +381,7 @@ function normPolyRealRoots(k: number[]): number[] {
 	}
 }
 
-function normPolyComplexRoots(k: number[]): (complex|number)[] {
+function normPolyComplexRoots(k: number[], epsilon: number): (complex|number)[] {
 	switch (k.length) {
 		case 1:
 			return [-k[0]];
@@ -425,7 +426,7 @@ function normPolyComplexRoots(k: number[]): (complex|number)[] {
 		case 4: {
 			//biquadratic case
 			if (k[1] === 0 && k[3] === 0)
-				return normPolyComplexRoots([k[0], k[2]]).map(r => typeof r === 'number' ? Math.sqrt(r) : complex.conjugatePair(complex.sqrt(r))).flat();
+				return normPolyComplexRoots([k[0], k[2]], epsilon).map(r => typeof r === 'number' ? Math.sqrt(r) : complex.conjugatePair(complex.sqrt(r))).flat();
 
 			const a		= k[3];
 			const b		= k[2];
@@ -443,16 +444,16 @@ function normPolyComplexRoots(k: number[]): (complex|number)[] {
 			let roots3;
 			if (Math.abs(t) < epsilon) {
 				// no absolute term: y(y^3 + py + q) = 0
-				roots3 = [0, ...normPolyComplexRoots([q, p, 0])];
+				roots3 = [0, ...normPolyComplexRoots([q, p, 0], epsilon)];
 			} else {
 				// solve the resolvent cubic ...
-				const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p]);
+				const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p], epsilon);
 				// ... and take the one real solution to build two quadratic equations
 				const m = r[0];
 				const v = Math.sqrt(m * 2);
 				const u = q / Math.sqrt(m * 8);
 
-				roots3 = [...normPolyComplexRoots([m + p / 2 - u, v]), ...normPolyComplexRoots([m + p / 2 + u, -v])];
+				roots3 = [...normPolyComplexRoots([m + p / 2 - u, v], epsilon), ...normPolyComplexRoots([m + p / 2 + u, -v], epsilon)];
 			}
 			return roots3.map(r => typeof r === 'number' ? r - a / 4 : complex(r.r - a / 4, r.i));
 		}

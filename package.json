@@ -1,46 +1,50 @@
 {
-  "name": "@isopodlabs/maths",
-  "description": "Maths utilties",
-  "exports": {
-    "./vector": {
-      "require": "./dist/vector.js",
-      "import": "./esm/vector.js",
-      "browser": "./esm/vector.js"
-    },
-    "./geometry": {
-      "require": "./dist/geometry.js",
-      "import": "./esm/geometry.js",
-      "browser": "./esm/geometry.js"
-    },
-    "./polynomial": {
-      "require": "./dist/polynomial.js",
-      "import": "./esm/polynomial.js",
-      "browser": "./esm/polynomial.js"
-    }
-  },
-  "files": [
-    "dist/**/*",
-    "esm/**/*"
-  ],
-  "scripts": {
-    "compile": "tsc -p ./tsconfig.json & tsc -p ./tsconfig.esm.json",
-    "watch": "tsc -watch -p ./",
-    "lint": "eslint \"src/**/*.ts\""
-  },
-  "keywords": [
-    "typescript"
-  ],
-  "author": "Adrian Stephens",
-  "license": "MIT",
-  "devDependencies": {
-    "@types/node": "^22.13.8",
-    "@typescript-eslint/eslint-plugin": "^8.26.0",
-    "@typescript-eslint/parser": "^8.26.0",
-    "eslint": "^9.21.0",
-    "ts-node": "^10.9.2",
-    "ts-patch": "^3.3.0",
-    "typescript": "^5.8.2",
-    "typescript-eslint": "^8.26.0"
-  },
-  "version": "0.3.0"
+	"name": "@isopodlabs/maths",
+	"description": "Maths utilties",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/adrianstephens/ts-maths.git"
+	},
+	"exports": {
+		"./vector": {
+			"require": "./dist/vector.js",
+			"import": "./esm/vector.js",
+			"browser": "./esm/vector.js"
+		},
+		"./geometry": {
+			"require": "./dist/geometry.js",
+			"import": "./esm/geometry.js",
+			"browser": "./esm/geometry.js"
+		},
+		"./polynomial": {
+			"require": "./dist/polynomial.js",
+			"import": "./esm/polynomial.js",
+			"browser": "./esm/polynomial.js"
+		}
+	},
+	"files": [
+		"dist/**/*.{js,d.ts}",
+		"esm/**/*.{js,d.ts}"
+	],
+	"scripts": {
+		"build": "tsc -p ./tsconfig.json & tsc -p ./tsconfig.esm.json",
+		"watch": "tsc -watch -p ./",
+		"lint": "eslint \"src/**/*.ts\""
+	},
+	"keywords": [
+		"typescript"
+	],
+	"author": "Adrian Stephens",
+	"license": "MIT",
+	"devDependencies": {
+		"@types/node": "^22.13.8",
+		"@typescript-eslint/eslint-plugin": "^8.26.0",
+		"@typescript-eslint/parser": "^8.26.0",
+		"eslint": "^9.21.0",
+		"ts-node": "^10.9.2",
+		"ts-patch": "^3.3.0",
+		"typescript": "^5.8.2",
+		"typescript-eslint": "^8.26.0"
+	},
+	"version": "0.4.0"
 }

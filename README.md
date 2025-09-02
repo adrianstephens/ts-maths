@@ -1,158 +1,154 @@
-# Binary Fonts
+# @isopodlabs/maths
+[![npm version](https://img.shields.io/npm/v/@isopodlabs/maths.svg)](https://www.npmjs.com/package/@isopodlabs/maths)
+[![GitHub stars](https://img.shields.io/github/stars/adrianstephens/ts-maths.svg?style=social)](https://github.com/adrianstephens/ts-maths)
+[![License](https://img.shields.io/npm/l/@isopodlabs/maths.svg)](LICENSE.txt)
 
-This package provides readers for various font formats, using the @isopodlabs/binary, and the @isopodlabs/xml libraries.
+A comprehensive TypeScript mathematics library providing vector operations, complex numbers, polynomial solving, and geometric primitives.
 
-It supports reading type 1, TTF, SVG, bitmap and color glyphs.
+## ☕ Support My Work
+If you use this package, consider [buying me a cup of tea](https://coff.ee/adrianstephens) to support future updates!
 
-Non bitmap glyphs can be converted to SVGs.
+## Installation
 
+```sh
+npm install @isopodlabs/maths
+```
+
+## Features
+
+### Vector Math
+- **2D, 3D, 4D vectors** with named properties (`x`, `y`, `z`, `w`)
+- **Swizzling support** - access `vec.xy`, `vec.xyz`, etc.
+- **Matrix operations** - 2x2, 2x3, 3x3, 3x4, 4x4 matrices
+- **Utility functions** - normalize, lerp, project, reflect
+- **Bounding boxes** - extent1, extent2, extent3
+- **Statistics** - mean, variance for scalars and vectors
+
+### Complex Numbers
+- **Basic operations** - add, multiply, divide, conjugate
+- **Transcendental functions** - sin, cos, exp, log, sqrt
+- **Polar form** - magnitude, argument, from polar coordinates
+
+### Polynomials
+- **Root finding** - real and complex roots up to degree 5
+- **Evaluation** - single values, arrays, complex numbers
+- **Operations** - add, subtract, multiply, derivative
+- **Advanced solving** - Aberth method for high-degree polynomials
+
+### Geometry
+- **Shapes** - lines, circles, Bézier curves (quadratic/cubic)
+- **Splines** - connected sequences of curves
+- **Utilities** - arc length, closest points, intersections
+- **Curve reduction** - convert cubic to quadratic Béziers
 
 ## Usage
-Here's an example of how to use the binary_font package to read a font file and output an svg for the glyph representing 'A':
+
+### Vectors
+
 ```typescript
-import { readFileSync, writeFileSync } from 'fs';
-import { load, Font } from '@isopodlabs/binary_font';
+import { float2, float3 } from '@isopodlabs/maths';
 
-// Load a font file
-const fontData = readFileSync('path/to/font.ttf');
+// Create vectors
+const a = float2(1, 2);
+const b = float3(3, 4, 5);
 
-// Parse the font
-const font = load(fontData);
-if (font && font instanceof Font) {
+// Vector operations
+const sum = a.add(float2(1, 1));     // (2, 3)
+const dot = a.dot(float2(2, 3));     // 8
+const len = a.len();                 // 2.236...
 
-    // Access font properties
-    console.log(font.numGlyphs());
+// Swizzling
+const swiz = b.xy;                   // float2(3, 4)
+const rev = b.zyx;                   // float3(5, 4, 3)
 
-    const mapping = font.getGlyphMapping();
-	if (mapping) {
-        const id = mapping['A'.charCodeAt(0)];
-        const svg = font.getGlyphSVG(id);
-		if (svg)
-			writeFileSync('./glyph.svg', svg.toString());
-    }
-}
-
+// Matrix operations
+const m = float2x2(float2(1, 0), float2(0, 1));
+const transformed = mul2x2(m, a);
 ```
 
-## Supported File Types
-The binary_font package supports reading and parsing the following font formats:
+### Complex Numbers
 
-- TrueType Fonts (TTF)
-- TrueType Collections (TTC)
-- OpenType Fonts (OTF)
-- Web Open Font Format (WOFF)
-- Web Open Font Format 2 (WOFF2)
-
-The following data blocks are supported:
-
-- OS/2  OS/2 and Windows Metrics Table
-- head  Font Header Table
-- hhea  Horizontal Header Table
-- hmtx  Horizontal Metrics Table
-- vhea  Vertical Header Table
-- vmtx  Vertical Metrics Table
-- maxp  Maximum Profile
-- name  Naming Table
-- cmap  Character to Glyph Index Mapping Table
-- gasp  Grid-fitting and Scan-conversion Procedure Table
-- sbix  Standard Bitmap Graphics Table
-- EBLC  Embedded Bitmap Location Table
-- EBDT  Embedded Bitmap Data Table
-- CBLC  Color Bitmap Location Table
-- CBDT  Color Bitmap Data Table
-- GSUB  Glyph Substitution Table
-- GPOS  Glyph Positioning Table
-- CPAL  Color Palette Table
-- COLR  Color Table
-- SVG   Scalable Vector Graphics
-- CFF   Compact Font Format
-- DSIG  Digital Signature Table
-
-## API
-
-### Interfaces
 ```typescript
-// a 2D vector
-interface float2 {
-    x: number;
-    y: number;
-};
+import { complex } from '@isopodlabs/maths';
 
-// a vertex of a curve. An array of these defines one or multiple curves
-class curveVertex extends float2 {
-	static readonly ON_BEGIN	= 0;    // this vertex starts a new curve
-	static readonly ON_CURVE	= 1;    // this vertex is on the curve
-	static readonly OFF_BEZ2	= 2;    // this vertex is the control point of a quadratic bezier
-	static readonly OFF_BEZ3	= 3;    // this vertex is a control point of a cubic bezier
-	static readonly OFF_ARC		= 8;
-	static readonly ON_ARC		= 9;
-	flags: number;
-}
+const z1 = complex(3, 4);           // 3 + 4i
+const z2 = complex(1, -1);          // 1 - i
 
-// reference to another glyph with a transformation
-interface glyphRef {
-	glyph: number;
-	mat: {x: float2, y: float2, z: float2};
-}
+const sum = z1.add(z2);             // 4 + 3i
+const product = z1.mul(z2);         // 7 + i
+const magnitude = z1.abs();         // 5
+const phase = z1.arg();             // 0.927...
 
-// a single glyph in a font
-interface Glyph {
-    min: float2;
-    max: float2;
-    curve?: curveVertex[];      // a curve or curves
-    refs?: glyphRef[];          // references to other glyphs
-    instructions?: Uint8Array;  // additional instructions used to define a glyph
-}
-
-// a single glyph in a bitmap font
-interface GlyphImage {
-    originOffset: float2;       // position of the left edge of the bitmap graphic in relation to the glyph design space origin
-    graphicType: string;        // one of 'jpg ', 'png ', or 'tiff' describing the image format in the data
-    data: Uint8Array;
-}
+// Transcendental functions
+const exp_z = complex.exp(z1);
+const sin_z = complex.sin(z1);
 ```
 
-### Font
-The Font class provides methods to access font properties and glyph data.
-#### Methods
-- `numGlyphs(): number`
+### Polynomials
 
-    Returns the number of glyphs in the font.
-- `getGlyph(id: number): Glyph | undefined`
+```typescript
+import { polynomial } from '@isopodlabs/maths';
 
-    Returns the glyph data for the specified glyph ID.
-- `getGlyphMapping(): number[] | undefined`
+// Create polynomial: x² - 5x + 6 = (x-2)(x-3)
+const poly = new polynomial([6, -5, 1]);
 
-    Returns the glyph mapping array.
-- `getGlyphImage(id: number, ppem: number): GlyphImage | undefined`
+const roots = poly.roots();         // [2, 3]
+const value = poly.evaluate(2);     // 0
+const deriv = poly.deriv();         // -5 + 2x
 
-    Returns the glyph image for the specified glyph ID at the specified pixels per em (ppem).
-- `getGlyphCOLR(id: number): Layer[] | undefined`
+// Complex roots
+const allRoots = poly.allRoots();   // includes complex solutions
+```
 
-    Returns the COLR layers for the specified glyph ID.
-- `getGlyphSVG(id: number, preferCOLR?: boolean): xml.Element | undefined`
+### Geometry
 
-    Returns the SVG representation of the specified glyph ID.
-#### Properties
-Each block found in the font exists as a property on the Font class. The properties are typed according to the specs used to read them.
+```typescript
+import { line2, bezier2, circle } from '@isopodlabs/maths';
 
-### FontGroup
-The FontGroup holds an array of Fonts read from, say, a TTC file
-#### Methods
-- `getSub(sub: string): Font | undefined`
+// Line from (0,0) to (1,1)
+const line = new line2(float2(0, 0), float2(1, 1));
+const midpoint = line.evaluate(0.5); // (0.5, 0.5)
 
-    Returns the font with the matching name.
+// Quadratic Bézier curve
+const curve = new bezier2(
+    float2(0, 0),    // start
+    float2(1, 1),    // control
+    float2(2, 0)     // end
+);
+const point = curve.evaluate(0.5);
+const length = curve.lengthTo(1);
 
-#### Properties
-- `fonts: Font[]`
+// Circle
+const circ = new circle(float2(0, 0), 1);
+const circumference = circ.lengthTo(1); // 2π
+```
 
-    The array of fonts.
+## API Reference
 
-### Functions
-- `load(data: Uint8Array): Font | FontGroup | Promise<Font> | undefined`
+### Core Types
+- `float2`, `float3`, `float4` - Vector types with swizzling
+- `float2x2`, `float2x3`, `float3x3`, etc. - Matrix types
+- `complex` - Complex number type
+- `polynomial`, `polynomialN` - Polynomial types
 
-    Loads the font data from the given data array.
-    The WOFF and WOFF2 formats return a `Promise`; other formats are synchronous.
+### Utility Functions
+- `normalise(v)` - Normalize vector to unit length
+- `lerp(a, b, t)` - Linear interpolation
+- `project(a, b)` - Project vector a onto b
+- `mid(a, b)` - Midpoint between vectors
+
+### Geometric Shapes
+- `line<T>` - Line segment
+- `circle` - Circle with center and radius
+- `bezier2<T>`, `bezier3<T>` - Bézier curves
+- `polygon<T>` - Closed polygon
+
+## Performance Notes
+
+- Vectors use object properties (`{x, y, z}`) for optimal performance in V8
+- All operations return new instances (immutable)
+- Swizzling is implemented with getters for zero-copy access
+- Matrix operations are optimized for small fixed sizes
 
 ## License
 

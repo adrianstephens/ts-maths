@@ -29,9 +29,9 @@ type E2 = 'x'|'y';
 type E3 = E2|'z';
 type E4 = E3|'w';
 
-type swiz2<T2, T, E extends string> = {[K in `${E}${E}`]: T2;};// & {[Symbol.iterator](): Iterator<T>;}
-type swiz3<T3, T2, T, E extends string> = swiz2<T2, T, E> & {[K in `${E}${E}${E}`]: T3;}
-type swiz4<T4, T3, T2, T, E extends string> = swiz3<T3, T2, T, E> & {[K in `${E}${E}${E}${E}`]: T4;}
+type swiz2<T2, E extends string> = {[K in `${E}${E}`]: T2;};// & {[Symbol.iterator](): Iterator<T>;}
+type swiz3<T3, T2, E extends string> = swiz2<T2, E> & {[K in `${E}${E}${E}`]: T3;}
+type swiz4<T4, T3, T2, E extends string> = swiz3<T3, T2, E> & {[K in `${E}${E}${E}${E}`]: T4;}
 
 function add_swizzle2<O>(obj: O, x: keyof O, y: keyof O, set: boolean, make: (x: any, y: any) => any) {
 	Object.defineProperty(obj, (x as string) + (y as string), {
@@ -302,7 +302,7 @@ export class extent1 {
 // 2D
 //-----------------------------------------------------------------------------
 
-export interface float2 extends vec<number, E2>, swiz2<float2, number, E2>, ops<float2> {
+export interface float2 extends vec<number, E2>, swiz2<float2, E2>, ops<float2> {
 	cross(b: float2): number;
 	atan2(): number;
 }
@@ -444,7 +444,7 @@ export function max_circle_point(m: float2x2) {
 // 3D
 //-----------------------------------------------------------------------------
 
-export interface float3 extends vec<number, E3>, swiz3<float3, float2, number, E3>, ops<float3> {
+export interface float3 extends vec<number, E3>, swiz3<float3, float2, E3>, ops<float3> {
 	cross(b: float3): float3;
 }
 
@@ -573,7 +573,7 @@ console.log(m.x, v);
 // 4D
 //-----------------------------------------------------------------------------
 
-export interface float4 extends vec<number,E4>, swiz4<float4, float3, float2, number, E4>, ops<float4> {}
+export interface float4 extends vec<number, E4>, swiz4<float4, float3, float2, E4>, ops<float4> {}
 
 export const float4 = Object.assign(
 	function (this: float4, x: number, y: number, z: number, w: number) {

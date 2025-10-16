@@ -1,5 +1,5 @@
-import {ops, float2, float2x3, normalise, approx_equal, mid, lerp} from './vector.js';
-import {polynomial, polynomialT} from './polynomial.js';
+import {vops, float2, normalise, approx_equal, mid, lerp} from './vector';
+import {legendreTable, polynomial, polynomialT} from './polynomial';
 
 function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number, t: number, maxIter = 20, tol = 1e-6) {
 	for (let i = 0; i < maxIter; i++) {
@@ -15,20 +15,29 @@ function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number,
 	return t;
 }
 
-function GaussLegendre(t: number, F: (t: number) => number, weights: {node: number, weight: number}[]) {
-	return weights.reduce((sum, i) => sum + i.weight * F((t / 2) * (i.node + 1)), 0) * t / 2;
+
+/*
+function GaussLegendre(t: number, F: (x: number) => number, n: number) {
+    const weights = computeWeights(n);
+    return weights.reduce((sum, [x, w]) => sum + w * F((t / 2) * (x + 1)), 0) * t / 2;
+}
+*/
+
+function GaussLegendre(t: number, F: (t: number) => number, weights: [number, number][]) {
+	return weights.reduce((sum, i) => sum + i[1] * F((t / 2) * (i[0] + 1)), 0) * t / 2;
 }
 
-const weights5 = [
-	{node: -0.90618, weight: 0.236927},
-	{node: -0.538469, weight: 0.478629},
-	{node: 0, weight: 0.568889},
-	{node: 0.538469, weight: 0.478629},
-	{node: 0.90618, weight: 0.236927}
+const weights5 = legendreTable(5);
+/*: [number, number][] = [
+	[-0.90618,	0.236927],
+	[-0.538469,	0.478629],
+	[ 0,		0.568889],
+	[ 0.538469,	0.478629],
+	[ 0.90618,	0.236927]
 ];
-
-export class plane<T extends ops<T>> {
-	static fromVert<T  extends ops<T>>(n: T, p: T) {
+*/
+export class plane<T extends vops<T>> {
+	static fromVert<T  extends vops<T>>(n: T, p: T) {
 		n = normalise(n);
 		return new plane(n, n.dot(p));
 	}
@@ -45,7 +54,7 @@ export class plane2 extends plane<float2> {
 	}
 }
 
-export function colinear<C extends ops<C>>(p1: C, p2: C, epsilon = 1e-9) {
+export function colinear<C extends vops<C>>(p1: C, p2: C, epsilon = 1e-9) {
 	return p1.dot(p2) > (p1.len() * p2.len()) * (1 - epsilon);
 }
 
@@ -53,7 +62,7 @@ export function colinear<C extends ops<C>>(p1: C, p2: C, epsilon = 1e-9) {
 //	shape
 //-----------------------------------------------------------------------------
 
-export interface shape<T extends ops<T>> {
+export interface shape<T extends vops<T>> {
 	evaluate(t: number): T;
 	tangent(t: number): T;
 	evaluateWithDir(t: number) : {pos: T, dir: T};
@@ -83,7 +92,7 @@ type shapeSlice<S> = S & {
 	slice(t0: number, t1:number): shapeSlice<S>;
 }
 
-export function shapeSlice<T extends ops<T>, S extends shape<T>>(base: S, t0: number, t1: number): shapeSlice<S> {
+export function shapeSlice<T extends vops<T>, S extends shape<T>>(base: S, t0: number, t1: number): shapeSlice<S> {
 	const scale	= t1 - t0;
 	const shape	= Object.create(base);
 
@@ -91,12 +100,12 @@ export function shapeSlice<T extends ops<T>, S extends shape<T>>(base: S, t0: nu
 
 	shape.getT			= getT;
 	shape.evaluate		= (t: number) => base.evaluate(getT(t));
-	shape.tangent		= (t: number) => base.tangent(getT(t)).mul(scale);
+	shape.tangent		= (t: number) => base.tangent(getT(t)).scale(scale);
 	shape.evaluateWithDir = (t: number) => {
 		const result = base.evaluateWithDir(getT(t));
 		return {
 			pos: result.pos,
-			dir: result.dir.mul(scale)
+			dir: result.dir.scale(scale)
 		};
 	};
 	shape.lengthTo	= (t: number) => base.lengthTo(getT(t));
@@ -105,7 +114,7 @@ export function shapeSlice<T extends ops<T>, S extends shape<T>>(base: S, t0: nu
 	return shape;
 }
 
-export function distanceToPoint<T extends ops<T>>(b: shape<T>, p: T, steps = 10): number {
+export function distanceToPoint<T extends vops<T>>(b: shape<T>, p: T, steps = 10): number {
 	let minDist = 1e9;
 	let last	= b.evaluate(0);
 	for (let i = 1; i <= steps; i++) {
@@ -118,7 +127,7 @@ export function distanceToPoint<T extends ops<T>>(b: shape<T>, p: T, steps = 10)
 	return minDist;
 }
 
-export function distanceToT<T extends ops<T>>(b: shape<T>, distance: number, steps = 10, tol = 1e-6): number {
+export function distanceToT<T extends vops<T>>(b: shape<T>, distance: number, steps = 10, tol = 1e-6): number {
 	//const length = b.lengthTo;
 	//const S = length(1);
 	const S = b.lengthTo(1);
@@ -139,12 +148,12 @@ export function distanceToT<T extends ops<T>>(b: shape<T>, distance: number, ste
 //	line
 //-----------------------------------------------------------------------------
 
-export class line<T extends ops<T>> implements shape<T> {
+export class line<T extends vops<T>> implements shape<T> {
 	constructor(public p0: T, public p1: T) {}
 
 	dir() 				{ return this.p1.sub(this.p0); }
 	len() 				{ return this.dir().len(); }
-	evaluate(t: number) { return this.p0.mul(1 - t).add(this.p1.mul(t)); }
+	evaluate(t: number) { return this.p0.scale(1 - t).add(this.p1.scale(t)); }
 	tangent()			{ return this.dir(); }
 	evaluateWithDir(t: number) {
 		return {pos: this.evaluate(t), dir: this.p1.sub(this.p0)};
@@ -153,7 +162,7 @@ export class line<T extends ops<T>> implements shape<T> {
 	closestPoint(p: T) {
 		const   d = this.p1.sub(this.p0);
 		const   u = Math.max(Math.min(p.sub(this.p0).dot(d) / d.lensq(), 1), 0);
-		return this.p0.add(d.mul(u));
+		return this.p0.add(d.scale(u));
 	}
 	distanceToPoint(p: T): number {
 		return this.closestPoint(p).sub(p).len();
@@ -178,14 +187,14 @@ export class line2 extends line<float2> {
 export class circle implements shape<float2> {
 	constructor(public centre: float2, public radius: number) {}
 	evaluate(t: number) {
-		return this.centre.add(float2.cossin(t * Math.PI * 2).mul(this.radius));
+		return this.centre.add(float2.cossin(t * Math.PI * 2).scale(this.radius));
 	}
 	tangent(t: number) {
-		return float2.cossin((t + .25) * Math.PI * 2).mul(this.radius * Math.PI * 2);
+		return float2.cossin((t + .25) * Math.PI * 2).scale(this.radius * Math.PI * 2);
 	}
 	evaluateWithDir(t: number) {
-		const cs = float2.cossin(t * Math.PI * 2).mul(this.radius);
-		return {pos: this.centre.add(cs), dir: cs.perp().mul(Math.PI * 2)};
+		const cs = float2.cossin(t * Math.PI * 2).scale(this.radius);
+		return {pos: this.centre.add(cs), dir: cs.perp().scale(Math.PI * 2)};
 	}
 	lengthTo(t: number) {
 		return t * Math.PI * 2 * this.radius;
@@ -196,13 +205,13 @@ export class circle implements shape<float2> {
 //	beziers
 //-----------------------------------------------------------------------------
 
-export class bezier2<T extends ops<T>> implements shape<T> {
+export class bezier2<T extends vops<T>> implements shape<T> {
 	constructor(public c0: T, public c1: T, public c2: T) {}
 	public evaluate(t: number) {
-		return this.c0.mul((1 - t) * (1 - t)).add(this.c1.mul(2 * t * (1 - t))).add(this.c2.mul(t * t));
+		return this.c0.scale((1 - t) * (1 - t)).add(this.c1.scale(2 * t * (1 - t))).add(this.c2.scale(t * t));
 	}
 	public tangent(t: number) {
-		return this.c0.mul(2 * t - 2).add(this.c1.mul(2 - t * 4)).add(this.c2.mul(t * 2));
+		return this.c0.scale(2 * t - 2).add(this.c1.scale(2 - t * 4)).add(this.c2.scale(t * 2));
 	}
 	public evaluateWithDir(t: number) {
 		return {
@@ -241,19 +250,19 @@ export class bezier2<T extends ops<T>> implements shape<T> {
 	}
 }
 
-export class bezier3<T extends ops<T>> implements shape<T> {
+export class bezier3<T extends vops<T>> implements shape<T> {
 	constructor(public c0: T, public c1: T, public c2: T, public c3: T) {}
 	public evaluate(t: number) {
 		const u  = 1 - t;
 		const u2 = u * u;
 		const t2 = t * t;
-		return this.c0.mul(u2 * u).add(this.c1.mul(3 * t * u2)).add(this.c2.mul(3 * t2 * u)).add(this.c3.mul(t2 * t));
+		return this.c0.scale(u2 * u).add(this.c1.scale(3 * t * u2)).add(this.c2.scale(3 * t2 * u)).add(this.c3.scale(t2 * t));
 	}
 	public tangent(t: number) {
 		const u  = 1 - t;
 		const u2 = u * u;
 		const t2 = t * t;
-		return this.c0.mul(-3 * u2).add(this.c1.mul(3 * (1 - 4 * t + 3 * t2))).add(this.c2.mul(3 * t * (2 - 3 * t))).add(this.c3.mul(3 * t2));
+		return this.c0.scale(-3 * u2).add(this.c1.scale(3 * (1 - 4 * t + 3 * t2))).add(this.c2.scale(3 * t * (2 - 3 * t))).add(this.c3.scale(3 * t2));
 	}
 	public evaluateWithDir(t: number) {
 		return {
@@ -282,9 +291,9 @@ export class bezier3<T extends ops<T>> implements shape<T> {
 	spline()	{ 
 		return new polynomialT<T>([
 			this.c0,	//t
-			this.c1.sub(this.c0).mul(3),	//t
-			this.c0.sub(this.c2).mul(3).sub(this.c1.mul(6)),	//t^2
-			this.c3.sub(this.c0).add(this.c1.sub(this.c2).mul(3))	//t^3
+			this.c1.sub(this.c0).scale(3),	//t
+			this.c0.sub(this.c2).scale(3).sub(this.c1.scale(6)),	//t^2
+			this.c3.sub(this.c0).add(this.c1.sub(this.c2).scale(3))	//t^3
 		]);
 	}
 }
@@ -293,7 +302,7 @@ export class bezier3<T extends ops<T>> implements shape<T> {
 //	splines (sequence of connected lines or beziers)
 //-----------------------------------------------------------------------------
 
-abstract class spline<T extends ops<T>, S extends shape<T>> implements shape<T> {
+abstract class spline<T extends vops<T>, S extends shape<T>> implements shape<T> {
 	[i: number]: S;
 
 	constructor(public control: T[]) {
@@ -329,7 +338,7 @@ abstract class spline<T extends ops<T>, S extends shape<T>> implements shape<T> 
 	}
 }
 
-export class polygon<T extends ops<T>> extends spline<T, line<T>> {
+export class polygon<T extends vops<T>> extends spline<T, line<T>> {
 	public get length() {
 		return this.control.length;
 	}
@@ -344,7 +353,7 @@ export class polygon<T extends ops<T>> extends spline<T, line<T>> {
 	}
 }
 
-export class bezierSpline2<T extends ops<T>> extends spline<T, bezier2<T>> {
+export class bezierSpline2<T extends vops<T>> extends spline<T, bezier2<T>> {
 	get length() {
 		return (this.control.length - 1) / 2;
 	}
@@ -364,7 +373,7 @@ export class bezierSpline2<T extends ops<T>> extends spline<T, bezier2<T>> {
 	}
 }
 
-export class bezierSpline3<T extends ops<T>> extends spline<T, bezier3<T>> {
+export class bezierSpline3<T extends vops<T>> extends spline<T, bezier3<T>> {
 	get length() {
 		return (this.control.length - 1) / 3;
 	}

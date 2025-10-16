@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 
 import { expect, test } from './test';
-import {float2, float3} from '../src/vector';
+import {vec, E2, float2, float3, float2x2} from '../src/vector';
 import {bezier2} from '../src/geometry';
 
 
@@ -11,12 +11,6 @@ const d = c[0];
 console.log(d);
 
 const myVec2 = float2(1,2);
-
-for (const i of myVec2)
-	console.log(i);
-
-const testy = myVec2.yx[1];
-
 const myVec3 = float3(1,2,3);
 
 test('swizzle properties', () => {
@@ -36,5 +30,13 @@ test('swizzle properties', () => {
 });
 
 
-myVec3.addeq(myVec3);
+myVec3.selfAdd(myVec3);
 console.log(myVec3);
+
+const m2x2 = float2x2(float2(1,2), float2(3,4));
+console.log(m2x2);
+const m2x2i = m2x2.inverse();
+console.log(m2x2i);
+const mtest: vec<float2, E2> = m2x2;
+console.log(m2x2i.matmul(mtest));
+console.log(m2x2i.matmul(m2x2 as vec<float2, E2>));

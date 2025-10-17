@@ -11,7 +11,8 @@ export type vec<T, E extends string> = {
 	[K in E]: T
 };
 
-type ExtractE<T> = T extends { [K in infer E]: any } ? E : never;
+// Extract the component key names (e.g. 'x'|'y'|'z') from a vector-like type
+type ExtractE<T> = { [K in keyof T]: T[K] extends number ? K : never }[keyof T] & string;
 
 // Abstract vector operations
 export abstract class vops<C extends vops<C>> extends ops<C> {
@@ -40,16 +41,17 @@ export abstract class vops<C extends vops<C>> extends ops<C> {
 	clamp(min: C, max: C) 	{ return this.max(min).min(max); }
 }
 
+type vops2<E extends string> = vops<vec<number, E> & vops<any>>;
+
 // Matrix interface and implementation
 export interface matOps<C extends vops<C>, R extends string> {
-	mul(v: C): C;
-	matmul<R2 extends string>(m: vec<C, R2>): vec<C, R2>;
+	mul(v: vec<number, R>): C;
+	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2>;
 	inverse(): matOps<C, R>;
 	det(): number;
 }
 
 class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
-	//type E = ExtractE<C>;
 	x!: C;
 	constructor(cols: vec<C, R>) {
 		Object.assign(this, cols);
@@ -60,26 +62,33 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 	columns(): C[] {
 		return Object.values(this) as C[];
 	}
-	colKeys(): R[] {
+	private colKeys(): R[] {
 		return Object.keys(this) as R[];
 	}
-	rowKeys(): ExtractE<C>[] {
+	private rowKeys(): ExtractE<C>[] {
 		return Object.keys(this.x) as ExtractE<C>[];
 	}
 
-	mul(v: C): C {
-		//const v1 = v as {[K in ExtractE<C>|'x']: number};
-		const v1	= v as {[K in R]: number};
+	mul(v: vec<number, R>): C {
 		const m1	= this as {[K in R]: C};
 		const keys	= this.colKeys();
-		const r		= m1[keys[0]].scale(v1[keys[0]]);
+		const r		= m1[keys[0]].scale(v[keys[0]]);
 		for (const k of keys.slice(1))
-			r.selfAdd(m1[k].scale(v1[k]));
+			r.selfAdd(m1[k].scale(v[k]));
 		return r;
 	}
-	matmul<R2 extends string>(m: vec<C, R2>): vec<C, R2> {
-		const r = (Object.entries(m)).map(([k, v]) => [k, this.mul(v as C)]);
-		return Object.fromEntries(r) as vec<C, R2>;
+	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2> {
+		const out: any = {};
+		for (const k in m)
+			out[k] = this.mul(m[k] as vec<number, R>);
+
+		return new matImp<C,R2>(out as vec<C, R2>);
+	}
+	matmul0<C2 extends vops<C2>, R2 extends string>(m: vec<C2, R2>) {
+		const out: any = {};
+		for (const k in m)
+			out[k] = this.mul(m[k] as vec<number, R>);
+		return new matImp<C,R2>(out as vec<C, R2>);
 	}
 	inverse(): matOps<C, R> {
 		const keys 	= this.rowKeys();
@@ -122,6 +131,14 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 
 export function matClass<C extends vops<C>, R extends string>() {
 	return matImp as new (cols: vec<C, R>) => matOps<C, R>;
+}
+
+// Generic matrix multiply
+export function matmul<C extends vops<C>, R extends string, BC extends string>(
+	a: matOps<C, R>,
+	b: matOps<vops2<R>, BC>
+) {//}: vec<C, BC> {
+	return a.matmul(b);
 }
 
 //-----------------------------------------------------------------------------
@@ -289,30 +306,28 @@ export const float2 = Object.assign(
 	} as {
 		(x: number, y: number): float2;		// Callable signature
 		new (x: number, y: number): float2; // Constructor signature
+	}, {
+	// statics
+	zero() {
+		return float2(0, 0);
 	},
-	{
-		// statics
-		zero() {
-			return float2(0, 0);
-		},
-		cossin(angle: number) {
-			return float2(Math.cos(angle), Math.sin(angle));
-		},
-		translate(z: float2) {
-			return float2x3(float2(1, 0), float2(0, 1), z);
-		},
-		scale(s: {x: number, y: number}|number) {
-			if (typeof s === 'number')
-				s = float2(s, s);
-			return float2x2(float2(s.x, 0), float2(0, s.y));
-		},
-		rotate(t: number) {
-			const s = Math.sin(t);
-			const c = Math.cos(t);
-			return float2x2(float2(c, s), float2(-s, c));
-		}
+	cossin(angle: number) {
+		return float2(Math.cos(angle), Math.sin(angle));
+	},
+	translate(z: float2) {
+		return float2x3(float2(1, 0), float2(0, 1), z);
+	},
+	scale(s: {x: number, y: number}|number) {
+		if (typeof s === 'number')
+			s = float2(s, s);
+		return float2x2(float2(s.x, 0), float2(0, s.y));
+	},
+	rotate(t: number) {
+		const s = Math.sin(t);
+		const c = Math.cos(t);
+		return float2x2(float2(c, s), float2(-s, c));
 	}
-);
+});
 
 Object.assign(float2.prototype, ownProps(vops.prototype), {
 	dupe(this: float2) 				{ return float2(this.x, this.y); },
@@ -380,30 +395,52 @@ export function max_circle_point(m: float2x2) {
 	return float2(1, 0);
 }
 
-export type float2x2 = matOps<float2, E2> & vec<float2, E2>;
+export type float2x2 = matOps<float2, E2> & vec<float2, E2> & {
+	mulPos(v: float2): float2;
+};
 export const float2x2 = Object.assign(
 	function(x: float2, y: float2) {
 		return new (matClass<float2, E2>())({x, y}) as float2x2;
+	}, {
+	// statics
+	identity() {
+		return float2x2(float2(1,0), float2(0,1));
 	},
-	{	// statics
-		identity() {
-			return float2x2(float2(1,0), float2(0,1));
-		},
-	}
-);
+});
+//extra instance methods
+Object.assign(float2x2.prototype, {
+	mulPos(this: float2x2,v: float2) { return this.mul(v); },
+});
 
-export type float2x3 = matOps<float2, E3> & vec<float2, E3>;
+export type float2x3 = matOps<float2, E3> & vec<float2, E3> & {
+	mulPos(v: float2): float2;
+	mulAffine(this: float2x3, b: float2x3|float2x2): float2x3;
+};
 export const float2x3 = Object.assign(
 	function(x: float2, y: float2, z: float2) {
 		return new (matClass<float2, E3>())({x, y, z}) as float2x3;
+	}, {
+	// statics
+	identity() {
+		return float2x3(float2(1,0), float2(0,1), float2(0,0));
 	},
-	{	// statics
-		identity() {
-			return float2x3(float2(1,0), float2(0,1), float2(0,0));
-		},
-	}
-);
+	
+});
+//extra instance methods
+Object.assign(float2x3.prototype, {
+	mulPos(this: float2x3,v: float2) { return this.mul({...v, z: 1}); },
+	mulAffine(this: float2x3, b: float2x3|float2x2) { return mulAffine2x3(this, b); }
+});
 
+function mulAffine2x3(a: float2x3, b: float2x3|float2x2): float2x3 {
+	return float2x3(
+		a.x.scale(b.x.x).add(a.y.scale(b.x.y)),
+		a.x.scale(b.y.x).add(a.y.scale(b.y.y)),
+		'z' in b
+			? a.x.scale(b.z.x).add(a.y.scale(b.z.y)).add(a.z)
+		 	: a.z
+	);
+}
 
 //-----------------------------------------------------------------------------
 // 3D
@@ -423,22 +460,20 @@ export const float3 = Object.assign(
 	} as {
 		(x: number, y: number, z: number): float3;	   // Callable signature
 		new (x: number, y: number, z: number): float3; // Constructor signature
+	}, {
+	// statics
+	zero() {
+		return float3(0, 0, 0);
 	},
-	{
-		// statics
-		zero() {
-			return float3(0, 0, 0);
-		},
-		translate(w: float3) {
-			return float3x4(float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1), w);
-		},
-		scale(s: vec<number, E3>|number) {
-			if (typeof s === 'number')
-				s = float3(s, s, s);
-			return float3x3(float3(s.x, 0, 0), float3(0, s.y, 0), float3(0, 0, s.z));
-		},
-	}
-);
+	translate(w: float3) {
+		return float3x4(float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1), w);
+	},
+	scale(s: vec<number, E3>|number) {
+		if (typeof s === 'number')
+			s = float3(s, s, s);
+		return float3x3(float3(s.x, 0, 0), float3(0, s.y, 0), float3(0, 0, s.z));
+	},
+});
 
 Object.assign(float3.prototype, ownProps(vops.prototype), {
 	dupe(this: float3) 				{ return float3(this.x, this.y, this.z); },
@@ -476,33 +511,55 @@ export type float3x3 = matOps<float3, E3> & vec<float3, E3>;
 export const float3x3 = Object.assign(
 	function(x: float3, y: float3, z: float3) {
 		return new (matClass<float3, E3>())({x, y, z}) as float3x3;
+	}, {
+	// statics
+	identity() {
+		return float3x3(float3(1,0,0), float3(0,1,0), float3(0,0,1));
 	},
-	{	// statics
-		identity() {
-			return float3x3(float3(1,0,0), float3(0,1,0), float3(0,0,1));
-		},
+	basis(dir: float3): float3x3 {
+		const z = normalise(dir);
+		const s = z.z < 0 ? -1 : 1;
+		const a = -1 / (s + z.z);
+		const b = z.x * z.y * a;
+
+		return float3x3(
+			float3(1 + s * a * z.x * z.x, s * b, -s * z.x),
+			float3(b, s + a * z.y * z.y, -z.y),
+			z
+		);
 	}
-);
+});
 
 
-export type float3x4 = matOps<float3, E4> & vec<float3, E4>;
-export function float3x4(x: float3, y: float3, z: float3, w: float3): float3x4 {
-	return new (matClass<float3, E4>())({x, y, z, w}) as float3x4;
+export type float3x4 = matOps<float3, E4> & vec<float3, E4> & {
+	mulPos(v: float3): float3;
+	mulAffine(this: float3x4, b: float3x4|float3x3): float3x4;
 }
+export const float3x4 = Object.assign(
+	function(x: float3, y: float3, z: float3, w: float3): float3x4 {
+		return new (matClass<float3, E4>())({x, y, z, w}) as float3x4;
+	}, {
+	// statics
+	identity() {
+		return float3x4(float3(1,0,0), float3(0,1,0), float3(0,0,1), float3(0,0,0));
+	},
+});
+//extra instance methods
+Object.assign(float3x4.prototype, {
+	mulPos(this: float3x4,v: float3) { return this.mul({...v, w: 1}); },
+	mulAffine(this: float3x4, b: float3x4|float3x3) { return mulAffine3x4(this, b); }
+});
 
-export function make_basis(dir: float3): float3x3 {
-	const z = normalise(dir);
-	const s = z.z < 0 ? -1 : 1;
-	const a = -1 / (s + z.z);
-	const b = z.x * z.y * a;
-
-	return float3x3(
-		float3(1 + s * a * z.x * z.x, s * b, -s * z.x),
-		float3(b, s + a * z.y * z.y, -z.y),
-		z
+function mulAffine3x4(a: float3x4, b: float3x4|float3x3): float3x4 {
+	return float3x4(
+		a.x.scale(b.x.x).add(a.y.scale(b.x.y)).add(a.z.scale(b.x.z)),
+		a.x.scale(b.y.x).add(a.y.scale(b.y.y)).add(a.z.scale(b.y.z)),
+		a.x.scale(b.z.x).add(a.y.scale(b.z.y)).add(a.z.scale(b.z.z)),
+		'w' in b
+			? a.x.scale(b.w.x).add(a.y.scale(b.w.y)).add(a.z.scale(b.w.z)).add(a.w)
+			: a.w
 	);
 }
-
 //-----------------------------------------------------------------------------
 // 4D
 //-----------------------------------------------------------------------------
@@ -520,19 +577,17 @@ export const float4 = Object.assign(
 	} as {
 		(x: number, y: number, z: number, w: number): float4;	  // Callable signature
 		new (x: number, y: number, z: number, w: number): float4; // Constructor signature
+	}, {
+	// statics
+	zero() {
+		return float4(0, 0, 0, 0);
 	},
-	{
-		// statics
-		zero() {
-			return float4(0, 0, 0, 0);
-		},
-		scale(s: vec<number, E4>|number) {
-			if (typeof s === 'number')
-				s = float4(s, s, s, s);
-			return float4x4(float4(s.x, 0, 0, 0), float4(0, s.y, 0, 0), float4(0, 0, s.z, 0), float4(0, 0, 0, s.w));
-		},
-	}
-);
+	scale(s: vec<number, E4>|number) {
+		if (typeof s === 'number')
+			s = float4(s, s, s, s);
+		return float4x4(float4(s.x, 0, 0, 0), float4(0, s.y, 0, 0), float4(0, 0, s.z, 0), float4(0, 0, 0, s.w));
+	},
+});
 
 Object.assign(float4.prototype, ownProps(vops.prototype), {
 	dupe(this: float4) 				{ return float4(this.x, this.y, this.z, this.w); },
@@ -547,20 +602,46 @@ Object.assign(float4.prototype, ownProps(vops.prototype), {
 	max(this: float4, b: float4) 	{ return float4(Math.max(this.x, b.x), Math.max(this.y, b.y), Math.max(this.z, b.z), Math.max(this.w, b.w)); },
 	equal(this: float4, b: float4) 	{ return this.x === b.x && this.y === b.y && this.z === b.z && this.w === b.w; },
 	dot(this: float4, b: float4) 	{ return this.x * b.x + this.y * b.y + this.z * b.z + this.w * b.w; },
-	perp(this: float4) 				{ return this;	}, // TBD
+	perp(this: float4) 				{
+		const comps = [this.x, this.y, this.z, this.w];
+		let i = 0;
+		for (let k = 1; k < 4; ++k)
+			if (Math.abs(comps[k]) > Math.abs(comps[i]))
+				i = k;
+
+		let j = (i === 0 ? 1 : 0);
+		for (let k = 0; k < 4; ++k)
+			if (k != i && Math.abs(comps[k]) > Math.abs(comps[j]))
+				j = k;
+
+		const out = [0, 0, 0, 0];
+		out[i] = -comps[j];
+		out[j] =  comps[i];
+		return float4(out[0], out[1], out[2], out[3]);
+	},
 	toString(this: float4) 			{ return `(${this.x}, ${this.y}, ${this.z}, ${this.w})`; },
 	[Symbol.for("debug.description")](this: float4) { return this.toString(); }
 });
 add_swizzles4(float4.prototype, float2, float3, float4);
 
-export type float4x4 = matOps<float4, E4>&vec<float4, E4>;
+export type float4x4 = matOps<float4, E4> & vec<float4, E4>;
 export const float4x4 = Object.assign(
 	function(x: float4, y: float4, z: float4, w: float4) {
 		return new (matClass<float4, E4>())({x, y, z, w}) as float4x4;
+	}, {
+	// statics
+	identity() {
+		return float4x4(float4(1,0,0,0), float4(0,1,0,0), float4(0,0,1,0), float4(0,0,0,1));
 	},
-	{	// statics
-		identity() {
-			return float4x4(float4(1,0,0,0), float4(0,1,0,0), float4(0,0,1,0), float4(0,0,0,1));
-		},
-	}
-);
+});
+
+
+//matmul checks
+/*
+const m2x2 = float2x2(float2(1,2), float2(3,4));
+const m2x3 = float2x3(float2(1,2), float2(3,4), float2(5,6));
+const _m0 = m2x2.matmul(m2x3);
+//const _m1 = m2x3.matmul(m2x2);
+const _m2 = matmul(m2x2, m2x3);
+//const _m3 = matmul(m2x3, m2x2);
+*/

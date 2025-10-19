@@ -34,6 +34,7 @@ export abstract class vops<C extends vops<C>> extends ops<C> {
 	abstract perp(): C;
 	lensq() 				{ return this.dot(this as unknown as C); }
 	len() 					{ return Math.sqrt(this.lensq()); }
+	mag()					{ return this.len(); }
 	selfScale(b: number) 	{ Object.assign(this, this.scale(b)); }
 	selfMul(b: C) 			{ Object.assign(this, this.mul(b)); }
 	selfAdd(b: C) 			{ Object.assign(this, this.add(b)); }
@@ -287,6 +288,10 @@ export function approx_equal<C extends vops<C>>(a: C, b: C, tol = 1e-9) {
 	return t.max(d).equal(t);
 }
 
+export function safeNormalise<C extends vops<C>>(a: C): C | undefined {
+	const d = a.len();
+	return d ? a.scale(1 / d) : undefined;
+}
 
 //-----------------------------------------------------------------------------
 // 2D
@@ -395,42 +400,50 @@ export function max_circle_point(m: float2x2) {
 	return float2(1, 0);
 }
 
+
+// float2x2
 export type float2x2 = matOps<float2, E2> & vec<float2, E2> & {
 	mulPos(v: float2): float2;
 };
+class _float2x2 extends (matImp<float2, E2> as unknown as new (cols: vec<float2, E2>) => float2x2) {
+	constructor(cols: vec<float2, E2>) {
+		super(cols);
+	}
+	mulPos(this: float2x2,v: float2) { return this.mul(v); }
+}
 export const float2x2 = Object.assign(
-	function(x: float2, y: float2) {
-		return new (matClass<float2, E2>())({x, y}) as float2x2;
+	function(x: float2, y: float2): float2x2 {
+		return new _float2x2({x, y});
 	}, {
 	// statics
 	identity() {
 		return float2x2(float2(1,0), float2(0,1));
 	},
 });
-//extra instance methods
-Object.assign(float2x2.prototype, {
-	mulPos(this: float2x2,v: float2) { return this.mul(v); },
-});
+float2x2.prototype = _float2x2.prototype;
 
+// float2x3
 export type float2x3 = matOps<float2, E3> & vec<float2, E3> & {
 	mulPos(v: float2): float2;
 	mulAffine(this: float2x3, b: float2x3|float2x2): float2x3;
 };
+
+class _float2x3 extends (matImp<float2, E3> as unknown as new (cols: vec<float2, E3>) => float2x3) {
+	constructor(cols: vec<float2, E3>) {
+		super(cols);
+	}
+	mulPos(this: float2x3,v: float2) { return this.mul({...v, z: 1}); }
+	mulAffine(b: float2x3|float2x2): float2x3 { return mulAffine2x3(this, b); }
+}
+
 export const float2x3 = Object.assign(
-	function(x: float2, y: float2, z: float2) {
-		return new (matClass<float2, E3>())({x, y, z}) as float2x3;
+	function(x: float2, y: float2, z: float2): float2x3 {
+		return new _float2x3({ x, y, z });
 	}, {
 	// statics
-	identity() {
-		return float2x3(float2(1,0), float2(0,1), float2(0,0));
-	},
-	
+	identity() { return float2x3(float2(1,0), float2(0,1), float2(0,0)); }
 });
-//extra instance methods
-Object.assign(float2x3.prototype, {
-	mulPos(this: float2x3,v: float2) { return this.mul({...v, z: 1}); },
-	mulAffine(this: float2x3, b: float2x3|float2x2) { return mulAffine2x3(this, b); }
-});
+float2x3.prototype = _float2x3.prototype;
 
 function mulAffine2x3(a: float2x3, b: float2x3|float2x2): float2x3 {
 	return float2x3(
@@ -445,9 +458,10 @@ function mulAffine2x3(a: float2x3, b: float2x3|float2x2): float2x3 {
 //-----------------------------------------------------------------------------
 // 3D
 //-----------------------------------------------------------------------------
-
 export interface float3 extends vec<number, E3>, swiz3<float3, float2, E3>, vops<float3> {
 	cross(b: float3): float3;
+	// returns a perpendicular assuming `this` is already unit-length (fast)
+	perpUnit(): float3;
 }
 
 export const float3 = Object.assign(
@@ -458,7 +472,7 @@ export const float3 = Object.assign(
 		this.y = y;
 		this.z = z;
 	} as {
-		(x: number, y: number, z: number): float3;	   // Callable signature
+		(x: number, y: number, z: number): float3;       // Callable signature
 		new (x: number, y: number, z: number): float3; // Constructor signature
 	}, {
 	// statics
@@ -489,9 +503,10 @@ Object.assign(float3.prototype, ownProps(vops.prototype), {
 	equal(this: float3, b: float3) 	{ return this.x === b.x && this.y === b.y && this.z === b.z; },
 	dot(this: float3, b: float3) 	{ return this.x * b.x + this.y * b.y + this.z * b.z; },
 	perp(this: float3) 				{
-		const s = this.z < 0 ? -1 : 1;
-		const a = -this.y / (s + this.z);
-		return float3(this.x * a, s + this.y * a, -this.y);
+		const v = normalise(this);
+		const s = v.z < 0 ? -1 : 1;
+		const a = -v.y / (s + v.z);
+		return float3(v.x * a, s + v.y * a, -v.y);
 	},
 	toString(this: float3) 			{ return `(${this.x}, ${this.y}, ${this.z})`; },
 	[Symbol.for("debug.description")](this: float3) { return this.toString(); }
@@ -507,6 +522,7 @@ export class extent3 extends extent<float3> {
 	}
 }
 
+// float3x3
 export type float3x3 = matOps<float3, E3> & vec<float3, E3>;
 export const float3x3 = Object.assign(
 	function(x: float3, y: float3, z: float3) {
@@ -530,25 +546,29 @@ export const float3x3 = Object.assign(
 	}
 });
 
-
+// float3x4
 export type float3x4 = matOps<float3, E4> & vec<float3, E4> & {
 	mulPos(v: float3): float3;
 	mulAffine(this: float3x4, b: float3x4|float3x3): float3x4;
 }
+
+class _float3x4 extends (matImp<float3, E4> as unknown as new (cols: vec<float3, E4>) => float3x4) {
+	constructor(cols: vec<float3, E4>) {
+		super(cols);
+	}
+	mulPos(this: float3x4,v: float3) { return this.mul({...v, w: 1}); }
+	mulAffine(b: float3x4|float3x3): float3x4 { return mulAffine3x4(this, b); }
+}
 export const float3x4 = Object.assign(
 	function(x: float3, y: float3, z: float3, w: float3): float3x4 {
-		return new (matClass<float3, E4>())({x, y, z, w}) as float3x4;
+		return new _float3x4({x, y, z, w});
 	}, {
 	// statics
 	identity() {
 		return float3x4(float3(1,0,0), float3(0,1,0), float3(0,0,1), float3(0,0,0));
 	},
 });
-//extra instance methods
-Object.assign(float3x4.prototype, {
-	mulPos(this: float3x4,v: float3) { return this.mul({...v, w: 1}); },
-	mulAffine(this: float3x4, b: float3x4|float3x3) { return mulAffine3x4(this, b); }
-});
+float3x4.prototype = _float3x4.prototype;
 
 function mulAffine3x4(a: float3x4, b: float3x4|float3x3): float3x4 {
 	return float3x4(
@@ -605,15 +625,15 @@ Object.assign(float4.prototype, ownProps(vops.prototype), {
 	perp(this: float4) 				{
 		const comps = [this.x, this.y, this.z, this.w];
 		let i = 0;
-		for (let k = 1; k < 4; ++k)
+		for (let k = 1; k < 4; ++k) {
 			if (Math.abs(comps[k]) > Math.abs(comps[i]))
 				i = k;
-
-		let j = (i === 0 ? 1 : 0);
-		for (let k = 0; k < 4; ++k)
+		}
+		let j = i === 0 ? 1 : 0;
+		for (let k = 0; k < 4; ++k) {
 			if (k != i && Math.abs(comps[k]) > Math.abs(comps[j]))
 				j = k;
-
+		}
 		const out = [0, 0, 0, 0];
 		out[i] = -comps[j];
 		out[j] =  comps[i];
@@ -633,8 +653,35 @@ export const float4x4 = Object.assign(
 	identity() {
 		return float4x4(float4(1,0,0,0), float4(0,1,0,0), float4(0,0,1,0), float4(0,0,0,1));
 	},
-});
+	basis(v: float4): float4x4 {
+		const nv = safeNormalise(v);
+		if (!nv)
+			return float4x4.identity();
 
+		// Householder vector
+		const usex	= Math.abs(nv.x) < Math.SQRT1_2;
+		const uu	= nv.sub(usex ? float4(1,0,0,0) : float4(0,1,0,0));
+		const denom = uu.dot(uu);
+
+		// Build H = I - 2 * (uu uu^T) / denom
+		function applyH(p: float4) {
+			return p.sub(uu.scale(2 * uu.dot(p) / denom));
+		}
+
+		// Apply H to standard basis vectors e1,e2,e3 to get orthonormal complement
+		return usex ? float4x4(
+			applyH(float4(0,1,0,0)),
+			applyH(float4(0,0,1,0)),
+			applyH(float4(0,0,0,1)),
+			nv
+		) :	float4x4(
+			applyH(float4(1,0,0,0)),
+			applyH(float4(0,0,1,0)),
+			applyH(float4(0,0,0,1)),
+			nv
+		);
+	}
+});
 
 //matmul checks
 /*

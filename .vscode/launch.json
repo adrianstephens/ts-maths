@@ -23,6 +23,7 @@
             "cwd": "${workspaceFolder}",
             "args": ["tests/testpoly.ts"],
             "sourceMaps": true,
+            //"customDescriptionGenerator": "this.toString()",
             "preLaunchTask": "npm: build"
         },
         {

@@ -2,10 +2,10 @@
 /* eslint-disable no-restricted-syntax */
 
 import { sincos, sin2cos } from "./core";
-import { float4, float3x3, float3 } from "./vector";
+import { float4, float3x3, float3, normalise } from "./vector";
 
 // Concatenate a float3 and a scalar into a float4
-export function concat(v: float3, w: number): float4 {
+function concat(v: float3, w: number): float4 {
 	return float4(v.x, v.y, v.z, w);
 }
 
@@ -16,9 +16,23 @@ class _quat {
 	conj(): 	quaternion		{ return quaternion(this.v.mul(float4(-1,-1,-1,+1))); }
 
 	mul(b: quaternion): quaternion	{
-		return quaternion.fromVS(b.v.xyz.scale(this.v.w).add(this.v.xyz.scale(b.v.w)).sub(this.v.xyz.cross(b.v.xyz)), this.v.w * b.v.w - this.v.xyz.dot(b.v.xyz));
+		return quaternion.fromVS(
+			b.v.xyz.scale(this.v.w).add(this.v.xyz.scale(b.v.w)).sub(this.v.xyz.cross(b.v.xyz)),
+			this.v.w * b.v.w - this.v.xyz.dot(b.v.xyz)
+		);
 	}
-	div(b: quaternion) { return b.conj().mul(this); }
+	div(b: quaternion)		{ return b.conj().mul(this); }
+	cosang(b: quaternion)	{ return this.v.dot(b.v); }
+	norm()					{ return this.v.len(); }
+	norm2()					{ return this.v.lensq(); }
+
+	closest(b: quaternion)	{ return this.v.dot(b.v) < 0 ? this.v.neg() : this.v; }
+
+	between(a: float3, b: float3) {
+		const half	= a.add(b).scale(0.5);
+		const w		= a.dot(half);
+		return quaternion(Math.abs(w) < 1e-4 ? float4(1,0,0,0) : normalise(concat(half.cross(a), w)));
+	}
 
 	to3x3(): float3x3 {
 		const	v2	= this.v.add(this.v);
@@ -89,7 +103,24 @@ export const quaternion = Object.assign(
 		const	qnorm	= q.v.len();
 		const	scale	= vlen > 0 ? Math.acos(q.v.w / qnorm) / vlen : 0;
 		return quaternion.fromVS(v.scale(scale), Math.log(qnorm));
+	},
+
+	slerp(a: quaternion, b: quaternion, t: number): quaternion {
+		const cosom = a.cosang(b);
+		let scalex = 1 - t;
+		let scaley = Math.sign(cosom) * t;
+		if (Math.abs(cosom) < 0.99) {
+			const omega = Math.acos(cosom);
+			scalex = Math.sin(scalex * omega);
+			scaley = Math.sin(scaley * omega);
+		}
+		return quaternion(normalise(a.v.scale(scalex).add(b.v.scale(scaley))));
+	},
+
+	squad(q0: quaternion, a: quaternion, b: quaternion, q1: quaternion, t: number): quaternion {
+		return this.slerp(this.slerp(q0, q1, t), this.slerp(a, b, t), 2 * (1 - t) * t);
 	}
+
 });
 
 export default quaternion;

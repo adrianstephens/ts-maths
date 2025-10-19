@@ -16,3 +16,8 @@ export function test(name: string, fn: ()=>void) {
 	fn();
 	console.log("finished: " + name);
 }
+
+export function assert(condition: boolean, msg?: string) {
+	if (!condition)
+		throw new Error(msg || 'assertion failed');
+}

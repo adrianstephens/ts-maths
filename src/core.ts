@@ -6,6 +6,20 @@ export abstract class ops<C extends ops<C>> {
 	abstract div(b: C):			C;
 	abstract add(b: C): 		C;
 	abstract sub(b: C): 		C;
+	abstract mag():             number | scalar<any>;
+}
+
+export abstract class scalar<C extends scalar<C>> extends ops<C> {
+	abstract abs():				C;
+	abstract pow(n: number):	C;
+	abstract gt(b: C):			boolean;
+	abstract sqrt(): 			C;
+	abstract valueOf():			number;
+	static from(_n: number):	scalar<any> { throw new Error("abstract"); }
+}
+
+export function	from<C extends scalar<C>>(c: C): (n: number) => C {
+	return (n: number) => (c.constructor as typeof scalar).from(n) as C;
 }
 
 export function sincos(angle: number) {

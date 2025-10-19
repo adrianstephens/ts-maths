@@ -1,22 +1,24 @@
 import { expect, test } from './test';
-import {polynomial, polynomialT, aberth, polynomialN, legendreTable, aberthComplex, aberthT} from '../src/polynomial';
-import complex from '../src/complex';
+import {polynomial, polynomialT, aberth, polynomialN, legendreTable, aberthT} from '../src/polynomial';
+import complex, { complexT } from '../src/complex';
 import * as big from '../../big/dist/index';
 
 const table5 = legendreTable(5);
 console.log('Legendre P5 coefficients:', table5);
 
-const bpoly = new polynomialT<big.float>([big.float.from(-1), big.float.from(0), big.float.from(1)]); // x^2 - 1
+const npoly = new polynomial([-1, 0, 1]); // x^2 - 1
+const npoly2 = npoly.mul(npoly);
+const nroots = aberth(npoly2.normalise());
+
+
+const bpoly = new polynomialT<big.float2>([big.float2.from(-1,32), big.float2.from(0,32), big.float2.from(1,32)]); // x^2 - 1
 const bpoly2 = bpoly.mul(bpoly);
-const broots = aberthT(n => big.float.from(n), bpoly2);
-console.log('bpoly:', bpoly.toString());
-console.log('bpoly2:', bpoly2.toString());
-console.log('bpoly2 roots:', broots);
+const broots = aberthT(bpoly2.normalise());
 
 const cpoly = new polynomialT<complex>([complex(1, 1), complex(0, 0), complex(-1, -1)]); // x^2 - 1
 console.log('cpoly:', cpoly.toString());
 const cpoly2 = cpoly.mul(cpoly);
-const roots = aberthComplex(cpoly2);
+const roots = aberth(cpoly2.normalise());
 
 const c = complex(1,2);
 const c2 = complex.ln(c);

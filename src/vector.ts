@@ -15,7 +15,7 @@ export type vec<T, E extends string> = {
 type ExtractE<T> = { [K in keyof T]: T[K] extends number ? K : never }[keyof T] & string;
 
 // Abstract vector operations
-export abstract class vops<C extends vops<C>> extends ops<C> {
+export abstract class vops<C extends vops<C>> implements ops<C> {
 	create(...args: number[]): C {
 		const ctor = this.constructor as new (...args: number[]) => C;
 		return new ctor(...args);
@@ -25,6 +25,12 @@ export abstract class vops<C extends vops<C>> extends ops<C> {
 //		return Object.values(this)[Symbol.iterator]();
 //	}
 
+	abstract neg(): 			C;
+	abstract scale(b: number):	C;
+	abstract mul(b: C):			C;
+	abstract div(b: C):			C;
+	abstract add(b: C): 		C;
+	abstract sub(b: C): 		C;
 	abstract dupe(): C;
 	abstract abs(): C;
 	abstract min(b: C): C;
@@ -47,8 +53,8 @@ type vops2<E extends string> = vops<vec<number, E> & vops<any>>;
 // Matrix interface and implementation
 export interface matOps<C extends vops<C>, R extends string> {
 	mul(v: vec<number, R>): C;
-	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2>;
-	inverse(): matOps<C, R>;
+	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2> & vec<C, R2>;
+	inverse(): matOps<C, R>;// & vec<C, R>;
 	det(): number;
 }
 
@@ -57,8 +63,8 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 	constructor(cols: vec<C, R>) {
 		Object.assign(this, cols);
 	}
-	create(...cols: C[]): matOps<C, R> {
-		return new matImp(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])) as vec<C, R>);
+	create(...cols: C[]): matOps<C, R> & vec<C, R> {
+		return new matImp(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])) as vec<C, R>) as matOps<C, R> & vec<C, R>;
 	}
 	columns(): C[] {
 		return Object.values(this) as C[];
@@ -78,12 +84,12 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 			r.selfAdd(m1[k].scale(v[k]));
 		return r;
 	}
-	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2> {
+	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2> & vec<C, R2> {
 		const out: any = {};
 		for (const k in m)
 			out[k] = this.mul(m[k] as vec<number, R>);
 
-		return new matImp<C,R2>(out as vec<C, R2>);
+		return new matImp<C,R2>(out as vec<C, R2>) as matOps<C, R2> & vec<C, R2>;
 	}
 	matmul0<C2 extends vops<C2>, R2 extends string>(m: vec<C2, R2>) {
 		const out: any = {};
@@ -91,7 +97,7 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 			out[k] = this.mul(m[k] as vec<number, R>);
 		return new matImp<C,R2>(out as vec<C, R2>);
 	}
-	inverse(): matOps<C, R> {
+	inverse(): matOps<C, R> & vec<C, R> {
 		const keys 	= this.rowKeys();
 		const mat	= this.columns().map(row => row.dupe());
 		const n		= mat.length;
@@ -409,7 +415,9 @@ class _float2x2 extends (matImp<float2, E2> as unknown as new (cols: vec<float2,
 	constructor(cols: vec<float2, E2>) {
 		super(cols);
 	}
-	mulPos(this: float2x2,v: float2) { return this.mul(v); }
+	mulPos(v: float2)	{ return this.mul(v); }
+	det()				{ return this.x.cross(this.y); }
+//	inverse()			{ const r = 1 / this.det(); return float2x2(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
 }
 export const float2x2 = Object.assign(
 	function(x: float2, y: float2): float2x2 {
@@ -432,8 +440,12 @@ class _float2x3 extends (matImp<float2, E3> as unknown as new (cols: vec<float2,
 	constructor(cols: vec<float2, E3>) {
 		super(cols);
 	}
-	mulPos(this: float2x3,v: float2) { return this.mul({...v, z: 1}); }
+	mulPos(v: float2) { return this.mul({...v, z: 1}); }
 	mulAffine(b: float2x3|float2x2): float2x3 { return mulAffine2x3(this, b); }
+	//inverse() {
+	//	const i = float2x2(this.x, this.y);
+	//	return float2x3(i.x, i.y, i.mul(this.z));
+	//}
 }
 
 export const float2x3 = Object.assign(
@@ -545,6 +557,9 @@ export const float3x3 = Object.assign(
 		);
 	}
 });
+//float3x3.prototype.det = function(this: float3x3) {
+//	return this.x.cross(this.y);
+//};
 
 // float3x4
 export type float3x4 = matOps<float3, E4> & vec<float3, E4> & {

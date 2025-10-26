@@ -1,5 +1,9 @@
 node_modules
+src0
 dist
+tests/*.js
+tests/*.d.ts
+tests/*.map
 esm
 *.tgz
 

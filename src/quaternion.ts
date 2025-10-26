@@ -1,6 +1,4 @@
 
-/* eslint-disable no-restricted-syntax */
-
 import { sincos, sin2cos } from "./core";
 import { float4, float3x3, float3, normalise } from "./vector";
 

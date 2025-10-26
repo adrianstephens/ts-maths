@@ -6,7 +6,7 @@ import {
 	sincos_half, max_circle_point,
 	matmul,
 	extent2, extent3,
-} from '../src/vector';
+} from '../dist/vector';
 
 function assertOrthonormalBasis(m: float4x4, tol = 1e-9) {
 	const a = m.x, b = m.y, c = m.z, nv = m.w;
@@ -41,15 +41,15 @@ test('2x2 and 2x3 matmul / inverse / affine', () => {
 	const m2x3 = float2x3(float2(1, 2), float2(3, 4), float2(5, 6));
 
 	// matmul free function agrees with instance.matmul
-		const r1 = matmul(m2x2, m2x3) as any;
-		const r2 = m2x2.matmul(m2x3 as any) as any;
+		const r1 = matmul(m2x2, m2x3);
+		const r2 = m2x2.matmul(m2x3);
 		expect(r1.x).toEqual(r2.x);
 		expect(r1.y).toEqual(r2.y);
 		expect(r1.z).toEqual(r2.z);
 
 	// inverse and determinant consistency
 		const inv = m2x2.inverse();
-		const ident = inv.matmul(m2x2 as any) as any;
+		const ident = inv.matmul(m2x2);
 		// identity on columns
 		expect(ident.x).toEqual(float2(1, 0));
 		expect(ident.y).toEqual(float2(0, 1));
@@ -69,25 +69,31 @@ test('2x2 and 2x3 matmul / inverse / affine', () => {
 });
 
 test('3D affine multiply and matmul', () => {
-	const t = float3x4(float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1), float3(5, 6, 7));
+	const m3x3 = float3x3(float3(1, 2, 3), float3(0, 1, 4), float3(5, 6, 0));
+	const m3x4 = float3x4(float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1), float3(5, 6, 7));
 
-	// translation column should be preserved
-	expect(t.w).toEqual(float3(5, 6, 7));
+	// inverse and determinant consistency
+	const inv = m3x3.inverse();
+	const ident = inv.matmul(m3x3);
+	// identity on columns
+	expect(ident.x).toEqual(float3(1, 0, 0));
+	expect(ident.y).toEqual(float3(0, 1, 0));
+	expect(ident.z).toEqual(float3(0, 0, 1));
 
 	// mulPos should apply the linear part then add translation. For this
 	// matrix the linear part is identity, so mulPos(v) == v + translation.
 	const v = float3(1, 2, 3);
-	const vp = t.mulPos(v);
+	const vp = m3x4.mulPos(v);
 	expect(vp).toEqual(float3(v.x + 5, v.y + 6, v.z + 7));
 
 	// zero vector maps to the translation column
-	expect(t.mulPos(float3(0, 0, 0))).toEqual(t.w);
+	expect(m3x4.mulPos(float3(0, 0, 0))).toEqual(m3x4.w);
 
 	// composing with an identity 3x3 using mulAffine should keep the
 	// translation column unchanged
 	const id3 = float3x3.identity();
-	const composed = t.mulAffine(id3 as any);
-	expect(composed.w).toEqual(t.w);
+	const composed = m3x4.mulAffine(id3);
+	expect(composed.w).toEqual(m3x4.w);
 });
 
 test('float4x4.basis edge cases and orthonormality', () => {
@@ -154,7 +160,7 @@ test('float2 helpers and rotations', () => {
 	assert(Math.abs(cs.y - 1) < 1e-12, 'cossin y mismatch');
 	const rot = float2.rotate(Math.PI / 2);
 	const v = float2(1,0);
-	const vr = (rot as any).mulPos ? (rot as any).mulPos(v) : rot.x.scale(v.x).add(rot.y.scale(v.y));
+	const vr = rot.mulPos ? rot.mulPos(v) : rot.x.scale(v.x).add(rot.y.scale(v.y));
 	// rotating (1,0) by 90deg gives (0,1)
 	assert(Math.abs(vr.x) < 1e-12, 'rotation x mismatch');
 	assert(Math.abs(vr.y - 1) < 1e-12, 'rotation y mismatch');
@@ -200,8 +206,8 @@ test('matrix determinant small cases', () => {
 test('matmul consistency across matmul free and instance', () => {
 	const a = float2x2(float2(1,0), float2(0,1));
 	const b = float2x3(float2(1,2), float2(3,4), float2(5,6));
-	const r1 = a.matmul(b as any) as any;
-	const r2 = matmul(a, b as any) as any;
+	const r1 = a.matmul(b);
+	const r2 = matmul(a, b);
 	expect(r1.x).toEqual(r2.x);
 	expect(r1.y).toEqual(r2.y);
 });

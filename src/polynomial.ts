@@ -1,20 +1,31 @@
-import {ops, scalar, from, extent1} from './core';
+import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isScalar, asScalar2, asScalarT} from './core';
 import complex, { complexT } from './complex';
 
 const sqrt3	= Math.sqrt(3);
 const defaultEpsilon = 1e-9;
+
+//-----------------------------------------------------------------------------
+//	helpers
+//-----------------------------------------------------------------------------
 
 function copySign(a: number, b: number) {
 	return b < 0 ? -Math.abs(a) : Math.abs(a);
 }
 
 function insertSorted<T>(arr: T[], value: T, less: (a: T, b: T) => boolean = (a, b) => a < b): T[] {
-    const i = arr.findIndex(x => less(value, x));
-    if (i === -1)
+	const i = arr.findIndex(x => less(value, x));
+	if (i === -1)
 		arr.push(value);
 	else
-    	arr.splice(i, 0, value);
+   		arr.splice(i, 0, value);
 	return arr;
+}
+
+function arrayN(arr: any[]): arr is number[] {
+	return typeof arr[0] === 'number';
+}
+function arrayO<T>(arr: any[]): arr is T[] {
+	return typeof arr[0] === 'object';
 }
 
 //-----------------------------------------------------------------------------
@@ -24,29 +35,29 @@ function insertSorted<T>(arr: T[], value: T, less: (a: T, b: T) => boolean = (a,
 export class polynomial {
 	constructor(public c: number[]) {}
 	degree()	{ return this.c.length - 1; }
+	dup()		{ return new polynomial(this.c.slice()); }
 
 	evaluate(t: complex): complex;
 	evaluate(t: number): number;
 	evaluate(t: number[]): number[];
 	evaluate(t: number|number[]|complex) {
+		let i = this.c.length;
 		if (typeof t === 'number') {
-			let r = 0;
-			for (let i = this.c.length; i--; )
+			let r = this.c[--i];
+			while (i--)
 				r = r * t + this.c[i];
 			return r;
 		}
 		if (Array.isArray(t)) {
-			const r = new Array<number>(t.length).fill(0);
-			for (let i = this.c.length; i--; )
+			const r = new Array<number>(t.length).fill(this.c[--i]);
+			while (i--)
 				r.forEach((x, j) => r[j] = x * t[j] + this.c[i]);
 			return r;
 		}
-		// else if (t instanceof complex) {
-		let r = complex(0, 0);
-		for (let i = this.c.length; i--; )
+		let r = complex(this.c[--i]);
+		while (i--)
 			r = r.mul(t).add(complex(this.c[i]));
 		return r;
-		//}
 	}
 	deriv() {
 		return new polynomial(this.c.slice(1).map((v, i) => v * (i + 1)));
@@ -67,23 +78,32 @@ export class polynomial {
 				r[i + j] += this.c[i] * b.c[j];
 		return new polynomial(r);
 	}
-	divmod(b: number|polynomial) {
+	div(b: number|polynomial) {
 		if (typeof b === 'number')
 			return this.mul(1 / b);
-
-		const blen	= b.c.length;
-		const bt = b.c[blen - 1];
-		const dc = new Array<number>(this.c.length - blen);
-
-		for (let i = dc.length; --i;) {
-			const d = this.c[i + blen] / bt;
-			for (let j = 0; j < b.c.length; j++)
-				this.c[i - j] -= d * b.c[j];
-			dc[i] = d;
-		}
-		this.c.length = b.c.length - 1;
-		return new polynomial(dc);
+		return this.dup().divmod(b);
 	}
+
+	divmod(b: polynomial) {
+		const a = this.c;
+		const bdeg = b.c.length - 1;
+		const alen = a.length;
+		const bt = b.c[bdeg];
+		const q = new Array<number>(Math.max(0, alen - bdeg));
+		for (let i = q.length; i--;) {
+			const d = a[i + bdeg] / bt;
+			q[i] = d;
+			for (let j = 0; j < bdeg; j++)
+				a[i + j] -= d * b.c[j];
+		}
+
+		let rlen = bdeg;
+		while (rlen > 0 && a[rlen - 1] === 0)
+			rlen--;
+		this.c.length = rlen;
+		return new polynomial(q);
+	}
+
 	normalise(epsilon = defaultEpsilon) {
 		let i = this.c.length - 1;
 		while (i && Math.abs(this.c[i]) < epsilon)
@@ -91,8 +111,8 @@ export class polynomial {
 		const f = 1 / this.c[i];
 		return new polynomialN(this.c.slice(0, i).map(v => v * f));
 	}
-	roots(): number[] {
-		return this.normalise().roots();
+	realRoots(epsilon = defaultEpsilon): number[] {
+		return this.normalise().realRoots(epsilon);
 	}
 	allRoots(): (complex|number)[] {
 		return this.normalise().allRoots();
@@ -101,14 +121,13 @@ export class polynomial {
 		const	dpoly	= this.deriv();
 		const	ddpoly	= dpoly.deriv();
 	
-		while (count--) {
+		while (count--)
 			x = x.map(x => {
 				const	f	= this.evaluate(x);
 				const	f1	= dpoly.evaluate(x);
 				const	f2	= ddpoly.evaluate(x);
 				return x - (f * f1 * 2) / (f1 * f1 * 2 - f * f2);
 			});
-		}
 		return x;
 	}
 }
@@ -120,26 +139,30 @@ export class polynomial {
 export class polynomialN {
 	constructor(public c: number[]) {}
 	degree()	{ return this.c.length; }
+	dup()		{ return new polynomialN(this.c.slice()); }
 
 	evaluate(t: complex): complex;
 	evaluate(t: number): number;
 	evaluate(t: number[]): number[];
 	evaluate(t: number|number[]|complex) {
+		let i = this.c.length;
+
 		if (typeof t === 'number') {
-			let r = 1;
-			for (let i = this.c.length; i--; )
+			let r = t + this.c[--i];
+			while (i--)
 				r = r * t + this.c[i];
 			return r;
 		}
 		if (Array.isArray(t)) {
-			const r = new Array<number>(t.length).fill(1);
-			for (let i = this.c.length; i--; )
+			const lead = this.c[--i];
+			const r = t.map(x => x + lead);
+			while (i--)
 				r.forEach((x, j) => r[j] = x * t[j] + this.c[i]);
 			return r;
 		}
 //		if (t instanceof complex) {
-			let r = complex(1, 0);
-			for (let i = this.c.length; i--; )
+			let r = t.add(complex(this.c[--i]));
+			while (i--)
 				r = r.mul(t).add(complex(this.c[i]));
 			return r;
 //		}
@@ -165,20 +188,26 @@ export class polynomialN {
 
 		return new polynomialN(r);
 	}
-	divmod(b: polynomialN) {
-		const blen	= b.c.length;
-		const dc = new Array<number>(this.c.length - blen);
 
-		for (let i = dc.length; --i;) {
-			const d = this.c[i + blen];
-			for (let j = 0; j < b.c.length; j++)
-				this.c[i - j] -= d * b.c[j];
-			dc[i] = d;
+	divmod(b: polynomialN) {
+		const a = this.c;
+		const alen = a.length;
+		const blen = b.c.length;
+		const q = new Array<number>(Math.max(0, alen - blen + 1));
+		for (let i = q.length; i--;) {
+			const d = a[i + blen];
+			q[i] = d;
+			for (let j = 0; j < blen; j++)
+				a[i + j] -= d * b.c[j];
 		}
-		this.c.length = b.c.length - 1;
-		return new polynomial(dc);
+
+		let rlen = blen;
+		while (rlen > 0 && a[rlen - 1] === 0)
+			rlen--;
+		this.c.length = rlen;
+		return new polynomial(q);
 	}
-	roots(epsilon = defaultEpsilon): number[] {
+	realRoots(epsilon = defaultEpsilon): number[] {
 		return normPolyRealRoots(this.c, epsilon);
 	}
 	allRoots(epsilon = defaultEpsilon): (complex|number)[] {
@@ -192,21 +221,30 @@ export class polynomialN {
 //	Polynomial with generic coefficients supporting ops interface
 //-----------------------------------------------------------------------------
 
-function lessThan(a: number | scalar<any>, b: number) {
-	return a.valueOf() < b;
+type inferRealRoots<T> = T extends scalar<any> ? T[] : never;
+type inferComplexRoots<T> = T extends scalar2<infer R> ? complexT<R>[] : never;
+
+function lessThan<T extends scalar<T>>(a: number | bigint | T, b: number): boolean {
+	if (typeof a === 'number')
+		return a < b;
+	else if (typeof a === 'bigint')
+		return a < BigInt(b);
+	// Use the scalar's lt method to compare a < b.  Avoid calling a non-existent
+	// `gt` method which may have been accepted due to loosened `any` typing.
+	return a.lt(a.from(b));
 }
 
 export class polynomialT<T extends ops<T>> {
 	constructor(public c: T[]) {}
 	degree()	{ return this.c.length - 1; }
+	dup(): polynomialT<T>		{ return new polynomialT<T>(this.c.slice()); }
 
 	evaluate(t: number|T): T;
 	evaluate(t: number[]|T[]): T[];
 	evaluate(t: number|T|number[]|T[]) {
-		let i = this.c.length - 1;
-		const lead = this.c[i];
+		let i = this.c.length;
 		if (Array.isArray(t)) {
-			const r = new Array<T>(t.length).fill(lead);
+			const r = new Array<T>(t.length).fill(this.c[--i]);
 			if (typeof t[0] === 'number') {
 				while (i--)
 					r.forEach((x, j) => r[j] = x.scale(t[j] as number).add(this.c[i]));
@@ -217,7 +255,7 @@ export class polynomialT<T extends ops<T>> {
 				return r;
 			}
 		} else {
-			let r = lead;
+			let r = this.c[--i];
 			if (typeof t === 'number') {
 				while (i--)
 					r = r.scale(t).add(this.c[i]);
@@ -247,9 +285,6 @@ export class polynomialT<T extends ops<T>> {
 		return new polynomialT(this.c.map(c => c.sub(b)));
 	}
 	mul(b: number|polynomialT<T>|T) {
-		if (typeof b === 'number')
-			return new polynomialT(this.c.map(a => a.scale(b)));
-
 		if (b instanceof polynomialT) {
 			const zero = this.c[0].scale(0);
 			return new polynomialT(Array.from({ length: this.c.length + b.c.length - 1 }, (_, k) => {
@@ -259,7 +294,41 @@ export class polynomialT<T extends ops<T>> {
 				return sum;
 			}));
 		}
+
+		if (typeof b === 'number')
+			return new polynomialT(this.c.map(a => a.scale(b)));
+
 		return new polynomialT(this.c.map(a => a.mul(b)));
+	}
+	
+	div(b: number|polynomialT<T>|T) {
+		if (b instanceof polynomialT)
+			return this.dup().divmod(b);
+
+		if (typeof b === 'number')
+			return this.mul(1 / b);
+
+		return new polynomialT(this.c.map(a => a.div(b)));
+	}
+
+	divmod(b: polynomialT<T>) {
+		const a = this.c;
+		const bdeg = b.c.length - 1;
+		const alen = a.length;
+		const bt = b.c[bdeg];
+		const q = new Array<T>(Math.max(0, alen - bdeg));
+		for (let i = q.length; i--;) {
+			const d = a[i + bdeg].div(bt);
+			q[i] = d;
+			for (let j = 0; j < bdeg; j++)
+				a[i + j] = a[i + j].sub(d.mul(b.c[j]));
+		}
+
+		let rlen = bdeg;
+		while (rlen > 0 && lessThan(a[rlen - 1].mag(), defaultEpsilon))
+			rlen--;
+		this.c.length = rlen;
+		return new polynomialT(q);
 	}
 	normalise(epsilon = defaultEpsilon) {
 		let i = this.c.length - 1;
@@ -268,6 +337,14 @@ export class polynomialT<T extends ops<T>> {
 		const f = this.c[i];
 		return new polynomialNT<T>(this.c.slice(0, i).map(v => v.div(f)));
 	}
+
+	realRoots(epsilon = defaultEpsilon): inferRealRoots<T>  {
+		return this.normalise().realRoots(epsilon);
+	}
+	allRoots(epsilon = defaultEpsilon): inferComplexRoots<T>  {
+		return this.normalise().allRoots(epsilon);
+	}
+
 	map(func: (c: T, i: number) => number) {
 		return new polynomial(this.c.map((c, i) => func(c, i)));
 	}
@@ -277,33 +354,35 @@ export class polynomialT<T extends ops<T>> {
 //	Normalised General Polynomial with implicit leading coefficient of 1
 //-----------------------------------------------------------------------------
 
-//type polynum<C extends ops<C>, S = C extends complex ? number : C extends complexT<infer S> ? S : C extends scalar<any> ? C : never> = ops<C> & { abs(): S };
 
 export class polynomialNT<T extends ops<T>> {
 	constructor(public c: T[]) {}
 	degree()	{ return this.c.length; }
-
+	dup(): polynomialNT<T>		{ return new polynomialNT<T>(this.c.slice()); }
 
 	evaluate(t: T): T;
 	evaluate(t: T[]): T[];
 	evaluate(t: T|T[]) {
-		let i = this.c.length - 1;
+		let i = this.c.length;
 		if (Array.isArray(t)) {
-			const r = t.slice();
-			r.forEach((x, j) => r[j] = x.add(this.c[i]));
+			const lead = this.c[--i];
+			const r = t.map(x => x.add(lead));
 			while (i--)
 				r.forEach((x, j) => r[j] = x.mul(t[j] as T).add(this.c[i]));
 			return r;
 		} else {
-			let r = t.add(this.c[i]);
+			let r = t.add(this.c[--i]);
 			while (i--)
 				r = r.mul(t).add(this.c[i]);
 			return r;
 		}
 	}
 
-	deriv() {
-		return new polynomialT([...this.c.slice(1).map((v, i) => v.scale(i + 1))]);//, this.c.length]);
+	//deriv<U extends scalar<any>>(this: polynomialNT<U>) : polynomialT<U> {
+	deriv() : polynomialT<T> {
+		if (isScalar(this.c[0]))
+			return new polynomialT([...this.c.slice(1).map((v, i) => v.scale(i + 1)), this.c[0].from(this.c.length)]);
+		return undefined as never;
 	}
 	normalised_deriv() {
 		const f = 1 / this.c.length;
@@ -331,12 +410,18 @@ export class polynomialNT<T extends ops<T>> {
 		this.c.length = b.c.length - 1;
 		return new polynomialT(dc);
 	}
-//	roots(epsilon = defaultEpsilon): number[] {
-//		return normPolyRealRoots(this.c, epsilon);
-//	}
-//	allRoots(epsilon = defaultEpsilon): (complex|number)[] {
-//		return aberthT(this, epsilon);
-//	}
+
+	realRoots(epsilon = defaultEpsilon): inferRealRoots<T> {
+		if (isScalar(this.c[0]))
+			return sturmRealRootsT(this, this.c[0].from(epsilon)) as inferRealRoots<T>;
+		return undefined as never;
+	}
+
+	allRoots(epsilon = defaultEpsilon): inferComplexRoots<T> {
+		if (isScalar(this.c[0]))
+			return aberthT(this, this.c[0].from(epsilon)) as inferComplexRoots<T>;
+		return undefined as never;
+	}
 }
 
 //-----------------------------------------------------------------------------
@@ -358,16 +443,11 @@ function sumTop2(a: number[]) {
 	return max1 + max2;
 }
 
-
-// Lower bound: apply improved lagrange to reversed coefficients
-//const lower = 1 / sumTop2(k.c.map((c, i) => Math.pow(Math.abs(c), 1 / (i + 1))));
-//return new extent1(lower, upper);
-
-// Upper bound (improved lagrange)
-
-function lagrangeImproved(k: polynomialN): number {
+function lagrangeImproved(k: polynomialN|polynomialNT<complex>): number {
 	const N = k.c.length;
-	return sumTop2(k.c.map((c, i) => Math.pow(Math.abs(c), 1 / (N - i))));
+	if (k instanceof polynomialN)
+		return sumTop2(k.c.map((c, i) => Math.pow(Math.abs(c), 1 / (N - i))));
+	return sumTop2(k.c.map((c, i) => Math.pow(c.abs(), 1 / (N - i))));
 }
 
 function realBound(k: polynomialN): extent1 {
@@ -379,42 +459,90 @@ function realBound(k: polynomialN): extent1 {
 		sumTop2(terms.filter((x, i) => k.c[i] < 0))
 	);
 }
-/*
-function samuelsonBounds(k: polynomialN): extent1 {
-	const N		= k.c.length;
-	const aN1	= k.c[N - 1];
-	const aN2	= k.c[N - 2];
-	const a		= -aN1 / (N + 1);
-	const b		= N / (N + 1) * Math.sqrt(aN1 * aN1 - 2 * (N + 1) / N * aN2);
-	return new extent1(a - b, a + b);
-}
-*/
-function lagrangeImprovedComplex(k: polynomialNT<complex>): number {
-	const N = k.c.length;
-	return sumTop2(k.c.map((c, i) => Math.pow(c.abs(), 1 / (N - i))));
-}
 
-function sumTop2T<T extends scalar<T>>(a: T[]) {
-	let max1 = a[0], max2 = a[0];;
+function sumTop2T<T extends scalar<T>>(zero: T, a: T[]) {
+	if (a.length < 2)
+		return a.length === 1 ? a[0] : zero;
+	let max1 = a[0], max2 = a[0];
 	for (const v of a) {
-		if (v.gt(max1)) {
+		if (max1.lt(v)) {
 			max2 = max1;
 			max1 = v;
-		} else if (v.gt(max2)) {
+		} else if (max2.lt(v)) {
 			max2 = v;
 		}
 	}
 	return max1.add(max2);
 }
 
-function lagrangeImprovedT<T extends scalar<T>>(k: polynomialNT<T>|polynomialNT<complexT<T>>) {
+function lagrangeImprovedT<T extends scalar2<T>>(k: polynomialNT<T>|polynomialNT<complexT<T>>) {
 	const N = k.c.length;
-	return sumTop2T(k.c.map((c, i) => c.abs().pow(1 / (N - i))));
+	const zero = k.c[0] instanceof complexT ? k.c[0].r.from(0) : k.c[0].from(0);
+	return sumTop2T(zero, k.c.map((c, i) => c.abs().pow(1 / (N - i))));
+}
+
+function realBoundT<T extends scalar<T>>(k: polynomialNT<T>) {
+	const N = k.c.length;
+	const terms = k.c.map((c, i) => asScalar2(c.mag()).pow(1 / (N - i)));
+
+	if (arrayN(terms)) {
+		return new extent1(
+			-sumTop2(terms.filter((x, i) => (i % 2 == 0) === (k.c[i].sign() > 0))),
+			sumTop2(terms.filter((x, i) => k.c[i].sign() < 0))
+		);
+	} else if (arrayO<scalar<any>>(terms)) {
+		const zero = terms[0].from(0);
+
+		return new extentT(
+			sumTop2T(zero, terms.filter((x, i) => (i % 2 == 0) === (k.c[i].sign() > 0))).neg(),
+			sumTop2T(zero, terms.filter((x, i) => k.c[i].sign() < 0))
+		);
+	} else {
+		throw new Error("realBoundT: unsupported coefficient type");
+	}
 }
 
 //-----------------------------------------------------------------------------
-//	halley's method to refine roots
+//	root refinement
 //-----------------------------------------------------------------------------
+
+function bisectRoot(p: polynomial|polynomialN, min: number, max: number, tol: number, maxIter = 10) {
+	let fmin = p.evaluate(min);
+
+	for (let i = 0; i < maxIter && max - min > tol; i++) {
+		const mid	= 0.5 * (min + max);
+		const fmid	= p.evaluate(mid);
+		if (Math.abs(fmid) < tol)
+			break;
+
+		// choose side where sign changes
+		if (fmin * fmid <= 0) {
+			max		= mid;
+		} else {
+			min		= mid;
+			fmin	= fmid;
+		}
+	}
+	return 0.5 * (min + max);
+}
+
+function halley(p: polynomial|polynomialN, x: number, maxIter = 10) {
+	const d1 = p.deriv();
+	const d2 = d1.deriv();
+	for (let i = 0; i < maxIter; i++) {
+		const f = p.evaluate(x);
+		const f1 = d1.evaluate(x);
+		const f2 = d2.evaluate(x);
+		const denom = 2 * f1 * f1 - f * f2;
+		if (denom === 0)
+			break;
+		const dx = (2 * f * f1) / denom;
+		x -= dx;
+		if (Math.abs(dx) < 1e-14 * Math.max(1, Math.abs(x)))
+			break;
+	}
+	return x;
+}
 
 function _halley(poly: polynomial|polynomialN, dpoly: polynomial, ddpoly: polynomial, x: number[]) {
 	const	f	= poly.evaluate(x);
@@ -433,7 +561,7 @@ function _norm_halley(poly: polynomialN, dpoly: polynomialN, ddpoly: polynomialN
 
 //	adjust intervals to guarantee convergence of halley's method by using roots of further derivatives
 function adjust_roots(poly: polynomial|polynomialN, dpoly: polynomial|polynomialN, extents: extent1[]) {
-	const	rootsd	= dpoly.roots();
+	const	rootsd	= dpoly.realRoots();
 	for (const ext of extents) {
 		for (const r of rootsd) {
 			if (ext.contains(r)) {
@@ -445,6 +573,44 @@ function adjust_roots(poly: polynomial|polynomialN, dpoly: polynomial|polynomial
 		}
 	}
 	return rootsd.length;
+}
+
+function bisectRootT<T extends scalar<T>>(p: polynomialT<T>|polynomialNT<T>, min: T, max: T, tol: T, maxIter = 10) {
+	let fmin = p.evaluate(min);
+
+	for (let i = 0; i < maxIter && tol.lt(max.sub(min)); i++) {
+		const mid	= min.add(max).scale(0.5);
+		const fmid	= p.evaluate(mid);
+		if (fmid.abs().lt(tol))
+			break;
+
+		// choose side where sign changes
+		if (fmin.sign() != fmid.sign()) {
+			max		= mid;
+		} else {
+			min		= mid;
+			fmin	= fmid;
+		}
+	}
+	return min.add(max).scale(0.5);
+}
+
+function halleyT<T extends scalar<T>>(p: polynomialT<T>|polynomialNT<T>, x: T, maxIter = 10) {
+	const d1 = p.deriv();
+	const d2 = d1.deriv();
+	for (let i = 0; i < maxIter; i++) {
+		const f = p.evaluate(x);
+		const f1 = d1.evaluate(x);
+		const f2 = d2.evaluate(x);
+		const denom = f1.mul(f1).scale(2).sub(f.mul(f2));
+		if (denom.sign() === 0)
+			break;
+		const dx = f.mul(f1).scale(2).div(denom);
+		x = x.sub(dx);
+		if (dx.abs().lt(maxT(x.abs().scale(1e-14), x.from(1))))
+			break;
+	}
+	return x;
 }
 
 //-----------------------------------------------------------------------------
@@ -557,7 +723,7 @@ function normPolyRealRoots(k: number[], epsilon: number): number[] {
 				const poly		= new polynomialN(k);
 				const dpoly		= poly.normalised_deriv();
 				const d2poly	= dpoly.normalised_deriv();
-				const r1		= dpoly.roots();
+				const r1		= dpoly.realRoots();
 				const bounds	= realBound(poly);
 
 				let r: number[];
@@ -605,10 +771,181 @@ function normPolyRealRoots(k: number[], epsilon: number): number[] {
 			}
 
 			default:
-				return aberth(new polynomialN(k)).filter(r => Math.abs(r.i) < epsilon).map(r => r.r).sort((a, b) => a - b);
+				// Use a real-root isolator (Sturm sequences + bisection) to find real roots
+				// This avoids relying on complex-arithmetic fallbacks and gives stricter
+				// guarantees about real roots and multiplicities.
+				return sturmRealRoots(new polynomialN(k), epsilon);
 		}
 	}
 }
+
+//-----------------------------------------------------------------------------
+//  Real-root isolation using Sturm sequences + bisection + polishing
+//  Returns sorted real roots (with multiplicity collapsed as repeated entries)
+//-----------------------------------------------------------------------------
+
+function sturmRealRoots(pN: polynomialN, epsilon: number) {
+	const n = pN.degree();
+	if (n === 0)
+		return [];
+
+	// Build Sturm sequence
+	const seq: polynomial[] = [];
+	let p0 = new polynomial([...pN.c, 1]);
+	let p1 = pN.deriv();
+	seq.push(p0.dup(), p1.dup());
+
+	while (p1.degree() >= 0) {
+		p0.divmod(p1);
+		if (p0.degree() < 0)
+			break;
+
+		// push -r
+		for (let i = 0; i < p0.c.length; i++)
+			p0.c[i] = -p0.c[i];
+
+		seq.push(p0.dup());
+		[p0, p1] = [p1, p0];
+	}
+
+	function SignChanges(x: number) {
+		let prev = 0;
+		let changes = 0;
+		for (const p of seq) {
+			let s = sign(p.evaluate(x));
+			if (s === 0) {
+				// if polynomial evaluates to zero, use sign of nearby point
+				const eps = Math.max(1e-12, Math.abs(x) * 1e-12);
+				s = sign(p.evaluate(x + eps));
+				if (s === 0)
+					continue;
+			}
+			if (prev !== 0 && s !== prev)
+				changes++;
+			prev = s;
+		}
+		return changes;
+	}
+
+	function countRootsInInterval(a: number, b: number) {
+		const va = SignChanges(a);
+		const vb = SignChanges(b);
+		return Math.abs(va - vb);
+	}
+
+//	const pN = p.normalise();
+	const bounds = realBound(pN);
+	let lower = bounds.min;
+	let upper = bounds.max;
+	let count = countRootsInInterval(lower, upper);
+
+	const stack: [number, number, number][] = [];
+	const roots: number[] = [];
+
+	for (;;) {
+		while (count > 1) {
+			// split interval
+			const mid = 0.5 * (lower + upper);
+			const lowerCount = countRootsInInterval(lower, mid);
+			if (lowerCount < count)
+				stack.push([mid, upper, count - lowerCount]);
+			upper = mid;
+			count = lowerCount;
+		}
+
+		if (count === 1)
+			roots.push(halley(pN, bisectRoot(pN, lower, upper, epsilon)));
+				
+		if (stack.length == 0)
+			break;
+		[lower, upper, count] = stack.pop()!;
+	}
+
+	return roots;
+}
+
+
+function sturmRealRootsT<T extends scalar<T>>(pN: polynomialNT<T>, epsilon: T) {
+	const n = pN.degree();
+	if (n === 0)
+		return [];
+
+	// Build Sturm sequence
+	const seq: polynomialT<T>[] = [];
+	let p0 = new polynomialT<T>([...pN.c, pN.c[0].from(1)]);
+	let p1 = pN.deriv();
+	seq.push(p0.dup(), p1.dup());
+
+	while (p1.degree() >= 0) {
+		p0.divmod(p1);
+		if (p0.degree() < 0)
+			break;
+
+		// push -r
+		for (let i = 0; i < p0.c.length; i++)
+			p0.c[i] = p0.c[i].neg();
+
+		seq.push(p0.dup());
+		[p0, p1] = [p1, p0];
+	}
+
+	function SignChanges(x: T) {
+		let prev = 0;
+		let changes = 0;
+		for (const p of seq) {
+			let s = p.evaluate(x).sign();
+			if (s === 0) {
+				// if polynomial evaluates to zero, use sign of nearby point
+				const eps = x.abs().scale(1e-12);//Math.max(1e-12, Math.abs(x) * 1e-12);
+				s = p.evaluate(x.add(eps)).sign();
+				if (s === 0)
+					continue;
+			}
+			if (prev !== 0 && s !== prev)
+				changes++;
+			prev = s;
+		}
+		return changes;
+	}
+
+	function countRootsInInterval(a: T, b: T) {
+		const va = SignChanges(a);
+		const vb = SignChanges(b);
+		return Math.abs(va - vb);
+	}
+
+	//const pN = p.normalise();
+	const bounds = realBoundT(pN);
+	let lower = asScalarT(epsilon, bounds.min);
+	let upper = asScalarT(epsilon, bounds.max);
+	let count = countRootsInInterval(lower, upper);
+
+	const stack: [scalar<any>, scalar<any>, number][] = [];
+	const roots: T[] = [];
+
+	for (;;) {
+		while (count > 1) {
+			// split interval
+			const mid = lower.add(upper).scale(0.5);
+			const lowerCount = countRootsInInterval(lower, mid);
+			if (lowerCount < count)
+				stack.push([mid, upper, count - lowerCount]);
+			upper = mid;
+			count = lowerCount;
+		}
+
+		if (count === 1)
+			roots.push(halleyT(pN, bisectRootT(pN, lower as T, upper as T, epsilon)));
+				
+		if (stack.length == 0)
+			break;
+		[lower, upper, count] = stack.pop()!;
+	}
+
+	return roots;
+}
+
+
 //-----------------------------------------------------------------------------
 //	get real and complex roots
 //-----------------------------------------------------------------------------
@@ -722,7 +1059,7 @@ function normPolyComplexRoots(k: number[], epsilon: number): (complex|number)[] 
 //-----------------------------------------------------------------------------
 
 export function aberth(poly: polynomialN|polynomialNT<complex>, tolerance = 1e-6, maxIterations = 100) {
-	const radius = poly instanceof polynomialN ? lagrangeImproved(poly) : lagrangeImprovedComplex(poly);
+	const radius = lagrangeImproved(poly);
 	const n		= poly.degree();
 	const roots	= Array.from({length: n}, (_, i) => complex.fromPolar(radius, 2 * Math.PI * i / n));
 
@@ -750,19 +1087,19 @@ export function aberth(poly: polynomialN|polynomialNT<complex>, tolerance = 1e-6
 	return roots;
 }
 
-function isComplexPolyN<T extends scalar<T>>(poly: polynomialNT<T>|polynomialNT<complexT<T>>): poly is polynomialNT<complexT<T>> {
+function isComplexPolyN<T extends scalar2<T>>(poly: polynomialNT<T>|polynomialNT<complexT<T>>): poly is polynomialNT<complexT<T>> {
 	return poly.c[0] instanceof complexT;
 }
 
-export function aberthT<T extends scalar<T>>(poly: polynomialNT<T>|polynomialNT<complexT<T>>, tolerance?: T, maxIterations = 100) {
-	let f: (v: number) => T;
+export function aberthT<T extends scalar2<T>>(poly: polynomialNT<T>|polynomialNT<complexT<T>>, tolerance?: T, maxIterations = 100) {
+	let from: (v: number) => T;
 	let evaluate: (p: any, t: complexT<T>) => complexT<T>;
 
 	if (isComplexPolyN(poly)) {
-		f = from(poly.c[0].r);
+		from = poly.c[0].r.from;
 		evaluate = (p, t) => p.evaluate(t);
 	} else {
-		f = from(poly.c[0]);
+		from = poly.c[0].from;
 		evaluate = (p, t) => {
 			let i = p.c.length - 1;
 			let r = t.add(new complexT<T>(p.c[i], p.c[i].scale(0)));
@@ -772,15 +1109,15 @@ export function aberthT<T extends scalar<T>>(poly: polynomialNT<T>|polynomialNT<
 		};
 	}
 
-	const n		= poly.degree();
-	const zero	= f(0), one = f(1);
-	const czero	= new complexT<T>(zero, zero), cone = new complexT<T>(one, zero);
-	const dpoly = poly.normalised_deriv();
+	const n			= poly.degree();
+	const zero		= from(0), one = from(1);
+	const czero		= new complexT<T>(zero, zero), cone = new complexT<T>(one, zero);
+	const dpoly 	= poly.normalised_deriv();
 
 	const radius	= lagrangeImprovedT<T>(poly);
 	const roots		= Array.from({length: n}, (_, i) => complexT.fromPolar(radius, 2 * Math.PI * i / n));
 
-	tolerance ??= f(1e-6);
+	tolerance ??= from(1e-6);
 
 	for (let iter = 0; iter < maxIterations; iter++) {
 		let maxCorrection = zero;
@@ -796,11 +1133,9 @@ export function aberthT<T extends scalar<T>>(poly: polynomialNT<T>|polynomialNT<
 			}
 			const correction = p_zi.div((dp_zi.sub(p_zi.mul(sum))));
 			roots[i] = roots[i].sub(correction);
-			const absCorrection = correction.abs();
-			if (absCorrection.gt(maxCorrection))
-				maxCorrection = absCorrection;
+			maxCorrection = maxT(maxCorrection, correction.abs());
 		}
-		if (tolerance.gt(maxCorrection))
+		if (maxCorrection.lt(tolerance))
 			break;
 	}
 	return roots;
@@ -834,7 +1169,7 @@ export function legendrePolynomial(n: number): polynomial {
 export function legendreTable(n: number): [number, number][] {
 	const P		= legendrePolynomial(n);
 	const dP	= P.deriv();
-	const roots = P.roots(); // returns x_i in [-1, 1]
+	const roots = P.realRoots(); // returns x_i in [-1, 1]
 
 	return roots.map(x => {
 		const dp = dP.evaluate(x);

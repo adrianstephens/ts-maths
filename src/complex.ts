@@ -1,5 +1,5 @@
 
-import { from, scalar, sincos } from "./core";
+import { scalar2, sincos } from "./core";
 
 class _complex {
 	constructor(public r: number, public i: number) {}
@@ -48,9 +48,9 @@ export const complex = Object.assign(
 	conjugatePair(c: complex) { return [c, c.conj()]; },
 });
 
-export class complexT<T extends scalar<T>> {
+export class complexT<T extends scalar2<T>> {
 	constructor(public r: T, public i: T) {}
-	static fromPolar<T extends scalar<T>>(r: T, t: number)	{ const {c, s} = sincos(t); return new complexT(r.scale(c), r.scale(s)); }
+	static fromPolar<T extends scalar2<T>>(r: T, t: number)	{ const {c, s} = sincos(t); return new complexT(r.scale(c), r.scale(s)); }
 
 	neg() 		{ return new complexT(this.r.neg(), this.i.neg()); }
 	conj() 		{ return new complexT(this.r, this.i.neg()); }

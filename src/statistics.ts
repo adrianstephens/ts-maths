@@ -63,9 +63,8 @@ export class statistics<T extends vops<T>> {
 			Type = first.value.constructor as (new (...args: any[]) => T) & WithZero<T>;
 		}
 		const stats = new statistics<T>(Type);
-		for (const item of items) {
+		for (const item of items)
 			stats.add(item);
-		}
 		return stats;
 	}
 

@@ -445,7 +445,7 @@ export function reduce_spline(b: bezier3<float2>, max: number, tol: number) : be
 			const	t0	= b3.tangent(0);
 			const	s	= b3.spline().deriv();
 			const	s2	= s.map(c => c.dot(t0));
-			const	roots = s2.roots();
+			const	roots = s2.realRoots();
 			if (roots.length) {
 				const	root = roots.length > 1 && roots[0] < 0 ? roots[1] : roots[0];
 				if (root > 0 && root < 0.9) {
@@ -460,7 +460,7 @@ export function reduce_spline(b: bezier3<float2>, max: number, tol: number) : be
 	}
 
 	// find inflection points
-	const	inflection = curvature_from_tangent(b.spline().deriv()).roots();
+	const	inflection = curvature_from_tangent(b.spline().deriv()).realRoots();
 
 	if (inflection[0] > 0.05 && inflection[0] < 0.95) {
 		let	c = b.split(inflection[0]);

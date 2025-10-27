@@ -1,5 +1,6 @@
 import { expect, test, assert } from './test';
 import {
+	vec,
 	float2, float3, float4,
 	float2x2, float2x3, float3x3, float3x4, float4x4,
 	mid, normalise, project, reflect, lerp, approx_equal, safeNormalise,
@@ -7,6 +8,22 @@ import {
 	matmul,
 	extent2, extent3,
 } from '../dist/vector';
+
+// Compile-time guard: ensure matmul doesn't widen column keys to `string`.
+// This is a type-only assertion that will cause a TS error if matmul(float2x2, float2x2)
+// returns a matrix whose column-key type is `string` (i.e. inference widened).
+{
+	const __tc_a = float2x2(float2(1, 0), float2(0, 1));
+	const __tc_b = float2x2(float2(1, 0), float2(0, 1));
+	const __tc_res = __tc_a.matmul(__tc_b);
+	void __tc_res; // mark used so compiler doesn't complain about unused local
+	type __tc_mat_res = typeof __tc_res;
+	type __tc_cols = __tc_mat_res extends vec<number, infer R> ? R : never;
+	// If __tc_cols is or includes `string` then the left branch yields a tuple and assignment fails.
+	type __tc_ok = string extends __tc_cols ? ['matmul widened to string keys — fix signatures'] : true;
+	const __tc_assert: __tc_ok = true as unknown as __tc_ok;
+	void __tc_assert;
+}
 
 function assertOrthonormalBasis(m: float4x4, tol = 1e-9) {
 	const a = m.x, b = m.y, c = m.z, nv = m.w;
@@ -32,8 +49,8 @@ test('swizzle and basic vector ops', () => {
 	// arithmetic
 	expect(v2.add(v2)).toEqual(float2(2, 4));
 	expect(v2.scale(2)).toEqual(float2(2, 4));
-		assert(v3.dot(float3(1, 0, 0)) === 1, 'dot mismatch');
-		assert(Math.abs(normalise(v3).len() - 1) < 1e-12, 'normalise failed');
+	assert(v3.dot(float3(1, 0, 0)) === 1, 'dot mismatch');
+	assert(Math.abs(normalise(v3).len() - 1) < 1e-12, 'normalise failed');
 });
 
 test('2x2 and 2x3 matmul / inverse / affine', () => {
@@ -59,11 +76,6 @@ test('2x2 and 2x3 matmul / inverse / affine', () => {
 		const b = float2x2(float2(2, 0), float2(0, 2));
 		// manual composition (since instances are matImp and may not expose prototype helpers)
 		const ab = a.mulAffine(b);
-		const ab_manual = float2x3(
-			a.x.scale(b.x.x).add(a.y.scale(b.x.y)),
-			a.x.scale(b.y.x).add(a.y.scale(b.y.y)),
-			a.z
-		);
 		// translation column should remain a.z for multiplication by pure scale
 		expect(ab.z).toEqual(a.z);
 });
@@ -74,6 +86,7 @@ test('3D affine multiply and matmul', () => {
 
 	// inverse and determinant consistency
 	const inv = m3x3.inverse();
+	//const t = inv.x;
 	const ident = inv.matmul(m3x3);
 	// identity on columns
 	expect(ident.x).toEqual(float3(1, 0, 0));

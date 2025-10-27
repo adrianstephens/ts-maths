@@ -1,14 +1,51 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { expect, test } from './test';
+import { expect, test, assert } from './test';
+import { float2x2, float3x3, float2 } from '../dist/vector';
 import {polynomial, polynomialT, aberth, polynomialN, legendreTable, aberthT} from '../dist/polynomial';
 import complex, { complexT } from '../dist/complex';
-import * as big from '../../big/dist/index';
-//import * as big from '../../big/dist/index';
 import {rational} from '../dist/rational';
+import * as big from '../../big/dist/index';
+
+function approxArray(a: number[], b: number[], tol = 1e-9) {
+    if (a.length !== b.length)
+        return false;
+    for (let i = 0; i < a.length; ++i) {
+        if (Math.abs(a[i] - b[i]) > tol)
+            return false;
+    }
+    return true;
+}
+
+test('faddeevLeVerrier - identity 3x3', () => {
+    const I3 = float3x3.identity();
+    const p = I3.characteristic();
+    const expectCoeffs = [1, -3, 3, -1];
+    assert(approxArray(p, expectCoeffs), `expected ${expectCoeffs}, got ${p}`);
+});
+
+test('faddeevLeVerrier - diagonal 2x2', () => {
+    // diag(2,3) => polynomial λ^2 - 5λ + 6
+    const D = float2x2(float2(2, 0), float2(0, 3));
+    const p = D.characteristic();
+    const expectCoeffs = [1, -5, 6];
+    assert(approxArray(p, expectCoeffs), `expected ${expectCoeffs}, got ${p}`);
+});
+
+test('faddeevLeVerrier - 2x2 example', () => {
+    // matrix [[1,2],[3,4]] with columns (1,3) and (2,4)
+    const M = float2x2(float2(1, 3), float2(2, 4));
+    const p = M.characteristic();
+    // characteristic polynomial: λ^2 - 5λ -2
+    const expectCoeffs = [1, -5, -2];
+    assert(approxArray(p, expectCoeffs), `expected ${expectCoeffs}, got ${p}`);
+});
+
+console.log('testpoly finished');
 
 const a = new rational(3,4);
 const b = new rational(2,3);
 
+/*
 
 test('rational arithmetic', () => {
 	expect(a.add(b).toString(), '3/4 + 2/3').toEqual('17 / 12');
@@ -17,6 +54,7 @@ test('rational arithmetic', () => {
 	expect(a.div(b).toString(), '3/4 / 2/3').toEqual('9 / 8');//or 1 + 1/8
 	expect(a.mod(b).toString(), '3/4 % 2/3').toEqual('1 / 12');//1/8 * 2/3
 });
+*/
 /*
 for (let j = 5;  j < 30; ++j) {
 	let poly_roots_test = new polynomialT([rational.from(1)]);
@@ -26,7 +64,7 @@ for (let j = 5;  j < 30; ++j) {
 	console.log(poly_roots_test.realRoots().map(r=>+r));
 }
 */
-
+/*
 console.log(big.float.from(-120).div(1).toString());
 
 for (let j = 5; j < 30; ++j) {
@@ -36,7 +74,7 @@ for (let j = 5; j < 30; ++j) {
 	}
 	console.log(poly_roots_test.realRoots().map(r=>+r));
 }
-
+*/
 /*
 // Explicit test for real roots of (x-1)(x-2)(x-3)(x-4)(x-5)
 const poly_roots_test = new polynomial([-1, 1])

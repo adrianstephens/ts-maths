@@ -11,9 +11,6 @@ export type vec<T, E extends string> = {
 	[K in E]: T
 };
 
-// Extract the component key names (e.g. 'x'|'y'|'z') from a vector-like type
-type ExtractE<T> = { [K in keyof T]: T[K] extends number ? K : never }[keyof T] & string;
-
 // Abstract vector operations
 export abstract class vops<C extends vops<C>> implements ops<C> {
 	create(...args: number[]): C {
@@ -48,72 +45,90 @@ export abstract class vops<C extends vops<C>> implements ops<C> {
 	clamp(min: C, max: C) 	{ return this.max(min).min(max); }
 }
 
-type vops2<E extends string> = vops<vec<number, E> & vops<any>>;
+type ColumnKeys<T, C> = { [K in keyof T]: T[K] extends C ? K : never }[keyof T] & string;
+type ColumnType<E extends string> = vops<vec<number, E> & vops<any>>;
 
 // Matrix interface and implementation
 export interface matOps<C extends vops<C>, R extends string> {
-	mul(v: vec<number, R>): C;
-	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2> & vec<C, R2>;
-	inverse(): matOps<C, R>;// & vec<C, R>;
-	det(): number;
+	create(...cols: C[]):			this;
+	inverse():						this;
+	det():							number;
+	mul(v: vec<number, R>):			C;
+	mul0(v: vec<number, string>, col: string):	C;
+	matmul1<M2 extends matOps<ColumnType<R>, string>>(m: M2): mat<C, ColumnKeys<M2, C>>;
+	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, ColumnKeys<M2, C>>;
+	trace():						number;
+	characteristic():				number[];
 }
+
+export type mat<C extends vops<C>, R extends string> = matOps<C, R> & vec<C, R>;
 
 class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 	x!: C;
 	constructor(cols: vec<C, R>) {
 		Object.assign(this, cols);
 	}
-	create(...cols: C[]): matOps<C, R> & vec<C, R> {
-		return new matImp(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])) as vec<C, R>) as matOps<C, R> & vec<C, R>;
+	create(...cols: C[]): this {
+ 		const ctor = this.constructor as new (cols: vec<C, R>) => any;
+  		return new ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])) as vec<C, R>) as this;
 	}
 	columns(): C[] {
 		return Object.values(this) as C[];
 	}
-	private colKeys(): R[] {
-		return Object.keys(this) as R[];
-	}
-	private rowKeys(): ExtractE<C>[] {
-		return Object.keys(this.x) as ExtractE<C>[];
+
+	add(b: mat<C, R>): mat<C, R> {
+		const m1	= this as {[K in R]: C};
+		const out: vec<C, string> = {};
+		for (const k in m1)
+			out[k] = m1[k].add(b[k]);
+		return new matImp<C, R>(out) as mat<C, R>;
 	}
 
 	mul(v: vec<number, R>): C {
 		const m1	= this as {[K in R]: C};
-		const keys	= this.colKeys();
-		const r		= m1[keys[0]].scale(v[keys[0]]);
-		for (const k of keys.slice(1))
+		const r		= this.x.scale(0);
+		for (const k in m1)
 			r.selfAdd(m1[k].scale(v[k]));
 		return r;
 	}
-	matmul<R2 extends string, M2 extends matOps<vops2<R>, R2>>(m: M2): matOps<C, R2> & vec<C, R2> {
-		const out: any = {};
+	mul0(v: vec<number, string>, col: string): C {
+		const m1	= this as {[K in R]: C};
+		const r		= this.x.scale(0);
+		for (const k in m1)
+			r.selfAdd(m1[k].scale(v[k] ?? (k == col ? 1 : 0)));
+		return r;
+	}
+	matmul1<M2 extends matOps<ColumnType<R>, string>>(m: M2) {
+		const out: vec<C, string> = {};
 		for (const k in m)
 			out[k] = this.mul(m[k] as vec<number, R>);
+		return new matImp<C, string>(out) as mat<C, ColumnKeys<M2, C>>;
+	}
+	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, ColumnKeys<M2, C>> {
+		const out: vec<C, string> = {};
+		for (const k in m)
+			out[k] = this.mul(m[k] as vec<number, R>);
+		return new matImp<C, string>(out) as mat<C, ColumnKeys<M2, C>>;
+	}
 
-		return new matImp<C,R2>(out as vec<C, R2>) as matOps<C, R2> & vec<C, R2>;
-	}
-	matmul0<C2 extends vops<C2>, R2 extends string>(m: vec<C2, R2>) {
-		const out: any = {};
-		for (const k in m)
-			out[k] = this.mul(m[k] as vec<number, R>);
-		return new matImp<C,R2>(out as vec<C, R2>);
-	}
-	inverse(): matOps<C, R> & vec<C, R> {
-		const keys 	= this.rowKeys();
+	inverse(): this {
+		const keys 	= Object.keys(this.x) as ColumnKeys<C, number>[];
 		const mat	= this.columns().map(row => row.dupe());
 		const n		= mat.length;
 		const inv	= Array.from({length: n}, (_, i) => this.x.create(...Array.from({length: n}, (_, j) => i === j ? 1 : 0)));
 		for (let i = 0; i < n; ++i) {
-			const pivot = mat[i][keys[i]] as unknown as number;
+			const k = keys[i];
+			const pivot = mat[i][k] as unknown as number;
 			if (pivot === 0)
 				throw new Error('Matrix is singular');
 			mat[i].selfScale(1 / pivot);
 			inv[i].selfScale(1 / pivot);
-			for (let k = 0; k < n; ++k) {
-				if (k === i)
-					continue;
-				const factor = mat[k][keys[i]] as unknown as number;
-				mat[k].selfSub(mat[i].scale(factor));
-				inv[k].selfSub(inv[i].scale(factor));
+			for (let j = 0; j < n; ++j) {
+				if (j !== i) {
+					const factor = mat[j][k] as unknown as number;
+					mat[j].selfSub(mat[i].scale(factor));
+					inv[j].selfSub(inv[i].scale(factor));
+				}
 			}
 		}
 		return this.create(...inv);
@@ -134,18 +149,70 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 		}
 		return recurse(this.columns().map(row => Object.values(row) as number[]));
 	}
+	trace(): number {
+		let trace = 0;
+		for (const k of Object.keys(this))
+			trace += (this as any)[k][k] as number;
+		return trace;
+	}
+	characteristic(): number[] {
+		const keys = Object.keys(this) as R[];
+		const n = keys.length;
+
+		function trace() {
+			let trace = 0;
+			for (let i = 0; i < n; ++i)
+				trace += (B_cols[i] as any)[keys[i]] as number;
+			return trace;
+		}
+
+		const I_cols = Array.from({length: n}, (_, i) => this.x.create(...Array.from({length: n}, (_, j) => i === j ? 1 : 0)));
+		const B_cols = this.columns().map(row => row.dupe());
+
+		// Start
+		const coeffs: number[] = [1];
+
+		for (let k = 1; k < n; ++k) {
+			const ck	= -trace() / k;
+			coeffs.push(ck);
+
+			for (let i = 0; i < n; i++)
+				B_cols[i] = this.mul(B_cols[i].add(I_cols[i].scale(ck)) as vec<number, R>);
+		}
+		coeffs.push(-trace() / n);
+		return coeffs;
+	}
 }
 
 export function matClass<C extends vops<C>, R extends string>() {
-	return matImp as new (cols: vec<C, R>) => matOps<C, R>;
+	return matImp as new (cols: vec<C, R>) => mat<C, R>;
 }
 
 // Generic matrix multiply
-export function matmul<C extends vops<C>, R extends string, BC extends string>(
-	a: matOps<C, R>,
-	b: matOps<vops2<R>, BC>
-) {//}: vec<C, BC> {
+//export function matmul<C extends vops<C>, R extends string, M2 extends matOps<ColumnType<R>, string>>(a: matOps<C, R>, b: M2) {
+export function matmul<C extends vops<C>, R extends string, M2 extends vec<ColumnType<R>, any>>(a: matOps<C, R>, b: M2) {
 	return a.matmul(b);
+}
+
+// Generic matrix multiply with default for missing columns/rows
+export function matmul0<C1 extends vops<C1>, R1 extends string, R2 extends string>(a: matOps<C1, R1>, b: vec<any, R2>): mat<C1, R1|R2> {
+	const out: vec<C1, string> = {};
+	const m1	= a as {[K in R2]: C1};
+	const m2	= b as {[K in R2]: vec<number, string>};
+
+	for (const k in m1)
+		out[k] = k in m2 ? a.mul0(m2[k], k) : m1[k];
+
+	for (const k in m1) {
+		if (!(k in out))
+			out[k] = m1[k];
+	}
+
+	return new matImp<C1, string>(out) as mat<C1, R1|R2>;
+}
+
+export function mat<C extends vops<C>, R extends string>(m: Record<R, C>) {
+	return (new matImp<C, R>(m)) as mat<C, R>;
 }
 
 //-----------------------------------------------------------------------------
@@ -206,10 +273,10 @@ function add_swizzles3<T>(obj: vec<T, E3>, make2: (x: T, y: T) => any, make3: (x
 }
 
 function add_swizzle4<O>(obj: O, x: keyof O, y: keyof O, z: keyof O, w: keyof O, set: boolean, make: (x: any, y: any, z: any, w: any) => any) {
-	return {
+	Object.defineProperty(obj, (x as string) + (y as string) + (z as string) + (w as string), {
 		get(this: O) { return make(this[x], this[y], this[z], this[w]); },
 		...(set ? { set(this: O, v: vec<any, E4>) { this[x] = v.x; this[y] = v.y; this[z] = v.z; this[w] = v.w; } } : {})
-	};
+	});
 }
 function add_swizzles4<T, T2, T3, T4>(obj: vec<T, E4>, make2: (x: T, y: T) => T2, make3: (x: T, y: T, z: T) => T3, make4: (x: T, y: T, z: T, w: T) => T4) {
 	const fields = ['x', 'y', 'z', 'w'] as const;
@@ -408,16 +475,13 @@ export function max_circle_point(m: float2x2) {
 
 
 // float2x2
-export type float2x2 = matOps<float2, E2> & vec<float2, E2> & {
+export type float2x2 = mat<float2, E2> & {
 	mulPos(v: float2): float2;
 };
-class _float2x2 extends (matImp<float2, E2> as unknown as new (cols: vec<float2, E2>) => float2x2) {
-	constructor(cols: vec<float2, E2>) {
-		super(cols);
-	}
+class _float2x2 extends matClass<float2, E2>() {
 	mulPos(v: float2)	{ return this.mul(v); }
 	det()				{ return this.x.cross(this.y); }
-//	inverse()			{ const r = 1 / this.det(); return float2x2(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
+	inverse(): this		{ const r = 1 / this.det(); return this.create(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
 }
 export const float2x2 = Object.assign(
 	function(x: float2, y: float2): float2x2 {
@@ -431,21 +495,18 @@ export const float2x2 = Object.assign(
 float2x2.prototype = _float2x2.prototype;
 
 // float2x3
-export type float2x3 = matOps<float2, E3> & vec<float2, E3> & {
+export type float2x3 = mat<float2, E3> & {
 	mulPos(v: float2): float2;
 	mulAffine(this: float2x3, b: float2x3|float2x2): float2x3;
 };
 
 class _float2x3 extends (matImp<float2, E3> as unknown as new (cols: vec<float2, E3>) => float2x3) {
-	constructor(cols: vec<float2, E3>) {
-		super(cols);
-	}
 	mulPos(v: float2) { return this.mul({...v, z: 1}); }
 	mulAffine(b: float2x3|float2x2): float2x3 { return mulAffine2x3(this, b); }
-	//inverse() {
-	//	const i = float2x2(this.x, this.y);
-	//	return float2x3(i.x, i.y, i.mul(this.z));
-	//}
+	inverse(): this {
+		const i = float2x2(this.x, this.y);
+		return this.create(i.x, i.y, i.mul(this.z));
+	}
 }
 
 export const float2x3 = Object.assign(
@@ -514,11 +575,12 @@ Object.assign(float3.prototype, ownProps(vops.prototype), {
 	max(this: float3, b: float3) 	{ return float3(Math.max(this.x, b.x), Math.max(this.y, b.y), Math.max(this.z, b.z)); },
 	equal(this: float3, b: float3) 	{ return this.x === b.x && this.y === b.y && this.z === b.z; },
 	dot(this: float3, b: float3) 	{ return this.x * b.x + this.y * b.y + this.z * b.z; },
-	perp(this: float3) 				{
-		const v = normalise(this);
-		const s = v.z < 0 ? -1 : 1;
-		const a = -v.y / (s + v.z);
-		return float3(v.x * a, s + v.y * a, -v.y);
+	perp(this: float3) 				{ return normalise(this).perpUnit(); },
+	cross(this: float3, b: float3) 	{ return this.yzx.mul(b.zxy).sub(this.zxy.mul(b.yzx)); },
+	perpUnit(this: float3) 			{
+		const s = this.z < 0 ? -1 : 1;
+		const a = -this.y / (s + this.z);
+		return float3(this.x * a, s + this.y * a, -this.y);
 	},
 	toString(this: float3) 			{ return `(${this.x}, ${this.y}, ${this.z})`; },
 	[Symbol.for("debug.description")](this: float3) { return this.toString(); }
@@ -535,10 +597,11 @@ export class extent3 extends extent<float3> {
 }
 
 // float3x3
-export type float3x3 = matOps<float3, E3> & vec<float3, E3>;
+export type float3x3 = mat<float3, E3>;
 export const float3x3 = Object.assign(
 	function(x: float3, y: float3, z: float3) {
-		return new (matClass<float3, E3>())({x, y, z}) as float3x3;
+		//return new (matClass<float3, E3>())({x, y, z}) as float3x3;
+		return new matImp<float3, E3>({x, y, z}) as unknown as float3x3;
 	}, {
 	// statics
 	identity() {
@@ -562,15 +625,11 @@ export const float3x3 = Object.assign(
 //};
 
 // float3x4
-export type float3x4 = matOps<float3, E4> & vec<float3, E4> & {
+export type float3x4 = mat<float3, E4> & {
 	mulPos(v: float3): float3;
 	mulAffine(this: float3x4, b: float3x4|float3x3): float3x4;
 }
-
-class _float3x4 extends (matImp<float3, E4> as unknown as new (cols: vec<float3, E4>) => float3x4) {
-	constructor(cols: vec<float3, E4>) {
-		super(cols);
-	}
+class _float3x4 extends matClass<float3, E4>() {
 	mulPos(this: float3x4,v: float3) { return this.mul({...v, w: 1}); }
 	mulAffine(b: float3x4|float3x3): float3x4 { return mulAffine3x4(this, b); }
 }
@@ -659,7 +718,7 @@ Object.assign(float4.prototype, ownProps(vops.prototype), {
 });
 add_swizzles4(float4.prototype, float2, float3, float4);
 
-export type float4x4 = matOps<float4, E4> & vec<float4, E4>;
+export type float4x4 = mat<float4, E4>;
 export const float4x4 = Object.assign(
 	function(x: float4, y: float4, z: float4, w: float4) {
 		return new (matClass<float4, E4>())({x, y, z, w}) as float4x4;
@@ -699,11 +758,22 @@ export const float4x4 = Object.assign(
 });
 
 //matmul checks
-/*
-const m2x2 = float2x2(float2(1,2), float2(3,4));
+
+//const m2x2 = float2x2(float2(1,2), float2(3,4));
+const m2x2 = mat({x: float2(1,2), y: float2(3,4)});
+const m3x2 = mat({x: float3(1,2,3), y: float3(4,5,6)});
 const m2x3 = float2x3(float2(1,2), float2(3,4), float2(5,6));
+
+const _m4 = m2x3.matmul(m3x2);
+const _m5 = m3x2.matmul(m2x3);
+
 const _m0 = m2x2.matmul(m2x3);
-//const _m1 = m2x3.matmul(m2x2);
+//const _m1 = m2x3.matmul(m2x2);//should fail
+//const _m1 = m2x3.matmul0(m2x2);
 const _m2 = matmul(m2x2, m2x3);
-//const _m3 = matmul(m2x3, m2x2);
-*/
+//const _m3 = matmul(m2x3, m2x2);//should fail
+const _m3 = matmul0(m2x3, m2x2);
+const _m6 = matmul0(m2x3, m2x3);
+const _m7 = matmul0(m2x2, m2x3);
+
+console.log('matmul checks done');

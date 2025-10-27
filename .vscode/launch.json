@@ -12,7 +12,16 @@
             "cwd": "${workspaceFolder}",
             "args": ["tests/testvec.ts"],
             "sourceMaps": true,
-            //"customDescriptionGenerator": "this.x;",//this[Symbol.for('debug.description')]??.() ?? def; }",
+            "preLaunchTask": "compile-test"
+        },
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Test quaternions",
+            "runtimeExecutable": "ts-node",
+            "cwd": "${workspaceFolder}",
+            "args": ["tests/testquat.ts"],
+            "sourceMaps": true,
             "preLaunchTask": "compile-test"
         },
         {

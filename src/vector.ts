@@ -47,7 +47,10 @@ export abstract class vops<C extends vops<C>> implements ops<C> {
 }
 
 type ColumnKeys<T, C> = { [K in keyof T]: T[K] extends C ? K : never }[keyof T] & string;
-type ColumnType<E extends string> = vops<vec<number, E> & vops<any>>;
+//type ColumnType<E extends string> = vops<vec<number, E> & vops<any>>;
+type ColumnType<E extends string> = vops<ColumnType<E>> & vec<number, E>;
+
+type vops2<C extends vops<C>, E extends string> = C & vec<number, E>;
 
 // Matrix interface and implementation
 export interface matOps<C extends vops<C>, R extends string> {
@@ -56,7 +59,6 @@ export interface matOps<C extends vops<C>, R extends string> {
 	det():							number;
 	mul(v: vec<number, R>):			C;
 	mul0(v: vec<number, string>, col: string):	C;
-	matmul1<M2 extends matOps<ColumnType<R>, string>>(m: M2): mat<C, ColumnKeys<M2, C>>;
 	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, ColumnKeys<M2, C>>;
 	trace():						number;
 	characteristic():				polynomialN;
@@ -100,12 +102,6 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 		for (const k in m1)
 			r.selfAdd(m1[k].scale(v[k] ?? (k == col ? 1 : 0)));
 		return r;
-	}
-	matmul1<M2 extends matOps<ColumnType<R>, string>>(m: M2) {
-		const out: vec<C, string> = {};
-		for (const k in m)
-			out[k] = this.mul(m[k] as vec<number, R>);
-		return new matImp<C, string>(out) as mat<C, ColumnKeys<M2, C>>;
 	}
 	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, ColumnKeys<M2, C>> {
 		const out: vec<C, string> = {};
@@ -676,7 +672,7 @@ export type float2x3 = mat<float2, E3> & {
 	mulAffine(this: float2x3, b: float2x3|float2x2): float2x3;
 };
 
-class _float2x3 extends (matImp<float2, E3> as unknown as new (cols: vec<float2, E3>) => float2x3) {
+class _float2x3 extends matClass<float2, E3>() {
 	mulPos(v: float2) { return this.mul({...v, z: 1}); }
 	mulAffine(b: float2x3|float2x2): float2x3 { return mulAffine2x3(this, b); }
 	inverse(): this {
@@ -684,7 +680,6 @@ class _float2x3 extends (matImp<float2, E3> as unknown as new (cols: vec<float2,
 		return this.create(i.x, i.y, i.mul(this.z));
 	}
 }
-
 export const float2x3 = Object.assign(
 	function(x: float2, y: float2, z: float2): float2x3 {
 		return new _float2x3({ x, y, z });
@@ -776,7 +771,6 @@ export class extent3 extends extent<float3> {
 export type float3x3 = mat<float3, E3>;
 export const float3x3 = Object.assign(
 	function(x: float3, y: float3, z: float3) {
-		//return new (matClass<float3, E3>())({x, y, z}) as float3x3;
 		return new matImp<float3, E3>({x, y, z}) as unknown as float3x3;
 	}, {
 	// statics

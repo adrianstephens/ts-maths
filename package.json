@@ -11,6 +11,21 @@
 			"import": "./esm/vector.js",
 			"browser": "./esm/vector.js"
 		},
+		"./rational": {
+			"require": "./dist/rational.js",
+			"import": "./esm/rational.js",
+			"browser": "./esm/rational.js"
+		},
+		"./complex": {
+			"require": "./dist/complex.js",
+			"import": "./esm/complex.js",
+			"browser": "./esm/complex.js"
+		},
+		"./quaternion": {
+			"require": "./dist/quaternion.js",
+			"import": "./esm/quaternion.js",
+			"browser": "./esm/quaternion.js"
+		},
 		"./geometry": {
 			"require": "./dist/geometry.js",
 			"import": "./esm/geometry.js",
@@ -29,10 +44,31 @@
 	"scripts": {
 		"build": "tsc -p ./tsconfig.json & tsc -p ./tsconfig.esm.json",
 		"watch": "tsc -watch -p ./",
-		"lint": "eslint \"src/**/*.ts\""
+		"lint": "eslint \"src/**/*.ts\"",
+		"test": "node -r ts-node/register tests/run-tests.ts"
 	},
 	"keywords": [
-		"typescript"
+		"math-utils",
+		"linear-algebra",
+		"matrices",
+		"vectors",
+		"quaternion",
+		"rotation",
+		"euler-angles",
+		"axis-angle",
+		"characteristic-polynomial",
+		"eigenvalues",
+		"matrix-inverse",
+		"matrix-ops",
+		"typescript",
+		"unit-quaternion",
+		"complex",
+		"rational",
+		"polynomial",
+		"geometry",
+		"generics",
+		"graphics",
+		"robotics"
 	],
 	"author": "Adrian Stephens",
 	"license": "MIT",

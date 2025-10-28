@@ -122,15 +122,17 @@ class _unitQuat extends _quat {
 	}
 
 	toEulerZYX(): float3 {
-		const v = this.v;
-		const v2 = v.xyz.mul(v.xyz);
-		const s = v.xyz.scale(v.w).add(v.yzx.mul(float3(v.z,-v.x,v.y)));
-		const c = float3(.5,.5,.5).sub(v2.add(v2.yzx));
-		return float3(
-			Math.atan2( s.x, c.x),
-			Math.atan2(-s.y, c.y),
-			Math.atan2( s.z, c.z),
-		);
+		// Use standard quaternion -> ZYX (yaw-pitch-roll) conversion.
+		// q = (x,y,z,w)
+		const x = this.v.x, y = this.v.y, z = this.v.z, w = this.v.w;
+		// roll (X)
+		const rx = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
+		// pitch (Y) -- use asin of the sine term and clamp for numerical safety
+		const sy = 2 * (w * y - z * x);
+		const ry = Math.asin(Math.max(-1, Math.min(1, sy)));
+		// yaw (Z)
+		const rz = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+		return float3(rx, ry, rz);
 	}
 }
 

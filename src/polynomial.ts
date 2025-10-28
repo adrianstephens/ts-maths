@@ -211,8 +211,6 @@ export class polynomialN {
 		return normPolyRealRoots(this.c, epsilon);
 	}
 	allRoots(epsilon = defaultEpsilon): (complex|number)[] {
-		if (this.c.length > 5)
-			return aberth(this);
 		return normPolyComplexRoots(this.c, epsilon);
 	}
 }
@@ -708,12 +706,11 @@ function normPolyRealRoots(k: number[], epsilon: number): number[] {
 
 				// solve the resolvent cubic ...
 				const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p], epsilon);
-				// ... and take the one real solution to build two quadratic equations
-				const m = r[0];
+				const m = Math.max(...r);
 				const v = Math.sqrt(m * 2);
 				const u = q / Math.sqrt(m * 8);
 
-				return [...normPolyRealRoots([m + p / 2 - u,  v], epsilon), ...normPolyRealRoots([m + p / 2 + u, -v], epsilon)].map(i => i - a / 4);
+				return [...normPolyRealRoots([m + p / 2 - u, v], epsilon), ...normPolyRealRoots([m + p / 2 + u, -v], epsilon)].map(i => i - a / 4);
 				//if (ra.length === 0 && rb.length === 0)
 				//	return [];
 				//return halley(new polynomialN(k), [...ra, ...rb].map(i => i - a / 4));
@@ -951,7 +948,7 @@ function sturmRealRootsT<T extends scalar<T>>(pN: polynomialNT<T>, epsilon: T) {
 //-----------------------------------------------------------------------------
 
 function normPolyComplexRoots(k: number[], epsilon: number): (complex|number)[] {
-		let zeros = 0;
+	let zeros = 0;
 	while (k[zeros] === 0)
 		++zeros;
 
@@ -1036,14 +1033,12 @@ function normPolyComplexRoots(k: number[], epsilon: number): (complex|number)[] 
 					// no absolute term: y(y^3 + py + q) = 0
 					roots3 = [0, ...normPolyComplexRoots([q, p, 0], epsilon)];
 				} else {
-					// solve the resolvent cubic ...
-					const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p], epsilon);
-					// ... and take the one real solution to build two quadratic equations
-					const m = r[0];
-					const v = Math.sqrt(m * 2);
-					const u = q / Math.sqrt(m * 8);
-
-					roots3 = [...normPolyComplexRoots([m + p / 2 - u, v], epsilon), ...normPolyComplexRoots([m + p / 2 + u, -v], epsilon)];
+						// solve the resolvent cubic ...
+						const r = normPolyRealRoots([-q * q / 8, p * p / 4 - t, p], epsilon);
+						const m = Math.max(...r);
+						const v = Math.sqrt(m * 2);
+						const u = q / Math.sqrt(m * 8);
+						roots3 = [...normPolyComplexRoots([m + p / 2 - u, v], epsilon), ...normPolyComplexRoots([m + p / 2 + u, -v], epsilon)];
 				}
 				return roots3.map(r => typeof r === 'number' ? r - a / 4 : complex(r.r - a / 4, r.i));
 			}

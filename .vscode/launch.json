@@ -12,7 +12,7 @@
             "cwd": "${workspaceFolder}",
             "args": ["tests/testvec.ts"],
             "sourceMaps": true,
-            "preLaunchTask": "compile-test"
+            "preLaunchTask": "npm: watch"
         },
         {
             "type": "node",
@@ -22,14 +22,15 @@
             "cwd": "${workspaceFolder}",
             "args": ["tests/testquat.ts"],
             "sourceMaps": true,
-            "preLaunchTask": "compile-test"
+            "preLaunchTask": "npm: watch"
         },
         {
             "type": "node",
             "request": "launch",
-            "name": "Test polynormials",
-            "cwd": "${workspaceFolder}/tests",
-            "args": ["testpoly.js"],
+            "name": "Test polynomials",
+            "runtimeExecutable": "ts-node",
+            "cwd": "${workspaceFolder}",
+            "args": ["tests/testpoly.ts"],
             "sourceMaps": true,
 			"outFiles": [
 				"${workspaceFolder}/dist/*.js",
@@ -38,8 +39,7 @@
 				"${workspaceFolder}/../big/dist/**/*.js",
 			],
 			"console": "integratedTerminal",
-            //"customDescriptionGenerator": "this.toString()",
-            "preLaunchTask": "compile-test"
+            "preLaunchTask": "npm: watch"
         },
         {
             "type": "node-terminal",

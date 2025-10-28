@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { expect, test, assert } from './test';
-import { float2x2, float3x3, float2 } from '../dist/vector';
+import { float2x2, float3x3, float2, float3, float4x4, float4 } from '../dist/vector';
 import {polynomial, polynomialT, aberth, polynomialN, legendreTable, aberthT} from '../dist/polynomial';
 import complex, { complexT } from '../dist/complex';
 import {rational} from '../dist/rational';
@@ -16,28 +16,71 @@ function approxArray(a: number[], b: number[], tol = 1e-9) {
     return true;
 }
 
+function approx(a: number, b: number, tol = 1e-8) {
+	return Math.abs(a - b) <= tol;
+}
+
 test('faddeevLeVerrier - identity 3x3', () => {
     const I3 = float3x3.identity();
-    const p = I3.characteristic();
-    const expectCoeffs = [1, -3, 3, -1];
-    assert(approxArray(p, expectCoeffs), `expected ${expectCoeffs}, got ${p}`);
+	const p = I3.characteristic();
+	const expectCoeffs = [1, -3, 3, -1];
+	const coeffs = [1, ...p.c.slice().reverse()];
+	assert(approxArray(coeffs, expectCoeffs), `expected ${expectCoeffs}, got ${coeffs}`);
 });
 
 test('faddeevLeVerrier - diagonal 2x2', () => {
     // diag(2,3) => polynomial λ^2 - 5λ + 6
     const D = float2x2(float2(2, 0), float2(0, 3));
-    const p = D.characteristic();
-    const expectCoeffs = [1, -5, 6];
-    assert(approxArray(p, expectCoeffs), `expected ${expectCoeffs}, got ${p}`);
+	const p = D.characteristic();
+	const expectCoeffs = [1, -5, 6];
+	const coeffs = [1, ...p.c.slice().reverse()];
+	assert(approxArray(coeffs, expectCoeffs), `expected ${expectCoeffs}, got ${coeffs}`);
 });
 
 test('faddeevLeVerrier - 2x2 example', () => {
     // matrix [[1,2],[3,4]] with columns (1,3) and (2,4)
     const M = float2x2(float2(1, 3), float2(2, 4));
-    const p = M.characteristic();
-    // characteristic polynomial: λ^2 - 5λ -2
-    const expectCoeffs = [1, -5, -2];
-    assert(approxArray(p, expectCoeffs), `expected ${expectCoeffs}, got ${p}`);
+	const p = M.characteristic();
+	// characteristic polynomial: λ^2 - 5λ -2
+	const expectCoeffs = [1, -5, -2];
+	const coeffs = [1, ...p.c.slice().reverse()];
+	assert(approxArray(coeffs, expectCoeffs), `expected ${expectCoeffs}, got ${coeffs}`);
+});
+
+test('eigen_2x2 - real distinct', () => {
+	const A = float2x2(float2(3, 1), float2(0, 2));
+	const eigs = A.eigenvalues();
+	if (eigs.length !== 2) throw new Error('expected 2 eigenvalues');
+	const vals = eigs.map(e => e.r).sort((a,b) => a-b);
+	if (!(approx(vals[0],2) && approx(vals[1],3)))
+		throw new Error('real distinct eigenvalues mismatch: ' + JSON.stringify(vals));
+});
+
+test('eigen_2x2 - complex conjugate', () => {
+	const A = float2x2(float2(0, 2), float2(-2, 0));
+	const eigs = A.eigenvalues();
+	if (eigs.length !== 2) throw new Error('expected 2 eigenvalues');
+	const has2i = eigs.some(e => Math.abs(e.r) < 1e-9 && Math.abs(e.i - 2) < 1e-9);
+	const hasMinus2i = eigs.some(e => Math.abs(e.r) < 1e-9 && Math.abs(e.i + 2) < 1e-9);
+	if (!has2i || !hasMinus2i) throw new Error('complex conjugate eigenvalues mismatch: ' + JSON.stringify(eigs));
+});
+
+test('eigen_3x3 - diag 1,2,3', () => {
+	const A = float3x3(float3(1,0,0), float3(0,2,0), float3(0,0,3));
+	const eigs = A.eigenvalues();
+	if (eigs.length !== 3) throw new Error('expected 3 eigenvalues');
+	const vals = eigs.map(e => e.r ?? 0).sort((a,b) => a-b);
+	if (!(approx(vals[0],1) && approx(vals[1],2) && approx(vals[2],3)))
+		throw new Error('3x3 diagonal eigenvalues mismatch: ' + JSON.stringify(vals));
+});
+
+test('eigen_4x4 - diag 1..4', () => {
+	const A = float4x4(float4(1,0,0,0), float4(0,2,0,0), float4(0,0,3,0), float4(0,0,0,4));
+	const eigs = A.eigenvalues();
+	if (eigs.length !== 4) throw new Error('expected 4 eigenvalues');
+	const vals = eigs.map(e => e.r).sort((a,b) => a-b);
+	if (!(approx(vals[0],1) && approx(vals[1],2) && approx(vals[2],3) && approx(vals[3],4)))
+		throw new Error('4x4 diagonal eigenvalues mismatch: ' + JSON.stringify(vals));
 });
 
 console.log('testpoly finished');

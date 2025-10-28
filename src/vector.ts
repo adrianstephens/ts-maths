@@ -1,5 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import {ops} from './core';
+import complex from './complex';
+import { polynomial, polynomialN } from './polynomial';
 
 // Core axis types
 export type E2 = 'x'|'y';
@@ -21,20 +23,19 @@ export abstract class vops<C extends vops<C>> implements ops<C> {
 //	[Symbol.iterator](): Iterator<number> {
 //		return Object.values(this)[Symbol.iterator]();
 //	}
-
 	abstract neg(): 			C;
 	abstract scale(b: number):	C;
 	abstract mul(b: C):			C;
 	abstract div(b: C):			C;
 	abstract add(b: C): 		C;
 	abstract sub(b: C): 		C;
-	abstract dupe(): C;
-	abstract abs(): C;
-	abstract min(b: C): C;
-	abstract max(b: C): C;
-	abstract equal(b: C): boolean;
-	abstract dot(b: C): number;
-	abstract perp(): C;
+	abstract dupe():			C;
+	abstract abs():				C;
+	abstract min(b: C):			C;
+	abstract max(b: C):			C;
+	abstract equal(b: C):		boolean;
+	abstract dot(b: C):			number;
+	abstract perp():			C;
 	lensq() 				{ return this.dot(this as unknown as C); }
 	len() 					{ return Math.sqrt(this.lensq()); }
 	mag()					{ return this.len(); }
@@ -58,7 +59,9 @@ export interface matOps<C extends vops<C>, R extends string> {
 	matmul1<M2 extends matOps<ColumnType<R>, string>>(m: M2): mat<C, ColumnKeys<M2, C>>;
 	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, ColumnKeys<M2, C>>;
 	trace():						number;
-	characteristic():				number[];
+	characteristic():				polynomialN;
+	// Compute eigenvalues (array of complex values)
+	eigenvalues(): complex[];
 }
 
 export type mat<C extends vops<C>, R extends string> = matOps<C, R> & vec<C, R>;
@@ -155,7 +158,7 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 			trace += (this as any)[k][k] as number;
 		return trace;
 	}
-	characteristic(): number[] {
+	characteristic(): polynomialN {
 		const keys = Object.keys(this) as R[];
 		const n = keys.length;
 
@@ -170,7 +173,7 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 		const B_cols = this.columns().map(row => row.dupe());
 
 		// Start
-		const coeffs: number[] = [1];
+		const coeffs: number[] = [];
 
 		for (let k = 1; k < n; ++k) {
 			const ck	= -trace() / k;
@@ -180,7 +183,175 @@ class matImp<C extends vops<C>, R extends string> implements matOps<C, R> {
 				B_cols[i] = this.mul(B_cols[i].add(I_cols[i].scale(ck)) as vec<number, R>);
 		}
 		coeffs.push(-trace() / n);
-		return coeffs;
+		coeffs.reverse();
+		return new polynomialN(coeffs);
+	}
+
+	// Basic QR-based eigensolver (returns array of complex eigenvalues).
+	eigenvalues(): complex[] {
+		const keys = Object.keys(this) as R[];
+		const n = keys.length;
+		if (n === 0)
+			return [];
+
+ 		if (n === 1)
+			return [complex((this.x as any).x, 0)];
+
+		// For small matrices (<= 5) prefer the polynomial solver (uses closed-form/Aberth)
+		// Use the class' `characteristic()` to avoid duplicating the algorithm here.
+		if (n <= 5) {
+			const roots = this.characteristic().allRoots();
+			return roots.map(r => typeof r === 'number' ? complex(r, 0) : complex(r.r, r.i));
+		}
+
+		// helper: deep copy top m x m
+		// Implement a QR-based shifted-iteration using vops columns rather than
+		// raw number[][] matrices. We still use a small numeric R matrix, but
+		// column operations (dot, scale, add, dupe) use the project's vops
+		// primitives to avoid duplicating low-level matrix helpers.
+
+		const tol = 1e-12;
+		const maxIter = Math.max(1000, 100 * n);
+		const eigs: complex[] = [];
+		let m = n;
+		let iter = 0;
+
+		// Full-length columns (vops) for the matrix A in column-major order
+		const fullCols = this.columns().map(c => c.dupe());
+
+		// cache factory for creating vectors of appropriate size
+		const factory = this.x;
+		// Helper: create a truncated vector (only the first m rows) using factory
+		const makeTrunc = (col: any, mm: number) => {
+			return factory.create(...keys.slice(0, mm).map(k => (col as any)[k] as number));
+		};
+
+		// Modified Gram-Schmidt on truncated column vectors. Returns Q (array of vops)
+		// and R (numeric m x m upper-triangular).
+		function qrDecomposeCols(colsTrunc: any[]) {
+			const mm = colsTrunc.length;
+			const Q: any[] = Array(mm).fill(null);
+			const R: number[][] = Array.from({ length: mm }, () => Array(mm).fill(0));
+
+			for (let j = 0; j < mm; ++j) {
+				let v = colsTrunc[j].dupe();
+				for (let i = 0; i < j; ++i) {
+					const rij = Q[i].dot(v);
+					R[i][j] = rij;
+					v = v.sub(Q[i].scale(rij));
+				}
+				const norm = v.len();
+				R[j][j] = norm;
+				if (norm === 0) {
+					Q[j] = colsTrunc[j].dupe().scale(0);
+				} else {
+					Q[j] = v.scale(1 / norm);
+				}
+			}
+			return { Q, R };
+		}
+
+		// Compute R * Q (returns truncated columns of length m). R is mm x mm,
+		// Q is array of mm truncated column vectors.
+		function multiplyRQ(Q: any[], R: number[][]) {
+			const mm = Q.length;
+			const out: any[] = Array(mm).fill(null);
+			for (let j = 0; j < mm; ++j) {
+				let col = factory.create(...Array.from({ length: mm }, () => 0));
+				for (let k = 0; k < mm; ++k)
+					col = col.add(Q[k].scale(R[j][k]));
+				out[j] = col;
+			}
+			return out;
+		}
+
+		while (m > 0 && iter < maxIter) {
+			if (m === 1) {
+				eigs.push(complex((fullCols[0] as any)[keys[0]] as number, 0));
+				break;
+			}
+
+			// Check deflation by looking at entry (m-1, m-2)
+			const off = Math.abs(((fullCols[m - 2] as any)[keys[m - 1]] as number) || 0);
+			const diag1 = Math.abs((fullCols[m - 2] as any)[keys[m - 2]] as number);
+			const diag2 = Math.abs((fullCols[m - 1] as any)[keys[m - 1]] as number);
+			if (off <= tol * (diag1 + diag2)) {
+				// deflate
+				eigs.push(complex((fullCols[m - 1] as any)[keys[m - 1]] as number, 0));
+				m -= 1;
+				continue;
+			}
+
+			// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
+			const a = (fullCols[m - 2] as any)[keys[m - 2]] as number;
+			const b = (fullCols[m - 1] as any)[keys[m - 2]] as number; // note b is at (m-2, m-1) in row-major; with cols we access differently
+			const c = (fullCols[m - 2] as any)[keys[m - 1]] as number; // (m-1,m-2)
+			const d = (fullCols[m - 1] as any)[keys[m - 1]] as number;
+			const tr = a + d;
+			const det = a * d - b * c;
+			const disc = tr * tr - 4 * det;
+			let mu: number;
+			if (disc >= 0) {
+				const s = Math.sqrt(disc);
+				const mu1 = 0.5 * (tr + s);
+				const mu2 = 0.5 * (tr - s);
+				mu = Math.abs(mu1 - d) < Math.abs(mu2 - d) ? mu1 : mu2;
+			} else {
+				mu = tr * 0.5;
+			}
+
+			// Build truncated columns for top m x m block and apply shift
+			const ScolsTrunc = Array.from({ length: m }, (_, j) => makeTrunc(fullCols[j], m));
+			for (let j = 0; j < m; ++j) {
+				// subtract mu on the diagonal entry
+				const Ij = factory.create(...Array.from({ length: m }, (_, i) => (i === j ? 1 : 0)));
+				ScolsTrunc[j] = ScolsTrunc[j].add(Ij.scale(-mu));
+			}
+
+			// QR decompose truncated S
+			const { Q, R } = qrDecomposeCols(ScolsTrunc);
+			const RQcols = multiplyRQ.call(this, Q, R);
+
+			// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
+			for (let j = 0; j < m; ++j) {
+				for (let i = 0; i < m; ++i) {
+					// set entry (i,j)
+					(fullCols[j] as any)[keys[i]] = ((RQcols[j] as any)[keys[i]] as number) + (i === j ? mu : 0);
+				}
+			}
+
+			iter++;
+		}
+
+		// If not fully converged, extract remaining eigenvalues from trailing blocks
+		if (m > 0) {
+			while (m > 0) {
+				if (m === 1) { eigs.push(complex((fullCols[0] as any)[keys[0]] as number, 0)); break; }
+				const off2 = Math.abs(((fullCols[m - 2] as any)[keys[m - 1]] as number) || 0);
+				const d1 = Math.abs((fullCols[m - 2] as any)[keys[m - 2]] as number);
+				const d2 = Math.abs((fullCols[m - 1] as any)[keys[m - 1]] as number);
+				if (off2 <= tol * (d1 + d2)) {
+					eigs.push(complex((fullCols[m - 1] as any)[keys[m - 1]] as number, 0));
+					m -= 1;
+					continue;
+				}
+				// take 2x2 block - delegate to polynomial solver for correctness
+				const a2 = (fullCols[m - 2] as any)[keys[m - 2]] as number;
+				const b2 = (fullCols[m - 1] as any)[keys[m - 2]] as number;
+				const c2 = (fullCols[m - 2] as any)[keys[m - 1]] as number;
+				const d2v = (fullCols[m - 1] as any)[keys[m - 1]] as number;
+				const tr2 = a2 + d2v;
+				const det2 = a2 * d2v - b2 * c2;
+				const coeffs = [det2, -tr2, 1];
+				const roots = new polynomial(coeffs).allRoots();
+				for (const r of roots)
+					eigs.push(typeof r === 'number' ? complex(r, 0) : complex(r.r, r.i));
+				m -= 2;
+			}
+		}
+
+		// eigenvalues collected bottom-up; reverse to have original order
+		return eigs.reverse();
 	}
 }
 
@@ -189,7 +360,6 @@ export function matClass<C extends vops<C>, R extends string>() {
 }
 
 // Generic matrix multiply
-//export function matmul<C extends vops<C>, R extends string, M2 extends matOps<ColumnType<R>, string>>(a: matOps<C, R>, b: M2) {
 export function matmul<C extends vops<C>, R extends string, M2 extends vec<ColumnType<R>, any>>(a: matOps<C, R>, b: M2) {
 	return a.matmul(b);
 }
@@ -482,6 +652,12 @@ class _float2x2 extends matClass<float2, E2>() {
 	mulPos(v: float2)	{ return this.mul(v); }
 	det()				{ return this.x.cross(this.y); }
 	inverse(): this		{ const r = 1 / this.det(); return this.create(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
+
+	// analytic eigenvalues for 2x2 matrix
+	eigenvalues(): complex[] {
+		const roots = new polynomial([this.det(), -this.trace(), 1]).allRoots();
+		return roots.map(r => typeof r === 'number' ? complex(r, 0) : complex(r.r, r.i));
+	}
 }
 export const float2x2 = Object.assign(
 	function(x: float2, y: float2): float2x2 {
@@ -654,6 +830,7 @@ function mulAffine3x4(a: float3x4, b: float3x4|float3x3): float3x4 {
 			: a.w
 	);
 }
+
 //-----------------------------------------------------------------------------
 // 4D
 //-----------------------------------------------------------------------------
@@ -757,23 +934,46 @@ export const float4x4 = Object.assign(
 	}
 });
 
-//matmul checks
+//-----------------------------------------------------------------------------
+// ND
+//-----------------------------------------------------------------------------
 
-//const m2x2 = float2x2(float2(1,2), float2(3,4));
-const m2x2 = mat({x: float2(1,2), y: float2(3,4)});
-const m3x2 = mat({x: float3(1,2,3), y: float3(4,5,6)});
-const m2x3 = float2x3(float2(1,2), float2(3,4), float2(5,6));
+export class floatN extends vops<floatN> {
+	values: number[];
+	constructor(...v: number[]) {
+		super();
+		this.values = v;
+	}
 
-const _m4 = m2x3.matmul(m3x2);
-const _m5 = m3x2.matmul(m2x3);
+	dupe() 				{ return new floatN(...this.values); }
+	neg() 				{ return new floatN(...this.values.map(x => -x)); }
+	abs() 				{ return new floatN(...this.values.map(x => Math.abs(x))); }
+	scale(b: number) 	{ return new floatN(...this.values.map(x => x * b)); }
+	mul(b: floatN) 		{ return new floatN(...this.values.map((x, i) => x * b.values[i])); }
+	div(b: floatN) 		{ return new floatN(...this.values.map((x, i) => x / b.values[i])); }
+	add(b: floatN) 		{ return new floatN(...this.values.map((x, i) => x + b.values[i])); }
+	sub(b: floatN) 		{ return new floatN(...this.values.map((x, i) => x - b.values[i])); }
+	min(b: floatN) 		{ return new floatN(...this.values.map((x, i) => Math.min(x, b.values[i]))); }
+	max(b: floatN) 		{ return new floatN(...this.values.map((x, i) => Math.max(x, b.values[i]))); }
+	equal(b: floatN) 	{ return this.values.length === b.values.length && this.values.every((v, i) => v === b.values[i]); }
+	dot(b: floatN) 		{ return this.values.reduce((acc, v, i) => acc + v * b.values[i], 0); }
+	perp() 				{ return new floatN(...this.values); }
+}
+/*
+const m = mat<float4, E4>({
+	x: float4(1, 2, 3, 4),
+	y: float4(5, 6, 7, 8),
+	z: float4(9, 10, 11, 12),
+	w: float4(13, 14, 15, 16)
+});
 
-const _m0 = m2x2.matmul(m2x3);
-//const _m1 = m2x3.matmul(m2x2);//should fail
-//const _m1 = m2x3.matmul0(m2x2);
-const _m2 = matmul(m2x2, m2x3);
-//const _m3 = matmul(m2x3, m2x2);//should fail
-const _m3 = matmul0(m2x3, m2x2);
-const _m6 = matmul0(m2x3, m2x3);
-const _m7 = matmul0(m2x2, m2x3);
+const mn = mat<floatN, E4>({
+	x: new floatN(1, 2, 3, 4, 1, 2, 3, 4),
+	y: new floatN(5, 6, 7, 8, 5, 6, 7, 8),
+	z: new floatN(9, 10, 11, 12, 9, 10, 11, 12),
+	w: new floatN(13, 14, 15, 16, 13, 14, 15, 16)
+});
 
-console.log('matmul checks done');
+const _v0 = mn.characteristic();
+const _v1 = mn.mul(float4(1, 2, 3, 4));
+*/

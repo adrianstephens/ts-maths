@@ -3,7 +3,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/adrianstephens/ts-maths.svg?style=social)](https://github.com/adrianstephens/ts-maths)
 [![License](https://img.shields.io/npm/l/@isopodlabs/maths.svg)](LICENSE.txt)
 
-A comprehensive TypeScript mathematics library providing vector operations, complex numbers, polynomial solving, and geometric primitives.
+A comprehensive TypeScript mathematics library providing vector operations, rationals, complex numbers, quaternions, polynomial solving, and geometric primitives.
 
 ## ☕ Support My Work
 If you use this package, consider [buying me a cup of tea](https://coff.ee/adrianstephens) to support future updates!
@@ -24,16 +24,29 @@ npm install @isopodlabs/maths
 - **Bounding boxes** - extent1, extent2, extent3
 - **Statistics** - mean, variance for scalars and vectors
 
+### Rational Numbers
+- **Basic operations** - add, multiply, divide, negate
+- **BigInt** - rationals over bigint
+- **Generics** - rationals over custom types that support arithmetic through add, mul, etc, methods
+
 ### Complex Numbers
-- **Basic operations** - add, multiply, divide, conjugate
+- **Basic operations** - add, multiply, divide, negate, conjugate
 - **Transcendental functions** - sin, cos, exp, log, sqrt
 - **Polar form** - magnitude, argument, from polar coordinates
+- **Generics** - complex numbers over custom types that support arithmetic through add, mul, etc, methods
+
+### Quaternions
+- **Basic operations** - add, multiply, divide, negate, conjugate
+- **Transcendental functions** - exp, log
+- #### Subclass for unit quaternions ####
+  - **Conversion** to/from 3x3 matrix, axis-angle, euler angles
 
 ### Polynomials
-- **Root finding** - real and complex roots up to degree 5
+- **Root finding** - real and complex
 - **Evaluation** - single values, arrays, complex numbers
 - **Operations** - add, subtract, multiply, derivative
-- **Advanced solving** - Aberth method for high-degree polynomials
+- **Advanced solving** - high-degree polynomials use Aberth(complex) or Sturm(real) root finding methods
+- **Generics** - polynomials over custom types that support arithmetic through add, mul, etc, methods
 
 ### Geometry
 - **Shapes** - lines, circles, Bézier curves (quadratic/cubic)

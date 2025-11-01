@@ -1,9 +1,11 @@
+/* eslint-disable no-restricted-syntax */
 
 import { scalar2, sincos } from "./core";
 
 class _complex {
 	constructor(public r: number, public i: number) {}
 
+	dup(): 		complex		{ return complex(this.r, this.i); }
 	neg(): 		complex		{ return complex(-this.r, -this.i); }
 	conj(): 	complex		{ return complex(this.r, -this.i); }
 	recip():	complex		{ return this.conj().scale(1 / this.magSq()); }
@@ -52,6 +54,7 @@ export class complexT<T extends scalar2<T>> {
 	constructor(public r: T, public i: T) {}
 	static fromPolar<T extends scalar2<T>>(r: T, t: number)	{ const {c, s} = sincos(t); return new complexT(r.scale(c), r.scale(s)); }
 
+	dup() 		{ return new complexT(this.r.dup(), this.i.dup()); }
 	neg() 		{ return new complexT(this.r.neg(), this.i.neg()); }
 	conj() 		{ return new complexT(this.r, this.i.neg()); }
 	recip()		{ return this.conj().rscale(this.magSq()); }
@@ -66,8 +69,8 @@ export class complexT<T extends scalar2<T>> {
 	sub(b: complexT<T>)	{ return new complexT(this.r.sub(b.r), this.i.sub(b.i)); }
 	div(b: complexT<T>) { return this.mul(b.conj()).rscale(b.magSq()); }
 
-	//toString()	{ return `${this.r} ${this.i.gt(from(this.i)(0)) ? '+' : '-'} ${this.i.abs()}i`; }
-	toString()	{ return `${this.r} + ${this.i} i`; }
+	toString()	{ return `${this.r} ${this.i.sign() >= 0 ? '+' : '-'} ${this.i.abs()}i`; }
+	[Symbol.for("debug.description")]() { return `${this.r} + ${this.i} i`; }
 }
 
 export default complex;

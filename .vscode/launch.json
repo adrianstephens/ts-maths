@@ -7,6 +7,22 @@
         {
             "type": "node",
             "request": "launch",
+            "name": "Test all",
+            "runtimeExecutable": "ts-node",
+            "cwd": "${workspaceFolder}",
+            "args": ["tests/run-tests.ts"],
+            "sourceMaps": true,
+			"outFiles": [
+				"${workspaceFolder}/dist/*.js",
+				"${workspaceFolder}/tests/*.js",
+				"${workspaceFolder}/../big/dist/*.js",
+				"${workspaceFolder}/../big/dist/**/*.js",
+			],
+            "preLaunchTask": "npm: watch"
+        },
+		{
+            "type": "node",
+            "request": "launch",
             "name": "Test vectors",
             "runtimeExecutable": "ts-node",
             "cwd": "${workspaceFolder}",

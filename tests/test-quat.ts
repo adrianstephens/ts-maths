@@ -143,8 +143,6 @@ test('unit_quat.rotate and quat.transform behaviour', () => {
     const v2 = float3(0.3, -0.2, 2.0);
     const m2 = q.to3x3();
     const mmv = m2.mul(v2);
-    const tv = (q as unknown as { transform(v: float3): float3 }).transform(v2);
+    const tv = q.transform(v2);
     assert(mmv.sub(tv).len() < TOL, 'quaternion.transform should match to3x3 * v (q v q*)');
 });
-
-console.log('testquat finished');

@@ -1,14 +1,58 @@
-import { scalar, absB, gcd, gcdB, gcdT } from "./core";
+import { scalar, gcd, absB, signB, gcdB, gcdT, bigIntDivideToNumber, minB, lazySlice, compareT } from "./core";
+
+export function continuedFraction(x: number, maxTerms = 64, eps?: number): number[] {
+	const out: number[] = [];
+
+	for (let i = 0; i < maxTerms; i++) {
+		const a = Math.floor(x);
+		out.push(a);
+		x -= a;
+		if (x === 0 || (eps !== undefined && Math.abs(x) < eps))
+			break;
+		x = 1 / x;
+	}
+	return out;
+}
+
+export function continuedFractionT<T extends scalar<T>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
+	const out: (bigint|number)[] = [];
+	const one = x.from(1);
+
+	x = x.dup();
+	let a = x.divmod(one);
+	if (x.sign() < 0) {
+		--a;
+		x = x.add(one);
+	}
+	out.push(a);
+
+	for (let i = 1; i < maxTerms && (x.sign() !== 0 && (eps === undefined || eps.lt(x.abs()))); i++) {
+		x = x.recip();
+		out.push(x.divmod(one));
+	}
+	return out;
+}
+/*
+function *convergents<T extends scalar<T>>(terms: (bigint|number)[]): Generator<{n: bigint, d: bigint, a: bigint}> {
+	let p2 = 0n, p1 = 1n;
+	let q2 = 1n, q1 = 0n;
+	for (const i of terms) {
+		const a = BigInt(i);
+		[p2, q2, p1, q1] = [p1, q1, a * p1 + p2, a * q1 + q2];
+		yield {n: p1, d: q1, a};
+	}
+}
+*/
 
 //-----------------------------------------------------------------------------
 // number rationals
 //-----------------------------------------------------------------------------
 
-function rationalApprox(x: number, maxDen = 1e20, tol = 1e-20): [number, number] {
+function rationalApprox(x: number, maxDen: number, eps?: number): [number, number] {
     let h1 = Math.floor(x), h2 = 1;
     let k1 = 1, k2 = 0;
 
-	for (let b = x - h1; Math.abs(x - h1 / k1) > tol; ) {
+	for (let b = x - h1; b && (eps === undefined || eps < Math.abs(b)); ) {
         const f = Math.floor(1 / b);
         const h = f * h1 + h2;
         const k = f * k1 + k2;
@@ -21,18 +65,36 @@ function rationalApprox(x: number, maxDen = 1e20, tol = 1e-20): [number, number]
 }
 
 export class rational {
-	static from(n: number): rational {
+	static from(n: number, maxDen?: number): rational {
 		if (Number.isInteger(n))
 			return new rational(n, 1);
-		const [h, k] = rationalApprox(n);
+		const [h, k] = rationalApprox(n, maxDen ?? 1e20, 1e-20);
 		return new rational(h, k);
 	}
+	
+	static fromContinuedFraction(terms: number[], maxDen?: number): rational {
+		let p2 = 1, q2 = 0;
+		let p1 = terms[0], q1 = 1;
+
+		for (const a of lazySlice(terms, 1)) {
+			[p2, q2, p1, q1] = [p1, q1, a * p1 + p2, a * q1 + q2];
+			if (maxDen && q1 > maxDen) {
+				// compute maximal t that keeps denom <= maxDen:
+				const t = Math.min((maxDen - q2) / q1, a - 1);
+				p1 = p2 + t * p1;
+				q1 = q2 + t * q1;
+				break;
+			}
+		}
+		return new rational(p1, q1);
+	}
+
 	static simplified(num: number, den: number): rational {
 		const g = gcd(num, den);
 		return new rational(num / g, den / g);
 	}
 
-	constructor(public num: number, public den: number) {
+	constructor(public num: number, public den = 1) {
 		if (this.den < 0) {
 			this.den = -this.den;
 			this.num = -this.num;
@@ -57,11 +119,12 @@ export class rational {
 	sub(b: rational):	rational { return rational.simplified(this.num * b.den - b.num * this.den, this.den * b.den); }
 	div(b: rational):	rational { return this.mul(b.recip()); }
 	mod(b: rational):	rational { return this.div(b).frac().mul(b); }
+
 	divmod(b: rational): number	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
-
 	lt(b: rational):	boolean { return this.num * b.den < b.num * this.den; }
+	compare(b: rational): number { return this.num * b.den - b.num * this.den; }
 
-	toString()				{ return `${this.num} / ${this.den}`; }
+	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num} / ${this.den}`; }
 	valueOf():	number		{ return this.num / this.den; }
 }
 
@@ -69,19 +132,64 @@ export class rational {
 // bigint rationals
 //-----------------------------------------------------------------------------
 
+function rationalApproxB<T extends scalar<T>>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
+	const one	= x.from(1);
+	let b	= x.dup();
+    let h1	= BigInt(b.divmod(one)), h2 = 1n;
+    let k1	= 1n, k2 = 0n;
+
+	if (b.sign() < 0) {
+		--h1;
+		b = b.add(one);
+	}
+
+	while (b.sign() !== 0 && (eps === undefined || eps.lt(b.abs()))) {
+        b = b.recip();
+		const f = BigInt(b.divmod(one));
+		const h = h1 * f + h2;
+        const k = k1 * f + k2;
+        if (k > maxDen)
+			break;
+		[h2, h1, k2, k1] = [h1, h, k1, k];
+	}
+    return [h1, k1];
+}
+
 export class rationalB {
-	static from(n: number|bigint): rationalB {
+	static from(n: number|bigint|scalar<any>, maxDen?: bigint): rationalB {
 		if (typeof n === 'bigint')
 			return new rationalB(n, 1n);
 
-		if (Number.isInteger(n))
-			return new rationalB(BigInt(n), 1n);
+		if (typeof n === 'number') {
+			if (Number.isInteger(n))
+				return new rationalB(BigInt(n), 1n);
 
-		const [h, k] = rationalApprox(n);
+			const [h, k] = rationalApprox(n, 1e20);
+			return new rationalB(BigInt(h), BigInt(k));
+		}
+		const [h, k] = rationalApproxB(n, maxDen ?? 1n << 64n, n.from(1e-8));
 		return new rationalB(BigInt(h), BigInt(k));
 	}
 
-	constructor(public num: bigint, public den: bigint) {
+	static fromContinuedFraction(terms: (bigint|number)[], maxDen?: bigint): rationalB {
+		let p2 = 1n, q2 = 0n;
+		let p1 = BigInt(terms[0]), q1 = 1n;
+
+		for (const i of lazySlice(terms, 1)) {
+			const a = BigInt(i);
+			[p2, q2, p1, q1] = [p1, q1, a * p1 + p2, a * q1 + q2];
+			if (maxDen && q1 > maxDen) {
+				// compute maximal t that keeps denom <= maxDen:
+				const t = minB((maxDen - q2) / q1, a - 1n);
+				p1 = p2 + t * p1;
+				q1 = q2 + t * q1;
+				break;
+			}
+		}
+		return new rationalB(p1, q1);
+	}
+
+	constructor(public num: bigint, public den = 1n) {
 		if (this.den < 0n) {
 			this.den = -this.den;
 			this.num = -this.num;
@@ -100,7 +208,7 @@ export class rationalB {
 	frac():		rationalB	{ return new rationalB(this.num % this.den, this.den); }
 	floor():	bigint		{ return this.num / this.den; }
 	sign():		number		{ return this.num === 0n ? 0 : this.num > 0n ? 1 : -1; }
-	mag():	 	number		{ return Number(absB(this.num)) / Number(this.den); }
+	mag():	 	number		{ return bigIntDivideToNumber(absB(this.num), this.den); }
 
 	set(b: rationalB):	rationalB	{ this.num = b.num; this.den = b.den; return this; }
 	scale(b: number):	rationalB	{ return this.mul(rationalB.from(b)); }
@@ -109,24 +217,33 @@ export class rationalB {
 	sub(b: rationalB):	rationalB	{ return new rationalB(this.num * b.den - b.num * this.den, this.den * b.den); }
 	div(b: rationalB):	rationalB	{ return this.mul(b.recip()); }
 	mod(b: rationalB):	rationalB	{ return this.div(b).frac().mul(b); }
-	divmod(b: rationalB): bigint	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
 
-	toString()	{ return `${this.num} / ${this.den}`; }
+	divmod(b: rationalB):	bigint	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
+	lt(b: rationalB):		boolean	{ return this.num * b.den < b.num * this.den; }
+	compare(b: rationalB):	number	{ return signB(this.num * b.den - b.num * this.den); }
+
+	toString()			{ return this.den === 1n ? `${this.num}` : `${this.num} / ${this.den}`; }
+	valueOf():	number	{ return bigIntDivideToNumber(this.num, this.den); }
 }
 
 //-----------------------------------------------------------------------------
 // generic rationals
 //-----------------------------------------------------------------------------
 
-function rationalApproxT<T extends scalar<T>>(x: T, maxDen: T, tol: T): [T, T] {
+function rationalApproxT<T extends scalar<T>>(x: T, maxDen: T, eps?: T): [T, T] {
 	const zero	= x.from(0);
 	const one	= x.from(1);
-	let b = x;
-    let h1 = x.from(b.divmod(one)), h2 = one;
-    let k1 = one, k2 = zero;
+	let b	= x.dup();
+	let a	= x.divmod(one);
+	if (b.sign() < 0) {
+		--a;
+		b = b.add(one);
+	}
+    let h1	= x.from(a), h2 = one;
+    let k1	= one, k2 = zero;
 
-	while (tol.lt(x.sub(h1.div(k1)).abs())) {
-        b = one.div(b);
+	while (b.sign() !== 0 && (eps === undefined || eps.lt(b.abs()))) {
+        b = b.recip();
 		const f = Number(b.divmod(one));
 		const h = h1.scale(f).add(h2);
         const k = k1.scale(f).add(k2);
@@ -149,10 +266,10 @@ export class rationalT<T extends scalar<T>> {
 			return new rationalT(this.num.from(n), this.num.from(1));
 
 		if (typeof n === 'number') {
-			const [h, k] = rationalApprox(n);
+			const [h, k] = rationalApprox(n, 1e20);
 			return new rationalT(this.num.from(h), this.num.from(k));
 		}
-		const [h, k] = rationalApproxT(n, this.num.from(1e20), this.num.from(1e-20));
+		const [h, k] = rationalApproxT(n, this.num.from(1e20));
 		return new rationalT(h, k);
 	}
 
@@ -176,12 +293,15 @@ export class rationalT<T extends scalar<T>> {
 	sub(b: rationalT<T>): rationalT<T>	{ return new rationalT(this.num.mul(b.den).sub(b.num.mul(this.den)), this.den.mul(b.den)); }
 	div(b: rationalT<T>): rationalT<T>	{ return this.mul(b.recip()); }
 	mod(b: rationalT<T>): rationalT<T>	{ return this.div(b).frac().mul(b); }
+
 	divmod(b: rationalT<T>)				{
 		const q = this.div(b);
 		const r = q.num.divmod(q.den);
 		this.set(q.mul(b));
 		return r;
 	}
+	lt(b: rationalT<T>):		boolean	{ return this.num.mul(b.den).lt(b.num.mul(this.den)); }
+	compare(b: rationalT<T>):	number	{ return compareT(this.num.mul(b.den), b.num.mul(this.den)); }
 
 	toString()	{ return `${this.num} / ${this.den}`; }
 }

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -13,9 +12,10 @@ for (const f of files) {
         console.log('running', f);
         require(p);
         console.log('ok', f);
-    } catch (e: any) {
+    } catch (e: unknown) {
         failed++;
-        console.error('FAIL', f, e && e.stack ? e.stack : e);
+        const msg = e instanceof Error ? (e.stack || e.message) : String(e);
+        console.error('FAIL', f, msg);
     }
 }
 

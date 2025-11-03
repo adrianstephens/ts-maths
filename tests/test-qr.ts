@@ -95,8 +95,8 @@ test('eigen_6x6_vector - diagonal', () => {
         y: vector(E6, 0, 20, 0, 0, 0, 0),
         z: vector(E6, 0, 0, 30, 0, 0, 0),
         w: vector(E6, 0, 0, 0, 40, 0, 0),
-        c4: vector(E6, 0, 0, 0, 0, 50, 0),
-        c5: vector(E6, 0, 0, 0, 0, 0, 60),
+        c5: vector(E6, 0, 0, 0, 0, 50, 0),
+        c6: vector(E6, 0, 0, 0, 0, 0, 60),
     };
     const m = mat(cols);
     const eigs = m.eigenvalues();
@@ -132,8 +132,8 @@ test('eigen_6x6_similar - similarity transform preserves diagonal eigenvalues', 
         y: vector(E6, 1,1,0,0,0,0),
         z: vector(E6, 1,2,1,0,0,0),
         w: vector(E6, 1,3,3,1,0,0),
-        c4: vector(E6, 1,4,6,4,1,0),
-        c5: vector(E6, 1,5,10,10,5,1),
+        c5: vector(E6, 1,4,6,4,1,0),
+        c6: vector(E6, 1,5,10,10,5,1),
     };
     const P = mat(Pcols);
     // scale columns of P by diagonal D to get P*D
@@ -142,8 +142,8 @@ test('eigen_6x6_similar - similarity transform preserves diagonal eigenvalues', 
         y: Pcols.y.scale(D[1]),
         z: Pcols.z.scale(D[2]),
         w: Pcols.w.scale(D[3]),
-        c4: Pcols.c4.scale(D[4]),
-        c5: Pcols.c5.scale(D[5]),
+        c5: Pcols.c5.scale(D[4]),
+        c6: Pcols.c6.scale(D[5]),
     };
     const PD = mat(PDcols);
     const Pinv = P.inverse();
@@ -162,8 +162,8 @@ test('eigen_6x6_tri - upper-triangular eigenvalues are diagonals', () => {
         y: vector(E6, 0, diag[1], 6, 7, 8, 9),
         z: vector(E6, 0, 0, diag[2], 10, 11, 12),
         w: vector(E6, 0, 0, 0, diag[3], 13, 14),
-        c4: vector(E6, 0, 0, 0, 0, diag[4], 15),
-        c5: vector(E6, 0, 0, 0, 0, 0, diag[5]),
+        c5: vector(E6, 0, 0, 0, 0, diag[4], 15),
+        c6: vector(E6, 0, 0, 0, 0, 0, diag[5]),
     };
     const A = mat(cols);
     const eigs = A.eigenvalues();
@@ -181,10 +181,10 @@ test('eigen_6x6_block - block diagonal with 2x2 complex pair', () => {
         y: vector(E6, 0, diag[1], 0, 0, 0, 0),
         z: vector(E6, 0, 0, diag[2], 0, 0, 0),
         w: vector(E6, 0, 0, 0, diag[3], 0, 0),
-		// column 4: first column of 2x2 block -> [0,1] placed at rows c4,c5
-		c4: vector(E6, 0, 0, 0, 0, 0, 1),
-		// column 5: second column of 2x2 block -> [-1,0]
-		c5: vector(E6, 0, 0, 0, 0, -1, 0),
+		// column 5: first column of 2x2 block -> [0,1] placed at rows c5,c6
+		c5: vector(E6, 0, 0, 0, 0, 0, 1),
+		// column 6: second column of 2x2 block -> [-1,0]
+		c6: vector(E6, 0, 0, 0, 0, -1, 0),
     };
     const A = mat(cols);
     const eigs = A.eigenvalues();

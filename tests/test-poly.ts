@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { expect, test, assert, verify, approx, approxArray, makeApproxArray, sequence } from './test';
 import {polynomial, polynomialT, polynomialN, legendreTable, polynomialB} from '../dist/polynomial';
+import { symbolic } from '../dist/symbolic';
 import complex, { complexT } from '../dist/complex';
 import {rational, rationalB} from '../dist/rational';
 import * as big from '../../big/dist/index';
@@ -69,3 +70,11 @@ test('rational roots', () => {
 	}
 });
 
+
+test('symbolic polynomials', () => {
+	let poly = new polynomialT<symbolic>([symbolic.from(1)]);
+	for (let j = 1; j < 8; ++j) {
+		poly = poly.mul(new polynomialT<symbolic>([symbolic.variable('ABCDEFGH'[j  - 1]).neg(), symbolic.from(1)]));
+		console.log(`degree ${j} polynomial: ${poly.toString()}`);
+	}
+});

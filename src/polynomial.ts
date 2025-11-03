@@ -56,7 +56,7 @@ function coefficientString<T>(coef: T, i: number, debug: boolean): string {
 }
 
 function polynomialString<T extends ops<any>>(coefficients: T[], debug: boolean): string {
-	return  coefficients.map((coef: T, i) => coefficientString(coef, i, debug)).reverse().join('');
+	return  coefficients.map((coef: T, i) => coefficientString(coef, i, debug)).reverse().join(' + ');
 }
 
 function scalarPolynomialString<T extends scalar<any>>(coefficients: T[], debug: boolean): string {
@@ -554,7 +554,7 @@ export class polynomialT<T extends ops<T>> {
 	toString(debug = false) {
 		const c = this.c.slice(0, -1);
 		const n = c.length;
-		return coefficientString(this.c[n], n, debug) + (arrayOf(c, isScalar) ? scalarPolynomialString(c, debug) : polynomialString(c, debug));
+		return coefficientString(this.c[n], n, debug) + (arrayOf(c, isScalar) ? scalarPolynomialString(c, debug) : ' + ' + polynomialString(c, debug));
 	}
 //	[Symbol.for("debug.description")]() { return this.toString(true); }
 }
@@ -631,7 +631,7 @@ export class polynomialNT<T extends ops<T>> {
 		return undefined as never;
 	}
 	toString(debug = false) {
-		return coefficientString(1, this.c.length, debug) + (arrayOf(this.c, isScalar) ? scalarPolynomialString(this.c, debug) : polynomialString(this.c, debug));
+		return coefficientString(1, this.c.length, debug) + (arrayOf(this.c, isScalar) ? scalarPolynomialString(this.c, debug) : ' + ' + polynomialString(this.c, debug));
 	}
 	[Symbol.for("debug.description")]() { return this.toString(true); }
 }

@@ -7,6 +7,7 @@ import {
 	sincos_half, max_circle_point,
 	matmul,
 	extent2, extent3,
+	vector, E6,
 } from '../dist/vector';
 
 // Compile-time guard: ensure matmul doesn't widen column keys to `string`.
@@ -173,7 +174,7 @@ test('float2 helpers and rotations', () => {
 	assert(Math.abs(cs.y - 1) < 1e-12, 'cossin y mismatch');
 	const rot = float2.rotate(Math.PI / 2);
 	const v = float2(1,0);
-	const vr = rot.mulPos ? rot.mulPos(v) : rot.x.scale(v.x).add(rot.y.scale(v.y));
+	const vr = rot.mulPos(v);
 	// rotating (1,0) by 90deg gives (0,1)
 	assert(Math.abs(vr.x) < 1e-12, 'rotation x mismatch');
 	assert(Math.abs(vr.y - 1) < 1e-12, 'rotation y mismatch');
@@ -187,6 +188,9 @@ test('float3 and float4 perp helpers produce orthogonal output', () => {
 	const v4 = float4(0.1, -0.2, 0.3, -0.4);
 	const p4 = v4.perp();
 	assert(Math.abs(v4.dot(p4)) < 1e-12, 'float4 perp not orthogonal');
+	const v6 = vector(E6, 0.1, -0.2, 0.3, -0.4, 0.5, -0.6);
+	const p6 = v6.perp();
+	assert(Math.abs(v6.dot(p6)) < 1e-12, 'float6 perp not orthogonal');
 });
 
 

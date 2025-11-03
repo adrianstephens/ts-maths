@@ -1,27 +1,25 @@
-import { test, expect, assert } from './test';
-import { makeExprOpsAdapter, exprVariable, exprFromNumber } from "../src/symbolic";
+import { test, expect } from './test';
+import { symbolic } from '../dist/symbolic';
 
 test('symbolic instance adapter basic', () => {
-    const O = makeExprOpsAdapter();
-
-    const x = exprVariable("x");
-    const y = exprVariable("y");
-    const two = exprFromNumber(2);
+    const x = symbolic.variable("x");
+    const y = symbolic.variable("y");
+    const two = symbolic.from(2);
 
     // build expression (x + y) * 2 using the instance-style ops
-    const sum = O.add(x, y);
-    const expr = O.mul(sum, two);
+    const sum = x.add(y);
+    const expr = sum.mul(two);
 
     // string form (non-guaranteed formatting, but check tokens present)
-    const s = O.toString(expr);
+    const s = expr.toString();
     expect(s, 'string contains x,y,2').check(str => typeof str === 'string' && str.includes('x') && str.includes('y') && str.includes('2'));
 
     // evaluate at x=3,y=4 -> (3+4)*2 = 14
-    const val = O.evaluate(expr, { x: 3, y: 4 });
+    const val = expr.evaluate({ x: 3, y: 4 });
     expect(val, 'evaluate (3+4)*2').toEqual(14);
 
     // derivative w.r.t x should be 2
-    const d = O.derivative(expr, "x");
-    const dv = O.evaluate(d);
+    const d = expr.derivative("x");
+    const dv = d.evaluate({ x: 3, y: 4 });
     expect(dv, 'derivative d/dx').toEqual(2);
 });

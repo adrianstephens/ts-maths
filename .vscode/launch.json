@@ -58,6 +58,16 @@
 			"preLaunchTask": "npm: watch"
 		},
 		{
+			"type": "node",
+			"request": "launch",
+			"name": "Test symbolic",
+			"runtimeExecutable": "ts-node",
+			"cwd": "${workspaceFolder}",
+			"args": ["tests/test-sym.ts"],
+			"sourceMaps": true,
+			"preLaunchTask": "npm: watch"
+		},
+		{
 			"type": "node-terminal",
 			"name": "Debug Transform",
 			"request": "launch",

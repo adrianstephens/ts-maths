@@ -1,7 +1,6 @@
 import { randomBytes } from 'crypto';
 
 export interface ops<C extends ops<C>> {
-	dup():				C;
 	neg(): 				C;
 	scale(b: number):	C;
 	mul(b: C):			C;
@@ -12,6 +11,7 @@ export interface ops<C extends ops<C>> {
 }
 
 export interface scalar<C extends scalar<C>> extends ops<C> {
+	dup():				C;
 	sign():				number;
 	abs():				C;
 	recip():			C;

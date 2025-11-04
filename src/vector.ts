@@ -101,6 +101,7 @@ function make_swizzles4<T, T2, T3, T4>(fields: readonly string[], make2: (x: T, 
 export interface vops<C extends vops<C>> extends ops<C> {
 	create(...args: number[]): C;
 
+	dup():				C;
 	abs():				C;
 	min(b: C):			C;
 	max(b: C):			C;

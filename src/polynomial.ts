@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isInstance, isScalar, asScalar2, asScalarT, lcm, lcmB, absB, rootB, compare } from './core';
+import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isInstance, isScalar, asScalar2, asScalarT, lcm, lcmB, absB, rootB, compare, superScript } from './core';
 import { factorisation, factorisationB } from './prime';
 import complex, { complexT } from './complex';
 import { rational, rationalB } from './rational';
@@ -35,16 +35,6 @@ function arrayO<T>(arr: any[]): arr is T[] {
 
 function arrayOf<U>(arr: any[], g: (x: any) => x is U): arr is U[] {
 	return g(arr[0]);
-}
-
-const superscriptedDigits = '⁰¹²³⁴⁵⁶⁷⁸⁹';
-function superScript(n: number): string {
-	let s = '';
-	do {
-		s = superscriptedDigits[n % 10] + s;
-		n = Math.floor(n / 10);
-	} while (n > 0);
-	return s;
 }
 
 function toString(t: any, debug = false): string {

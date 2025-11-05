@@ -50,6 +50,18 @@ export function* lazySlice<T>(arr: T[], start?: number, end?: number): Generator
 		yield arr[i];
 }
 
+const superscriptedDigits	= '⁰¹²³⁴⁵⁶⁷⁸⁹⁻ᐟ';
+const subscriptedDigits		= '₀₁₂₃₄₅₆₇₈₉₋';
+
+export function superScript(n: number): string {
+	let s = '';
+	do {
+		s = superscriptedDigits[n % 10] + s;
+		n = Math.floor(n / 10);
+	} while (n > 0);
+	return s;
+}
+
 //-----------------------------------------------------------------------------
 // number
 //-----------------------------------------------------------------------------

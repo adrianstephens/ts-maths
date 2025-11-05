@@ -48,20 +48,32 @@ function *convergents<T extends scalar<T>>(terms: (bigint|number)[]): Generator<
 // number rationals
 //-----------------------------------------------------------------------------
 
-function rationalApprox(x: number, maxDen: number, eps?: number): [number, number] {
-    let h1 = Math.floor(x), h2 = 1;
-    let k1 = 1, k2 = 0;
+export function rationalApprox(x: number, maxDen: number, eps?: number): [number, number] {
+	// binary check for exact representation
+	if ((x * Math.pow(2, 53) & -1) === 0) {
+		const m = x * (1 << (53 - 32));
+		const z = m & -m;
+		if (z > 1 << (53 - 32 - 4)) {
+			const d = (1 << (53 - 32)) / z;
+			return [x * d, d];
+		}
+	}
+	
+	let h1 = Math.floor(x), h2 = 1;
+	let k1 = 1, k2 = 0;
+	let b = x - h1;
 
-	for (let b = x - h1; b && (eps === undefined || eps < Math.abs(b)); ) {
-        const f = Math.floor(1 / b);
-        const h = f * h1 + h2;
-        const k = f * k1 + k2;
-        if (k > maxDen)
+	while (b && (eps === undefined || eps < Math.abs(b))) {
+		b = 1 / b;
+		const f = Math.floor(b);
+		const h = f * h1 + h2;
+		const k = f * k1 + k2;
+		if (k > maxDen)
 			break;
 		[h2, h1, k2, k1] = [h1, h, k1, k];
-		b = 1 / b - f;
+		b -= f;
 	}
-    return [h1, k1];
+	return [h1, k1];
 }
 
 export class rational {
@@ -135,8 +147,8 @@ export class rational {
 function rationalApproxB<T extends scalar<T>>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
 	const one	= x.from(1);
 	let b	= x.dup();
-    let h1	= BigInt(b.divmod(one)), h2 = 1n;
-    let k1	= 1n, k2 = 0n;
+	let h1	= BigInt(b.divmod(one)), h2 = 1n;
+	let k1	= 1n, k2 = 0n;
 
 	if (b.sign() < 0) {
 		--h1;
@@ -144,15 +156,15 @@ function rationalApproxB<T extends scalar<T>>(x: T, maxDen: bigint, eps?: T): [b
 	}
 
 	while (b.sign() !== 0 && (eps === undefined || eps.lt(b.abs()))) {
-        b = b.recip();
+		b = b.recip();
 		const f = BigInt(b.divmod(one));
 		const h = h1 * f + h2;
-        const k = k1 * f + k2;
-        if (k > maxDen)
+		const k = k1 * f + k2;
+		if (k > maxDen)
 			break;
 		[h2, h1, k2, k1] = [h1, h, k1, k];
 	}
-    return [h1, k1];
+	return [h1, k1];
 }
 
 export class rationalB {
@@ -239,19 +251,19 @@ function rationalApproxT<T extends scalar<T>>(x: T, maxDen: T, eps?: T): [T, T] 
 		--a;
 		b = b.add(one);
 	}
-    let h1	= x.from(a), h2 = one;
-    let k1	= one, k2 = zero;
+	let h1	= x.from(a), h2 = one;
+	let k1	= one, k2 = zero;
 
 	while (b.sign() !== 0 && (eps === undefined || eps.lt(b.abs()))) {
-        b = b.recip();
+		b = b.recip();
 		const f = Number(b.divmod(one));
 		const h = h1.scale(f).add(h2);
-        const k = k1.scale(f).add(k2);
-        if (k > maxDen)
+		const k = k1.scale(f).add(k2);
+		if (k > maxDen)
 			break;
 		[h2, h1, k2, k1] = [h1, h, k1, k];
 	}
-    return [h1, k1];
+	return [h1, k1];
 }
 
 export class rationalT<T extends scalar<T>> {

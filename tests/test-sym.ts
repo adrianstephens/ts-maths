@@ -8,6 +8,8 @@ test('symbolic instance adapter basic', () => {
     const z = symbolic.variable("z");
     const two = symbolic.from(2);
 
+	console.log(x.pow(0.75).toString());
+
     // build expression (x + y) * 2 using the instance-style ops
     const sum = x.add(y);
     const sum2 = sum.add(z);
@@ -87,6 +89,10 @@ test('canonicalization merges powers and derivatives simplify', () => {
     const x = symbolic.variable("x");
     const two = symbolic.from(2);
 
+	const e = symbolic.variable('x').mul(symbolic.variable('y'));
+	const e2 = e.substitute({ x: 2 }); // now equivalent to 2 * y (canonicalized)
+	const e3 = e.substitute({ y: x.add(two) }); // now equivalent to x ^ 2 (canonicalized)
+
     const c = x.mul(symbolic.from(2)).add(x.mul(symbolic.from(3)));
     const d = x.mul(symbolic.from(5));
     expect(c.eq(d), 'c equals d').toEqual(true);
@@ -114,4 +120,40 @@ test('canonicalization merges powers and derivatives simplify', () => {
     const h = 1e-6;
     const numeric = (f(3 + h) - f(3 - h)) / (2 * h);
     expect(dexpr.evaluate({ x: 3 }), 'derivative numeric approx').check(v => Math.abs(v - numeric) < 1e-6);
+});
+
+test('expand distributes multiplication over addition (single additive factor)', () => {
+    const x = symbolic.variable('x');
+    const y = symbolic.variable('y');
+
+    const expr = x.add(symbolic.from(1)).mul(y);
+    const expanded = expr.expand({});
+
+    const expected = x.mul(y).add(y);
+    expect(expanded.eq(expected), 'single-factor expand eq').toEqual(true);
+});
+
+test('expand distributes multiplication over addition (two additive factors)', () => {
+    const x = symbolic.variable('x');
+    const y = symbolic.variable('y');
+
+    const expr = x.add(symbolic.from(1)).mul(y.add(symbolic.from(2)));
+    const expanded = expr.expand({});
+
+    // (x+1)*(y+2) -> x*y + 2*x + y + 2
+    const expected = x.mul(y).add(x.mul(symbolic.from(2))).add(y).add(symbolic.from(2));
+    expect(expanded.eq(expected), 'two-factor expand eq').toEqual(true);
+});
+
+
+test('expand distributes multiplication over powers)', () => {
+    const x = symbolic.variable('x');
+    const y = symbolic.variable('y');
+
+    const expr = x.add(symbolic.from(1)).pow(10);
+    const expanded = expr.expand({});
+
+    // (x+1)^2 -> x^2 + 2*x + 1
+    const expected = x.pow(2).add(x.mul(symbolic.from(2))).add(symbolic.from(1));
+    expect(expanded.eq(expected), 'two-factor expand eq').toEqual(true);
 });

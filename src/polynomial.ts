@@ -441,22 +441,34 @@ export class polynomialT<T extends ops<T>> {
 		if (Array.isArray(t)) {
 			const r = new Array<T>(t.length).fill(this.c[--i]);
 			if (typeof t[0] === 'number') {
-				while (i--)
-					r.forEach((x, j) => r[j] = x.scale(t[j] as number).add(this.c[i]));
+				while (i--) {
+					const c = this.c[i];
+					if (c)
+						r.forEach((x, j) => r[j] = x.scale(t[j] as number).add(c));
+				}
 				return r;
 			} else {
-				while (i--)
-					r.forEach((x, j) => r[j] = x.mul(t[j] as T).add(this.c[i]));
+				while (i--) {
+					const c = this.c[i];
+					if (c)
+						r.forEach((x, j) => r[j] = x.mul(t[j] as T).add(c));
+				}
 				return r;
 			}
 		} else {
 			let r = this.c[--i];
 			if (typeof t === 'number') {
-				while (i--)
-					r = r.scale(t).add(this.c[i]);
+				while (i--) {
+					const c = this.c[i];
+					if (c)
+						r = r.scale(t).add(c);
+				}
 			} else {
-				while (i--)
-					r = r.mul(t).add(this.c[i]);
+				while (i--) {
+					const c = this.c[i];
+					if (c)
+						r = r.mul(t).add(c);
+				}
 			}
 			return r;
 		}

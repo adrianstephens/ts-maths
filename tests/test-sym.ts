@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { test, expect } from './test';
-import { symbolic } from '../dist/symbolic';
+import { symbolic, trigRules } from '../dist/symbolic';
+import { polynomialT } from '../dist/polynomial';
 
 test('symbolic instance adapter basic', () => {
     const x = symbolic.variable("x");
@@ -8,11 +9,14 @@ test('symbolic instance adapter basic', () => {
     const z = symbolic.variable("z");
     const two = symbolic.from(2);
 
-	console.log(x.pow(0.75).toString());
-
-    // build expression (x + y) * 2 using the instance-style ops
     const sum = x.add(y);
     const sum2 = sum.add(z);
+
+	const sinsum = symbolic.sin(sum);
+	const sinsum2 = sinsum.applyRules(trigRules);
+	const sinhalf = symbolic.sin(sum.scale(0.5)).applyRules(trigRules);
+
+    // build expression (x + y) * 2 using the instance-style ops
     const expr = sum.mul(two);
 
 	const x5 = x.pow(2).mul(x.pow(3)).mul(x.pow(-5));
@@ -35,6 +39,18 @@ test('symbolic instance adapter basic', () => {
 	const d2 = e2.derivative("x");
 	console.log('d2=', d2.toString());
 
+	const f2 = d2.factor();
+	console.log('f2=', f2.toString());
+	const g2 = f2.div(f2);
+	console.log('g2=', g2.toString());
+
+	const i = symbolic.i;
+	const e = symbolic.exp(symbolic.from(1));
+	const i2 = i.mul(i);
+	const ir = x.div(i);
+	const j = i.scale(3).add(two);
+	console.log('i=', i.toString(), 'i^2=', i.mul(i).toString(), j.toString(), j.mul(j).expand().toString());
+
 	const e3 = x.pow(2).add(y.pow(2)).add(z.pow(2));
 
 	const sin = symbolic.sin(e3);
@@ -46,6 +62,7 @@ test('symbolic instance adapter basic', () => {
 	const dpow = pow.derivative("x");
 	console.log('p=', pow.toString());
 	console.log('dp/dx=', dpow.toString());
+
     // additional function checks
     const a_asin = symbolic.asin(x);
     expect(a_asin.evaluate({ x: 0.5 }), 'asin eval').check(v => Math.abs(v - Math.asin(0.5)) < 1e-12);
@@ -145,15 +162,50 @@ test('expand distributes multiplication over addition (two additive factors)', (
     expect(expanded.eq(expected), 'two-factor expand eq').toEqual(true);
 });
 
-
 test('expand distributes multiplication over powers)', () => {
     const x = symbolic.variable('x');
     const y = symbolic.variable('y');
 
-    const expr = x.add(symbolic.from(1)).pow(10);
+    const expr = x.add(symbolic.from(1)).pow(2);
     const expanded = expr.expand({});
 
     // (x+1)^2 -> x^2 + 2*x + 1
     const expected = x.pow(2).add(x.mul(symbolic.from(2))).add(symbolic.from(1));
     expect(expanded.eq(expected), 'two-factor expand eq').toEqual(true);
 });
+
+test('collect groups terms by variable power (no expand)', () => {
+    const x = symbolic.variable('x');
+    const y = symbolic.variable('y');
+
+    // x^2 * y + 2 * x * y + 3
+    const expr = x.pow(2).mul(y).add(x.mul(y).mul(symbolic.from(2))).add(symbolic.from(3));
+    const groups = expr.collect('x');
+    // groups is a sparse array: index = power, value = coefficient (symbolic)
+    expect(groups.length >= 3, 'groups has at least 3 entries').toEqual(true);
+    const g2 = groups[2];
+    expect(g2 !== undefined && g2.eq(y), 'groups[2] == y').toEqual(true);
+    const g1 = groups[1];
+    expect(g1 !== undefined && g1.eq(y.mul(symbolic.from(2))), 'groups[1] == 2*y').toEqual(true);
+    const g0 = groups[0];
+    expect(g0 !== undefined && g0.eq(symbolic.from(3)), 'groups[0] == 3').toEqual(true);
+});
+
+test('collect after expand (x+1)^2 * y', () => {
+    const x = symbolic.variable('x');
+    const y = symbolic.variable('y');
+
+    const expr = x.add(symbolic.from(1)).pow(2).mul(y);
+    const expanded = expr.expand({});
+    const groups = expanded.collect('x');
+    expect(groups.length >= 3, 'groups has at least 3 entries').toEqual(true);
+    const gg2 = groups[2];
+    expect(gg2 !== undefined && gg2.eq(y), 'groups[2] == y').toEqual(true);
+    const gg1 = groups[1];
+    expect(gg1 !== undefined && gg1.eq(y.mul(symbolic.from(2))), 'groups[1] == 2*y').toEqual(true);
+    const gg0 = groups[0];
+    expect(gg0 !== undefined && gg0.eq(y), 'groups[0] == y').toEqual(true);
+});
+
+
+

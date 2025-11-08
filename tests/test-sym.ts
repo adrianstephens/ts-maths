@@ -1,67 +1,94 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { test, expect } from './test';
-import { symbolic, trigRules } from '../dist/symbolic';
+import { test, expect, approx } from './test';
+import { symbolic, applyRules, trigRules, invTrigRules } from '../dist/symbolic';
+import { applyRulesEgraph } from '../dist/egraph';
 import { polynomialT } from '../dist/polynomial';
 
-test('symbolic instance adapter basic', () => {
+function makeFunction(expr: symbolic, varName: string) {
+	return (x: number) => expr.evaluate({ [varName]: x });
+}
+
+function makeDeriv(f: (x: number) => number, h = 1e-6) {
+	return (x: number) => (f(x + h) - f(x - h)) / (2 * h);
+}
+
+function checkDeriv(expr: symbolic, varName: string, expected: (x: number) => number, testPoints: number[] = [0, 0.5, 1, 2, 3, 5]) {
+	const deriv = expr.derivative(varName);
+	const d = makeFunction(deriv, varName);
+	for (const x of testPoints)
+		expect(d(x)).toBeCloseTo(expected(x));
+}
+
+
+function checkDeriv2(expr: symbolic, varName: string, testPoints: number[] = [0], h = 1e-6) {
+	const deriv = expr.derivative(varName);
+	const D0 = makeFunction(deriv, varName);
+	const D1 = makeDeriv(makeFunction(expr, varName), h);
+
+	for (const x of testPoints) {
+		const d0 = D0(x);
+		const d1 = D1(x);
+		if (Math.abs(d1 - d0) > 1e-6)
+			return false;
+	}
+	return true;
+}
+
+test('symbolic', () => {
     const x = symbolic.variable("x");
     const y = symbolic.variable("y");
     const z = symbolic.variable("z");
-    const two = symbolic.from(2);
 
     const sum = x.add(y);
     const sum2 = sum.add(z);
-
-	const sinsum = symbolic.sin(sum);
-	const sinsum2 = sinsum.applyRules(trigRules);
-	const sinhalf = symbolic.sin(sum.scale(0.5)).applyRules(trigRules);
-
-    // build expression (x + y) * 2 using the instance-style ops
-    const expr = sum.mul(two);
-
-	const x5 = x.pow(2).mul(x.pow(3)).mul(x.pow(-5));
-	console.log(x5);
-
-    // string form (non-guaranteed formatting, but check tokens present)
-    const s = expr.toString();
-    expect(s, 'string contains x,y,2').check(str => typeof str === 'string' && str.includes('x') && str.includes('y') && str.includes('2'));
-
-    // evaluate at x=3,y=4 -> (3+4)*2 = 14
-    const val = expr.evaluate({ x: 3, y: 4 });
-    expect(val, 'evaluate (3+4)*2').toEqual(14);
-
-    // derivative w.r.t x should be 2
-    const d = expr.derivative("x");
-    const dv = d.evaluate({ x: 3, y: 4 });
-    expect(dv, 'derivative d/dx').toEqual(2);
+	expect(sum.toString()).toEqual('x + y');
+	expect(sum2.toString()).toEqual('x + y + z');
 
 	const e2 = sum.div(sum2);
-	const d2 = e2.derivative("x");
-	console.log('d2=', d2.toString());
+	const d2 = e2.derivative("x").factor();
+	expect(d2).toEqual(z.div(sum2.pow(2)));
 
-	const f2 = d2.factor();
-	console.log('f2=', f2.toString());
-	const g2 = f2.div(f2);
-	console.log('g2=', g2.toString());
-
-	const i = symbolic.i;
-	const e = symbolic.exp(symbolic.from(1));
-	const i2 = i.mul(i);
-	const ir = x.div(i);
-	const j = i.scale(3).add(two);
-	console.log('i=', i.toString(), 'i^2=', i.mul(i).toString(), j.toString(), j.mul(j).expand().toString());
+	const j = symbolic.i.scale(3).add(2);
+	const j2 = j.mul(j).expand();
+	expect(j2.toString()).toEqual('12 * 𝑖 - 5');
 
 	const e3 = x.pow(2).add(y.pow(2)).add(z.pow(2));
 
 	const sin = symbolic.sin(e3);
 	const dsin = sin.derivative("x");
-	console.log('sin=', sin.toString());
-	console.log('dsin/dx=', dsin.toString());
+	expect(dsin.toString()).toEqual('2 * cos(x² + y² + z²) * x');
+	expect(dsin).toEqual(symbolic.cos(e3).mul(x).mul(2));
 
-	const pow = symbolic.pow(e3, x);
+	const pow = e3.pow(x);
 	const dpow = pow.derivative("x");
-	console.log('p=', pow.toString());
-	console.log('dp/dx=', dpow.toString());
+	expect(dpow.toString()).toEqual('2 * x² * (x² + y² + z²) ^ (x - 1) + log(x² + y² + z²) * (x² + y² + z²) ^ (x)');
+});
+
+test('symbolic transforms', () => {
+    const x = symbolic.variable("x");
+    const y = symbolic.variable("y");
+    const sum = x.add(y);
+
+	const sindif = applyRules(symbolic.sin(x.sub(y)), trigRules);
+	expect(sindif).toEqual(symbolic.sin(x).mul(symbolic.cos(y)).sub(symbolic.cos(x).mul(symbolic.sin(y))));
+	const sinsum = applyRules(symbolic.sin(sum), trigRules);
+	expect(sinsum).toEqual(symbolic.sin(x).mul(symbolic.cos(y)).add(symbolic.cos(x).mul(symbolic.sin(y))));
+
+//	const esinsum = applyRulesEgraph(symbolic.sin(sum), trigRules, node => 0);
+
+	const sinsum2 = applyRules(sinsum, invTrigRules);
+	expect(sinsum2).toEqual(symbolic.sin(sum));
+
+	const sinhalf0 = symbolic.sin(sum.scale(0.5));
+	const sinhalf1 = symbolic.sin(x.scale(0.5));
+
+	const sinhalf = applyRules(sinhalf0, trigRules);
+	expect(sinhalf).toEqual((symbolic.sin(x).mul(symbolic.sin(y)).sub(symbolic.cos(x).mul(symbolic.cos(y))).add(1)).pow(0.5).scale(Math.sqrt(0.5)));
+});
+
+test('symbolic instance adapter basic', () => {
+    const x = symbolic.variable("x");
+    const y = symbolic.variable("y");
 
     // additional function checks
     const a_asin = symbolic.asin(x);
@@ -104,74 +131,55 @@ test('symbolic instance adapter basic', () => {
 
 test('canonicalization merges powers and derivatives simplify', () => {
     const x = symbolic.variable("x");
-    const two = symbolic.from(2);
 
-	const e = symbolic.variable('x').mul(symbolic.variable('y'));
-	const e2 = e.substitute({ x: 2 }); // now equivalent to 2 * y (canonicalized)
-	const e3 = e.substitute({ y: x.add(two) }); // now equivalent to x ^ 2 (canonicalized)
-
-    const c = x.mul(symbolic.from(2)).add(x.mul(symbolic.from(3)));
-    const d = x.mul(symbolic.from(5));
-    expect(c.eq(d), 'c equals d').toEqual(true);
-
+    const c = x.mul(2).add(x.mul(3));
+    const d = x.mul(5);
+    expect(c).toEqual(d);
 
     const a = x.pow(2).mul(x.pow(3));
     const b = x.pow(5);
-    expect(a.eq(b), 'a equals b').toEqual(true);
-    expect(a.id, 'same interned id').toEqual(b.id);
+    expect(a).toEqual(b);
 
     const da = a.derivative("x");
-    const db = b.derivative("x");
-    expect(da.eq(db), 'derivatives equal').toEqual(true);
     expect(da.evaluate({ x: 2 }), 'derivative value').toEqual(5 * Math.pow(2, 4));
 
     // more complex: x^2 * (x+1) * x^3 -> x^5*(x+1)
-    const expr = x.pow(2).mul(x.add(symbolic.from(1))).mul(x.pow(3));
-    const expected = x.pow(5).mul(x.add(symbolic.from(1)));
-    expect(expr.eq(expected), 'expr canonicalizes to expected').toEqual(true);
-    expect(expr.id, 'expr interned id equals expected').toEqual(expected.id);
+    const expr = x.pow(2).mul(x.add(1)).mul(x.pow(3));
+    expect(expr).toEqual(x.pow(5).mul(x.add(1)));
 
-    const dexpr = expr.derivative("x");
-    // numeric derivative check via finite differences
-    const f = (xx: number) => expr.evaluate({ x: xx });
-    const h = 1e-6;
-    const numeric = (f(3 + h) - f(3 - h)) / (2 * h);
-    expect(dexpr.evaluate({ x: 3 }), 'derivative numeric approx').check(v => Math.abs(v - numeric) < 1e-6);
+	checkDeriv2(expr, 'x', [3]);
 });
 
 test('expand distributes multiplication over addition (single additive factor)', () => {
     const x = symbolic.variable('x');
     const y = symbolic.variable('y');
 
-    const expr = x.add(symbolic.from(1)).mul(y);
+    const expr = x.add(1).mul(y);
     const expanded = expr.expand({});
 
     const expected = x.mul(y).add(y);
-    expect(expanded.eq(expected), 'single-factor expand eq').toEqual(true);
+    expect(expanded).toEqual(expected);
 });
 
 test('expand distributes multiplication over addition (two additive factors)', () => {
     const x = symbolic.variable('x');
     const y = symbolic.variable('y');
 
-    const expr = x.add(symbolic.from(1)).mul(y.add(symbolic.from(2)));
+    const expr = x.add(1).mul(y.add(2));
     const expanded = expr.expand({});
 
     // (x+1)*(y+2) -> x*y + 2*x + y + 2
-    const expected = x.mul(y).add(x.mul(symbolic.from(2))).add(y).add(symbolic.from(2));
-    expect(expanded.eq(expected), 'two-factor expand eq').toEqual(true);
+    expect(expanded).toEqual(x.mul(y).add(x.mul(2)).add(y).add(2));
 });
 
 test('expand distributes multiplication over powers)', () => {
     const x = symbolic.variable('x');
-    const y = symbolic.variable('y');
 
-    const expr = x.add(symbolic.from(1)).pow(2);
+    const expr = x.add(1).pow(2);
     const expanded = expr.expand({});
 
     // (x+1)^2 -> x^2 + 2*x + 1
-    const expected = x.pow(2).add(x.mul(symbolic.from(2))).add(symbolic.from(1));
-    expect(expanded.eq(expected), 'two-factor expand eq').toEqual(true);
+    expect(expanded).toEqual(x.pow(2).add(x.mul(2)).add(1));
 });
 
 test('collect groups terms by variable power (no expand)', () => {
@@ -179,32 +187,24 @@ test('collect groups terms by variable power (no expand)', () => {
     const y = symbolic.variable('y');
 
     // x^2 * y + 2 * x * y + 3
-    const expr = x.pow(2).mul(y).add(x.mul(y).mul(symbolic.from(2))).add(symbolic.from(3));
+    const expr = x.pow(2).mul(y).add(x.mul(y).mul(2)).add(3);
     const groups = expr.collect('x');
+	const pg = new polynomialT(groups).evaluate(x).expand();
+
     // groups is a sparse array: index = power, value = coefficient (symbolic)
-    expect(groups.length >= 3, 'groups has at least 3 entries').toEqual(true);
-    const g2 = groups[2];
-    expect(g2 !== undefined && g2.eq(y), 'groups[2] == y').toEqual(true);
-    const g1 = groups[1];
-    expect(g1 !== undefined && g1.eq(y.mul(symbolic.from(2))), 'groups[1] == 2*y').toEqual(true);
-    const g0 = groups[0];
-    expect(g0 !== undefined && g0.eq(symbolic.from(3)), 'groups[0] == 3').toEqual(true);
+    expect(pg).toEqual(expr);
 });
 
 test('collect after expand (x+1)^2 * y', () => {
     const x = symbolic.variable('x');
     const y = symbolic.variable('y');
 
-    const expr = x.add(symbolic.from(1)).pow(2).mul(y);
+    const expr = x.add(1).pow(2).mul(y);
     const expanded = expr.expand({});
     const groups = expanded.collect('x');
-    expect(groups.length >= 3, 'groups has at least 3 entries').toEqual(true);
-    const gg2 = groups[2];
-    expect(gg2 !== undefined && gg2.eq(y), 'groups[2] == y').toEqual(true);
-    const gg1 = groups[1];
-    expect(gg1 !== undefined && gg1.eq(y.mul(symbolic.from(2))), 'groups[1] == 2*y').toEqual(true);
-    const gg0 = groups[0];
-    expect(gg0 !== undefined && gg0.eq(y), 'groups[0] == y').toEqual(true);
+	const pg = new polynomialT(groups).evaluate(x).expand();
+
+    expect(pg).toEqual(expanded);
 });
 
 

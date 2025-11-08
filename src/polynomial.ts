@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isInstance, isScalar, asScalar2, asScalarT, lcm, lcmB, absB, rootB, compare, superScript } from './core';
+import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isInstance, isScalar, asScalar2, asScalarT, lcm, lcmB, absB, rootB, compare, toSuperscript } from './core';
 import { factorisation, factorisationB } from './prime';
 import complex, { complexT } from './complex';
 import { rational, rationalB } from './rational';
@@ -42,7 +42,7 @@ function toString(t: any, debug = false): string {
 }
 
 function coefficientString<T>(coef: T, i: number, debug: boolean): string {
-	return (i ? `${coef === 1 ? '' : toString(coef, debug)}x${i > 1 ? superScript(i) : ''}` : `${toString(coef, debug)}`);
+	return (i ? `${coef === 1 ? '' : toString(coef, debug)}x${i > 1 ? toSuperscript(i.toString()) : ''}` : `${toString(coef, debug)}`);
 }
 
 function polynomialString<T extends ops<any>>(coefficients: T[], debug: boolean): string {
@@ -424,6 +424,7 @@ export class polynomialB {
 //-----------------------------------------------------------------------------
 
 type inferComplexRoots<T> = T extends scalar2<infer R> ? complexT<R>[] : never;
+type inferRationalRoots<T> = ifScalar<T, number[]|rational[]|bigint[]|rationalB[]>;
 
 export class polynomialT<T extends ops<T>> {
 	constructor(public c: T[]) {}
@@ -443,15 +444,13 @@ export class polynomialT<T extends ops<T>> {
 			if (typeof t[0] === 'number') {
 				while (i--) {
 					const c = this.c[i];
-					if (c)
-						r.forEach((x, j) => r[j] = x.scale(t[j] as number).add(c));
+					r.forEach(c ? (x, j) => r[j] = x.scale(t[j] as number).add(c) : (x, j) => r[j] = x.scale(t[j] as number));
 				}
 				return r;
 			} else {
 				while (i--) {
 					const c = this.c[i];
-					if (c)
-						r.forEach((x, j) => r[j] = x.mul(t[j] as T).add(c));
+					r.forEach(c ? (x, j) => r[j] = x.mul(t[j] as T).add(c) : (x, j) => r[j] = x.mul(t[j] as T));
 				}
 				return r;
 			}
@@ -460,14 +459,12 @@ export class polynomialT<T extends ops<T>> {
 			if (typeof t === 'number') {
 				while (i--) {
 					const c = this.c[i];
-					if (c)
-						r = r.scale(t).add(c);
+					r = c ? r.scale(t).add(c) : r.scale(t);
 				}
 			} else {
 				while (i--) {
 					const c = this.c[i];
-					if (c)
-						r = r.mul(t).add(c);
+					r = c ? r.mul(t).add(c) : r.mul(t);
 				}
 			}
 			return r;
@@ -537,9 +534,25 @@ export class polynomialT<T extends ops<T>> {
 		return new polynomialNT<T>(this.c.slice(0, i).map(v => v.div(f)));
 	}
 
-	rationalRoots(): ifScalar<T, ReturnType<typeof rationalRootsT>>  {
-		if (arrayOf(this.c, isScalar))
-			return rationalRootsT(this.c) as ifScalar<T, ReturnType<typeof rationalRootsT>>;
+	rationalRoots(): inferRationalRoots<T> {
+		if (arrayOf(this.c, isScalar)) {
+			if (arrayOf(this.c, v => isInstance<rationalB>(v, rationalB))) {
+				const m = lcmB(...this.c.map((v: rationalB) => v.den));
+				const p2 = new polynomialB(this.c.map((v: rationalB) => v.num * (m / v.den)));
+				return rationalRootsB(p2) as inferRationalRoots<T>; 
+			} else if (arrayOf(this.c, v => isInstance<rational>(v, rational))) {
+				const m = lcm(...this.c.map((v: rational) => v.den));
+				const p2 = new polynomial(this.c.map((v: rational) => v.num * (m / v.den)));
+				return rationalRoots(p2) as inferRationalRoots<T>;
+			} else {
+			//	const p2 = p.map(c => continuedFractionT(c, 20, c.from(1e-8)));
+			//	const p3a = p2.map(cf => rationalB.fromContinuedFraction(cf));
+				const p3 = this.c.map(c => rationalB.from(c as any, 1n << 32n));
+				const m = lcmB(...p3.map(v => v.den));
+				const p4 = new polynomialB(p3.map(v => v.num * (m / v.den)));
+				return rationalRootsB(p4) as inferRationalRoots<T>; 
+			}
+		}
 		return undefined as never;
 	}
 
@@ -1651,24 +1664,4 @@ export function rationalRoots(p: polynomial): number[] | rational[] {
 		}
 	}
 	return roots.sort((a, b) => a.compare(b));
-}
-
-function rationalRootsT<T extends scalar<T>>(p: T[]) {
-	if (arrayOf(p, v => isInstance<rationalB>(v, rationalB))) {
-		const m = lcmB(...p.map((v: rationalB) => v.den));
-		const p2 = new polynomialB(p.map((v: rationalB) => v.num * (m / v.den)));
-		return rationalRootsB(p2);
-	}
-	if (arrayOf(p, v => isInstance<rational>(v, rational))) {
-		const m = lcm(...p.map((v: rational) => v.den));
-		const p2 = new polynomial(p.map((v: rational) => v.num * (m / v.den)));
-		return rationalRoots(p2);
-	}
-
-//	const p2 = p.map(c => continuedFractionT(c, 20, c.from(1e-8)));
-//	const p3a = p2.map(cf => rationalB.fromContinuedFraction(cf));
-	const p3 = p.map(c => rationalB.from(c, 1n << 32n));
-	const m = lcmB(...p3.map(v => v.den));
-	const p4 = new polynomialB(p3.map(v => v.num * (m / v.den)));
-	return rationalRootsB(p4);
 }

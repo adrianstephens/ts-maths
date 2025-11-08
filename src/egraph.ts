@@ -1,204 +1,159 @@
-/* eslint-disable no-restricted-syntax */
+import {symbolic, Rule, Bindings} from './symbolic';
 
-import {symbolic} from './symbolic';
+// Minimal e-graph: tiny, well-formed, and safe to compile. We'll extend functionality once this baseline is verified.
 
-// Minimal e-graph: tiny, well-formed, and safe to compile. We'll extend
-// functionality once this baseline is verified.
+class EClass extends symbolic {
+	parent?: EClass;
+	references = new Set<symbolic>();
 
-export type Rule = {
-	name: string; apply(egraph: EGraph, nodeId: string): symbolic | null;
-};
+	constructor(id: string, public nodes: Set<symbolic>) {
+		super(id);
+		//symbolic.interner.set(id, this);
+	}
+
+}
 
 export default class EGraph {
-	private nextEClass		= 1;
-	private nodeToEClass	= new Map<string, number>();
-	private eclassNodes		= new Map<number, Set<string>>();
-	private nodeOp			= new Map<string, string>();
-	private nodeChildren	= new Map<string, string[]>();
-	private parent			= new Map<number, number>();
-	private rules: Rule[]	= [];
+	private enodeMap = new Map<string, EClass>();
 
-	private find(id: number): number {
-		const p = this.parent.get(id) ?? id;
-		if (p === id)
-			return id;
-		const r = this.find(p);
-		this.parent.set(id, r);
+	private find(e: EClass): EClass {
+		if (!e.parent)
+			return e;
+		const r = this.find(e.parent);
+		e.parent = r;
 		return r;
 	}
 
-	private union(a: number, b: number): number {
-		a = this.find(a);
-		b = this.find(b);
-		if (a === b)
-			return a;
+	private union(a: EClass, b: EClass): EClass {
+		// merge smaller class into larger class (by node count)
+		if (a.nodes.size < b.nodes.size)
+			[a, b] = [b, a];
 
-		// merge smaller class into larger class
-		const sa = this.eclassNodes.get(a) ?? new Set<string>();
-		const sb = this.eclassNodes.get(b) ?? new Set<string>();
-		const target = sa.size >= sb.size ? a : b;
-		const source = target === a ? b : a;
-		const tset = this.eclassNodes.get(target) ?? new Set<string>();
-		const sset = this.eclassNodes.get(source) ?? new Set<string>();
-		for (const n of sset) {
-			tset.add(n);
-			this.nodeToEClass.set(n, target);
-		}
-		this.eclassNodes.set(target, tset);
-		this.eclassNodes.delete(source);
-		this.parent.set(source, target);
-		return target;
+		// attach source to target and move nodes
+		b.parent = a;
+		for (const n of b.nodes)
+			a.nodes.add(n);
+
+		for (const n of b.references)
+			a.references.add(n);
+
+		b.nodes.clear();
+		b.references.clear();
+		return a;
 	}
 
-	addSymbolic(node: symbolic): number {
+	private eclassOfNode(nid: string): EClass | undefined {
+		const e = this.enodeMap.get(nid);
+		if (!e || !e.parent)
+			return e;
+		const e2 = this.find(e);
+		this.enodeMap.set(nid, e2);
+		return e2;
+	}
+
+	addSymbolic(node: symbolic): EClass {
 		const nid		= node.id;
-		const existing	= this.nodeToEClass.get(nid);
-		if (existing !== undefined)
-			return this.find(existing);
+		const existing	= this.eclassOfNode(nid);
+		if (existing)
+			return existing;
 
-		const eid = this.nextEClass++;
-		this.nodeToEClass.set(nid, eid);
-		this.eclassNodes.set(eid, new Set([nid]));
-		this.parent.set(eid, eid);
-
-		const ctor = (node as any).constructor?.name ?? '';
-		this.nodeOp.set(nid, ctor.replace(/^symbolic/, '').toLowerCase());
-		const kids = this.getChildrenIds(node);
-		this.nodeChildren.set(nid, kids);
-		return this.find(eid);
+		const eclass	= new EClass(`ec:${nid}`, new Set([node]));
+		this.enodeMap.set(nid, eclass);
+		return eclass;
 	}
 
-	// Infer child node ids from a `symbolic` instance using duck-typing.
-	// This accommodates the common shapes used in `symbolic.ts` without
-	// importing lots of internal classes: unary (.arg), binary (.arg1/.arg2),
-	// additive (.terms -> term.item), multiplicative (.factors -> factor.item),
-	// and other array-like containers.
-	private getChildrenIds(node: symbolic): string[] {
-		const n = node as any;
-		const kids: string[] = [];
-		if (n === undefined || n === null)
-			return kids;
-
-		// unary
-		if (n.arg !== undefined && n.arg && n.arg.id !== undefined)
-			kids.push(String(n.arg.id));
-
-		// binary
-		if (n.arg1 !== undefined && n.arg2 !== undefined && n.arg1 && n.arg2 && n.arg1.id !== undefined && n.arg2.id !== undefined) {
-			kids.push(String(n.arg1.id));
-			kids.push(String(n.arg2.id));
-		}
-
-		// additive: terms is an array of { item, coef }
-		if (Array.isArray(n.terms)) {
-			for (const t of n.terms) {
-				if (t && t.item && t.item.id !== undefined)
-					kids.push(String(t.item.id));
+	runOneRound(rules: Rule[]): boolean {
+		const compare = (a: symbolic, b: symbolic, bindings: Bindings) => {
+			if (b instanceof EClass) {
+				for (const b2 of b.nodes) {
+					if (b2 instanceof EClass) {
+						if (compare(a, b2, bindings))
+							return bindings;
+					} else if (a.match(b2, compare, bindings)) {
+						return bindings;
+					}
+				}
+				return null;
 			}
-		}
+			return a === b ? bindings : null;
+		};
 
-		// multiplicative: factors is an array of { item, pow }
-		if (Array.isArray(n.factors)) {
-			for (const f of n.factors) {
-				if (f && f.item && f.item.id !== undefined)
-					kids.push(String(f.item.id));
-			}
-		}
-
-		// some binary-like nodes may expose argA/argB or left/right; handle common names
-		if (n.left !== undefined && n.right !== undefined && n.left && n.right && n.left.id !== undefined && n.right.id !== undefined) {
-			kids.push(String(n.left.id));
-			kids.push(String(n.right.id));
-		}
-
-		// dedupe while preserving order
-		const seen = new Set<string>();
-		const out: string[] = [];
-		for (const k of kids) {
-			if (!seen.has(k)) {
-				seen.add(k);
-				out.push(k);
-			}
-		}
-		return out;
-	}
-
-	registerRule(r: Rule): void {
-		this.rules.push(r);
-	}
-
-	runOneRound(): boolean {
-		const nodes = Array.from(this.nodeToEClass.keys());
 		let changed = false;
-		for (const nid of nodes) {
-			for (const r of this.rules) {
-				try {
-					const rep = r.apply(this, nid);
-					if (rep) {
-						const rid = this.addSymbolic(rep);
-						const lhs = this.nodeToEClass.get(nid);
-						if (lhs !== undefined) {
-							this.union(lhs, rid);
+		const keys = Array.from(this.enodeMap.keys());
+		for (const nid of keys) {
+			const node = symbolic.getById(nid);
+			if (!node)
+				continue;
+
+			for (const r of rules) {
+				const bs = r.match(node, compare);
+				if (!bs)
+					continue;
+				if (r.guard && !r.guard(bs))
+					continue;
+
+				const rep = r.replace(bs);
+				if (rep) {
+					const eclass = this.eclassOfNode(nid);
+					if (!eclass)
+						continue;
+					const existing = this.eclassOfNode(rep.id);
+					if (existing) {
+						// only mark as changed if the union actually merges two different e-classes
+						if (eclass !== existing) {
+							this.union(eclass, existing);
 							changed = true;
 						}
+					} else {
+						eclass.nodes.add(node);
+						this.enodeMap.set(rep.id, eclass);
+						changed = true;
 					}
-				} catch {
-					// ignore in minimal version
+
+					//const other = this.addSymbolic(rep);
+					//if (this.find(eclass) !== this.find(other)) {
+					//	this.union(eclass, other);
+					//	changed = true;
+					//}
 				}
 			}
 		}
 		return changed;
 	}
 
-	saturate(rounds = 6): void {
+	applyRules(rules: Rule[], rounds = 6): void {
 		for (let i = 0; i < rounds; i++) {
-			const c = this.runOneRound();
-			if (!c)
+			if (!this.runOneRound(rules))
 				break;
 		}
 	}
 
-	extract(eid: number): symbolic {
-		const r		= this.find(eid);
-		const set	= this.eclassNodes.get(r);
-		if (!set || set.size === 0)
-			return symbolic.from(0);
-
-		const nid = set.values().next().value as string;
-		const op = this.nodeOp.get(nid) ?? '';
-		if (op === 'constant' || op === 'const')
-			return symbolic.from(0);
-		if (op === 'variable' || op === 'var')
-			return symbolic.variable(nid);
-		return symbolic.from(0);
+	equivalenceSet(nid: string): symbolic[] {
+		const e = this.eclassOfNode(nid);
+		return e ? Array.from(e.nodes) : [];
 	}
 
-	eclassOfNode(nodeId: string): number|undefined {
-		return this.nodeToEClass.get(nodeId);
-	}
-	nodeIds(): string[] {
-		return Array.from(this.nodeToEClass.keys());
-	}
 }
 
-export const sinSumRule: Rule = {
-	name: 'sin-sum',
-	apply(egraph, nid) {
-		const op = egraph['nodeOp'].get(nid);
-		if (op !== 'sin')
-			return null;
-		const kids = egraph['nodeChildren'].get(nid) || [];
-		if (kids.length !== 1)
-			return null;
-		const arg = kids[0];
-		const aop = egraph['nodeOp'].get(arg);
-		if (aop !== 'add')
-			return null;
-		const parts = egraph['nodeChildren'].get(arg) || [];
-		if (parts.length !== 2)
-			return null;
-		const L = egraph.extract(egraph.eclassOfNode(parts[0]) ?? 0);
-		const R = egraph.extract(egraph.eclassOfNode(parts[1]) ?? 0);
-		return symbolic.sin(L).mul(symbolic.cos(R)).add(symbolic.cos(L).mul(symbolic.sin(R)));
+export function applyRulesEgraph(node: symbolic, rules: Rule[], scorer: (n: symbolic) => number): symbolic {
+	const egraph = new EGraph();
+
+	egraph.addSymbolic(node);
+	const enode = node.visit(node => egraph.addSymbolic(node));
+
+	egraph.applyRules(rules);
+
+	const es = egraph.equivalenceSet(node.id);
+	let bestNode = node;
+	if (es.length > 1) {
+		let bestCost = Infinity;
+		for (const i of es) {
+			const cost = scorer(i);
+			if (cost <= bestCost) {
+				bestCost = cost;
+				bestNode = i;
+			}
+		}
 	}
-};
+	return bestNode;
+}

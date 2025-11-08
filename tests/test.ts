@@ -13,6 +13,10 @@ export function expect<T>(v: Testable<T>, description?: string) {
 			//if (!success)
 			//	console.log(`fail: expected ${v2}, got ${v}`);
 		},
+		toBeCloseTo(v2: number, tol = 1e-8) {
+			const success = typeof v === 'number' && Math.abs(v - v2) <= tol;
+			console.log(`${success ? '✓' : '✗'}: ${description ? description + ' ' : ''}${v} ≈ ${v2}`);
+		},
 		check(test: (v: T) => boolean) {
 			const success = test(v);
 			console.log(`${success ? '✓' : '✗'}: ${description ?? ''}`);

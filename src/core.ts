@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { rationalApprox } from './rational';
 
 export interface ops<C extends ops<C>> {
 	neg(): 				C;
@@ -30,6 +31,10 @@ export function compare<T extends number|bigint|string>(a: T, b: T): number {
 	return a < b ? -1 : a > b ? 1 : 0;
 }
 
+export function isAlmostInteger(x: number, epsilon = Number.EPSILON) {
+	return Math.abs(x - Math.round(x)) < epsilon;
+}
+
 export function* lazySlice<T>(arr: T[], start?: number, end?: number): Generator<T> {
 	const len = arr.length;
 	if (start === undefined)
@@ -50,16 +55,94 @@ export function* lazySlice<T>(arr: T[], start?: number, end?: number): Generator
 		yield arr[i];
 }
 
-const superscriptedDigits	= '⁰¹²³⁴⁵⁶⁷⁸⁹⁻ᐟ';
-const subscriptedDigits		= '₀₁₂₃₄₅₆₇₈₉₋';
+const superscriptMap: Record<string, string> = {
+	'0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+	'₀': '⁰', '₁': '¹', '₂': '²', '₃': '³', '₄': '⁴', '₅': '⁵', '₆': '⁶', '₇': '⁷', '₈': '⁸', '₉': '⁹',
+	'+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾', '/': 'ᐟ', '⁄': 'ᐟ', '.': '˙',//"˙"
+	'a': 'ᵃ', 'b': 'ᵇ', 'c': 'ᶜ', 'd': 'ᵈ', 'e': 'ᵉ', 'f': 'ᶠ', 'g': 'ᵍ', 'h': 'ʰ', 'i': 'ᶦ', 'j': 'ʲ', 'k': 'ᵏ', 'l': 'ˡ',
+	'm': 'ᵐ', 'n': 'ⁿ', 'o': 'ᵒ', 'p': 'ᵖ', 'r': 'ʳ', 's': 'ˢ', 't': 'ᵗ', 'u': 'ᵘ', 'v': 'ᵛ', 'w': 'ʷ', 'x': 'ˣ', 'y': 'ʸ', 'z': 'ᶻ',
 
-export function superScript(n: number): string {
-	let s = '';
-	do {
-		s = superscriptedDigits[n % 10] + s;
-		n = Math.floor(n / 10);
-	} while (n > 0);
-	return s;
+	'A': 'ᴬ', 'B': 'ᴮ', 'D': 'ᴰ', 'E': 'ᴱ', 'G': 'ᴳ', 'H': 'ᴴ', 'I': 'ᴵ', 'J': 'ᴶ', 'K': 'ᴷ', 'L': 'ᴸ',
+	'M': 'ᴹ', 'N': 'ᴺ', 'O': 'ᴼ', 'P': 'ᴾ', 'R': 'ᴿ', 'T': 'ᵀ', 'U': 'ᵁ', 'W': 'ᵂ',
+
+	'½': '¹ᐟ²', '⅓': '¹ᐟ³', '⅔': '²ᐟ³', '¼': '¹ᐟ⁴', '¾': '³ᐟ⁴',
+	'⅕': '¹ᐟ⁵', '⅖': '²ᐟ⁵', '⅗': '³ᐟ⁵', '⅘': '⁴ᐟ⁵',
+	'⅙': '¹ᐟ⁶', '⅚': '⁵ᐟ⁶',
+	'⅐': '¹ᐟ⁷',
+	'⅛': '¹ᐟ⁸', '⅜': '³ᐟ⁸', '⅝': '⁵ᐟ⁸', '⅞': '⁷ᐟ⁸',
+	'⅑': '¹ᐟ⁹',
+};
+
+const subscriptMap: Record<string, string> = {
+	'0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+	'+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+
+	'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ', 'h': 'ₕ', 'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'p': 'ₚ', 's': 'ₛ', 't': 'ₜ'
+};
+
+function transformString(input: string, map: Record<string, string>): string {
+	return Array.from(input).map(ch => map[ch] ?? ch).join('');
+}
+export function toSuperscript(input: string): string {
+	return transformString(input, superscriptMap);
+}
+export function toSubscript(input: string): string {
+	return transformString(input, subscriptMap);
+}
+
+const fractionChars: Record<number, Record<number, string>> = {
+	'2': {'1': '½'},
+	'3': {'1': '⅓', '2': '⅔'},
+	'4': {'1': '¼', '3': '¾'},
+	'5': {'1': '⅕', '2': '⅖', '3': '⅗', '4': '⅘'},
+	'6': {'1': '⅙', '5': '⅚'},
+	'7': {'1': '⅐'},
+	'8': {'1': '⅛', '3': '⅜', '5': '⅝', '7': '⅞'},
+	'9': {'1': '⅑'},
+};
+
+export function fractionString(num: number, den: number, char = true, superSub = true): string {
+	return den === 1 ? num.toString()
+		: (char && fractionChars[den]?.[num])
+		|| (superSub ? toSuperscript(num.toString()) + '⁄' + toSubscript(den.toString())
+			: `${num}⁄${den}`
+		);
+}
+
+type FractionOptions = false | { char?: boolean; superSub?: boolean };
+
+type ConstOptions = {
+	fractions?: FractionOptions;
+	radicals?: string[];
+};
+
+const radicalChars = {'2': '√', '3': '∛', '4': '∜'};// as unknown as string[];
+
+function radicalString(n: number, symbol: string, opts?: FractionOptions): string|undefined {
+	if (opts === false)
+		return isAlmostInteger(n) ? Math.round(n).toString() : undefined;
+	const [num, den] = rationalApprox(n, 1000);
+	if (Math.abs(n - num / den) < 1e-10)
+		return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts?.char, opts?.superSub);
+}
+
+
+export function constantString(n: number, opts?: ConstOptions): string {
+	if (!Number.isInteger(n)) {
+		const f = radicalString(n, '', opts?.fractions);
+		if (f)
+			return f;
+		for (const [i, r] of Object.entries(opts?.radicals ?? radicalChars)) {
+			const rf = radicalString(n ** +i, r, opts?.fractions);
+			if (rf)
+				return rf;
+		}
+	}
+	return n.toString();
+}
+
+export function printConst(opts?: ConstOptions) {
+	return (n: number) => constantString(n, opts);
 }
 
 //-----------------------------------------------------------------------------

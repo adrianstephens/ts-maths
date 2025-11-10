@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
-import {ops, compare, toSuperscript, isAlmostInteger} from './core';
+import { ops, Operators, compare, isAlmostInteger, OperatorsBase } from './core';
+import { toSuperscript } from './string';
 
 // invariants:
 // - all symbolic instances are interned and unique by id
@@ -65,9 +66,6 @@ type ExpandOptions = {
 };
 
 type StringifyOptions = {
-	//fractions?: false | { char?: boolean; superSub?: boolean };
-	//radicals?: boolean;
-	//upright?: boolean;
 	//parentheses?: 'all' | 'minimal' | 'none';
 	fromMul?: boolean;
 	superPower?: boolean;
@@ -84,9 +82,6 @@ function printPower(n: number, opts?: StringifyOptions) {
 	if (opts?.superPower)
 		return toSuperscript(s);
 	return `^${s}`;
-//	if (opts?.superPower === false)
-//		return `^${s}`;
-//	return toSuperscript(s);
 }
 
 type param = number|symbolic;
@@ -94,7 +89,7 @@ type param = number|symbolic;
 export class symbolic implements ops<symbolic> {
 	static interner = new Interner<symbolic>();
 
-	static from(i: number)			{ return symbolicConstant.create(i); }
+	static from(i: number)			{ return Number.isFinite(i) ? symbolicConstant.create(i) : i === Infinity ? infinity : i === -Infinity ? infinity.neg() : nan; }
 	static variable(name: string)	{ return symbolicVariable.create(name); }
 	static get zero()				{ return zero; }
 	static get one()				{ return one; }
@@ -102,6 +97,7 @@ export class symbolic implements ops<symbolic> {
 	static get e()					{ return e; }
 	static get pi()					{ return pi; }
 	static get infinity()			{ return infinity; }
+	static get nan()				{ return nan; }
 
 	static sin(i: param)			{ return symbolicSin.create(asSymbolic(i)); }
 	static cos(i: param)			{ return symbolicCos.create(asSymbolic(i)); }
@@ -133,10 +129,16 @@ export class symbolic implements ops<symbolic> {
 
 	neg():		symbolic		{ return symbolicAdd.create([term(this, -1)]); }
 	recip():	symbolic		{ return symbolicMul.create([factor(this, -1)]); }
+
+	npow(b: number): symbolic {
+		return b === 1 ? this : b === 0 ? one : symbolicMul.create([factor(this, b)]);
+	}
+
+
 	pow(b: param): symbolic {
-		if (typeof b === 'number')
-			return b === 1 ? this : b === 0 ? one : symbolicMul.create([factor(this, b)]);
-		return symbolicPow.create(this, b);
+		return typeof b === 'number' ? this.npow(b)
+			: isConst(b) ? this.npow(b.value)
+			: symbolicPow.create(this, b);
 	}
 
 	scale(b: number): symbolic	{
@@ -182,6 +184,7 @@ export class symbolic implements ops<symbolic> {
 	}
 
 	evaluate(_env?: Record<string, number>) :	number		{ return NaN; }
+	evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) 	:	T|undefined	{ return undefined; }
 	derivative(_v: string):						symbolic	{ return zero;}
 	toString(_opts?: StringifyOptions):			string		{ return this.id; }
 }
@@ -205,10 +208,7 @@ class symbolicConstant extends symbolic {
 	}
 	neg(): symbolic				{ return symbolicConstant.create(-this.value); }
 	recip(): symbolic			{ return symbolicConstant.create(1 / this.value); }
-	pow(b: param): symbolic	{
-		return typeof b === 'number' ? symbolicConstant.create(this.value ** b)
-			: symbolicPow.create(this, b);
-	}
+	npow(b: number): symbolic	{ return symbolicConstant.create(this.value ** b); }
 
 	scale(b: number): symbolic	{ return symbolicConstant.create(this.value * b); }
 	add(b: param): symbolic	{
@@ -226,6 +226,7 @@ class symbolicConstant extends symbolic {
 	}
 
 	evaluate(_env?: Record<string, number>):	number { return this.value; }
+	evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) 	:	T|undefined	{ return ops.from(this.value); }
 	toString(opts: StringifyOptions):			string { return printConst(this.value, opts); }
 }
 
@@ -260,6 +261,9 @@ class symbolicVariable extends symbolic {
 	}
 	evaluate(env?: Record<string, number>) : number {
 		return env ? (env[this.name] ?? NaN) : NaN;
+	}
+	evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) {
+		return env ? env[this.name] : undefined;
 	}
 	toString() : string { return this.name; }
 }
@@ -304,7 +308,7 @@ function addTerms(num: number, ...a: term[]): symbolic {
 			// pull numeric multiplier from mul into term coefficient
 			const coef = i.coef * i.item.num;
 			if (coef !== 0)
-				terms.push(term(i.item.num === 1 ? i.item : symbolicMul.create(i.item.factors, 1), coef));
+				terms.push(term(i.item.num === 1 ? i.item : i.item.factors.length === 1 && i.item.factors[0].pow === 1 ? i.item.factors[0].item : symbolicMul.create(i.item.factors, 1), coef));
 
 		} else {
 			terms.push(term(i.item, i.coef));	// don't use original
@@ -492,6 +496,10 @@ class symbolicAdd extends symbolic {
 	evaluate(env?: Record<string, number>) : number {
 		return this.terms.reduce((acc, curr) => acc + (curr.item.evaluate(env) * curr.coef), this.num);
 	}
+	evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) {
+		return this.terms.reduce((acc, curr) => ops.add(acc, ops.mul(curr.item.evaluateT(ops, env)!, ops.from(curr.coef))), ops.from(this.num));
+	}
+
 	toString(opts: StringifyOptions) : string {
 		function termOrder(t: term): number {
 			return t.item instanceof symbolicMul ? t.item.factors.reduce((acc, curr) => acc + curr.pow, 0) : 0;
@@ -607,10 +615,8 @@ class symbolicMul extends symbolic {
 	recip(): symbolic {
 		return symbolicMul.create(this.factors.map(i => factor(i.item, -i.pow)), 1 / this.num);
 	}
-	pow(b: param): symbolic {
-		if (typeof b === 'number')
-			return b === 0 ? one : b === 1 ? this : symbolicMul.create(this.factors.map(i => factor(i.item, i.pow * b)), this.num ** b);
-		return symbolicPow.create(this, asSymbolic(b));
+	npow(b: number): symbolic {
+		return b === 0 ? one : b === 1 ? this : symbolicMul.create(this.factors.map(i => factor(i.item, i.pow * b)), this.num ** b);
 	}
 	scale(b: number): symbolic	{
 		return b === 0 ? zero : b === 1 ? this : symbolicMul.create(this.factors, this.num * b);
@@ -700,6 +706,17 @@ class symbolicMul extends symbolic {
 			}
 		}, this.num);
 	}
+	evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) {
+		return this.factors.reduce((acc, curr) => {
+			const v = curr.item.evaluateT(ops, env);
+			switch (curr.pow) {
+				case 1:		return ops.mul(acc, v!);
+				case -1:	return ops.div(acc, v!);
+				default:	return ops.mul(acc, ops.pow(v!, ops.from(curr.pow)));
+			}
+		}, ops.from(this.num));
+	}
+
 	toString(opts: StringifyOptions) : string {
 		const factors	= this.factors.slice().sort((a, b) => b.pow - a.pow);
 		const anum		= Math.abs(this.num);
@@ -720,15 +737,22 @@ class symbolicMul extends symbolic {
 // special constants
 //-----------------------------------------------------------------------------
 
-function specialConstant(name: string, toString = name) {
+function specialConstant(name: string, toString = name, value?: number) {
 	const C = class extends symbolic {
 		constructor()		{ super(name); }
+		evaluate(_env?: Record<string, number>): number { return value ?? NaN; }
+		evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) { return value !== undefined ? ops.from(value) : undefined; }
 		toString(): string	{ return toString; }
 	};
 	return C;
 }
 
-class symbolicInfinity extends specialConstant('∞') {
+const i			= new (specialConstant('i', '𝑖'));
+const e			= new (specialConstant('e', '𝑒', Math.E));
+const pi		= new (specialConstant('pi', 'π', Math.PI));
+const nan		= new (specialConstant('NaN'));
+
+class symbolicInfinity extends specialConstant('infinity', '∞', Infinity) {
 	add(_b: param): symbolic {
 		return this;
 	}
@@ -739,11 +763,7 @@ class symbolicInfinity extends specialConstant('∞') {
 	}
 }
 
-const i			= new (specialConstant('i', '𝑖'));
-const e			= new (specialConstant('𝑒'));
-const pi		= new (specialConstant('π'));
 const infinity	= new symbolicInfinity;
-const nan		= new (specialConstant('NaN'));
 
 symbolic.set(i.mul(i), one.neg());
 symbolic.set(zero.recip(), infinity);
@@ -778,6 +798,8 @@ function unaryFunction(name: string,
 		}
 		derivative(v: string): symbolic { return derivative(this.arg).mul(this.arg.derivative(v)); }
 		evaluate(env?: Record<string, number>): number { return evaluate(this.arg.evaluate(env)); }
+		evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) { return ops.func(name, [this.arg.evaluateT(ops, env)!]); }
+
 		toString(opts: StringifyOptions): string { return toString(this.arg, {...opts, fromMul: false}); }
 	};
 	return C;
@@ -814,6 +836,8 @@ function binaryFunction(name: string,
 			return d1.mul(this.arg1.derivative(v)).add(d2.mul(this.arg2.derivative(v)));
 		}
 		evaluate(env?: Record<string, number>): number { return evaluate(this.arg1.evaluate(env), this.arg2.evaluate(env)); }
+		evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) { return ops.func(name, [this.arg1.evaluateT(ops, env)!, this.arg2.evaluateT(ops, env)!]); }
+
 		toString(opts: StringifyOptions): string { return toString(this.arg1, this.arg2, {...opts, fromMul: false}); }
 	};
 	return C;
@@ -836,6 +860,17 @@ const symbolicAtan2 = binaryFunction('atan2',
 		return [ b.div(denom), a.mul(symbolic.from(-1)).div(denom) ];
 	}
 );
+
+symbolic.set(symbolic.sin(zero), zero);
+symbolic.set(symbolic.sin(pi.scale(0.5)), one);
+symbolic.set(symbolic.sin(pi), zero);
+
+symbolic.set(symbolic.cos(zero), one);
+symbolic.set(symbolic.cos(pi.scale(0.5)), zero);
+symbolic.set(symbolic.cos(pi), one.neg());
+
+symbolic.set(symbolic.tan(zero), zero);
+symbolic.set(symbolic.tan(pi.scale(0.25)), one);
 
 symbolic.set(symbolic.asin(zero), zero);
 symbolic.set(symbolic.asin(one), pi.scale(0.5));
@@ -869,10 +904,18 @@ const symbolicAsinh = unaryFunction('asinh', Math.asinh, arg => arg.pow(2).add(o
 const symbolicAcosh = unaryFunction('acosh', Math.acosh, arg => arg.pow(2).sub(one).pow(-1 / 2));
 const symbolicAtanh = unaryFunction('atanh', Math.atanh, arg => one.sub(arg.pow(2)).recip());
 
+symbolic.set(symbolic.sinh(zero), zero);
+symbolic.set(symbolic.cosh(zero), one);
+symbolic.set(symbolic.tanh(zero), zero);
+
+symbolic.set(symbolic.asinh(zero), zero);
+symbolic.set(symbolic.acosh(one), zero);
+symbolic.set(symbolic.atanh(zero), zero);
+
+
 //-----------------------------------------------------------------------------
 // transformation rules
 //-----------------------------------------------------------------------------
-
 
 function Rule(name: string, pattern: symbolic, replace: (bs: Bindings) => symbolic, guard?: (bs: Bindings) => boolean): Rule {
 	return {
@@ -962,5 +1005,22 @@ export function applyRules(node: symbolic, rules: Rule[]): symbolic {
 	return node.visit(apply);
 }
 
-export function parse(s: string): symbolic {
-}
+
+class SymbolicOperators extends OperatorsBase<symbolic> {
+	from(n: number): symbolic		{ return symbolic.from(n); }
+	func(name: string, args: symbolic[]) {
+		const fn = (symbolic as unknown as Record<string, (...args: symbolic[]) => symbolic>)[name];
+		if (typeof fn === 'function')
+			return fn ? fn(...args) : undefined;
+	}
+	variable(name: string) {
+		const v = (symbolic as unknown as Record<string, symbolic>)[name];
+		if (v instanceof symbolic)
+			return v;
+		return symbolic.variable(name);
+	}
+	pow(a: symbolic, b: symbolic): symbolic {
+		return a.pow(b);
+	}
+};
+export const symbolicOperators = new SymbolicOperators();

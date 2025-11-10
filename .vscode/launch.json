@@ -65,7 +65,13 @@
 			"cwd": "${workspaceFolder}",
 			"args": ["tests/test-sym.ts"],
 			"sourceMaps": true,
-			"preLaunchTask": "npm: watch"
+			"outFiles": [
+				"${workspaceFolder}/dist/*.js",
+				"${workspaceFolder}/tests/*.js",
+				"${workspaceFolder}/../big/dist/*.js",
+				"${workspaceFolder}/../big/dist/**/*.js",
+			],
+			"preLaunchTask": "npm: watch",
 		},
 		{
 			"type": "node-terminal",

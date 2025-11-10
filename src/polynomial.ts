@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
-import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isInstance, isScalar, asScalar2, asScalarT, lcm, lcmB, absB, rootB, compare, toSuperscript } from './core';
+import {ops, scalar, scalar2, sign, extent1, maxT, extentT, isInstance, isScalar, asScalar2, asScalarT, lcm, lcmB, absB, rootB, compare } from './core';
+import { toSuperscript } from './string';
 import { factorisation, factorisationB } from './prime';
 import complex, { complexT } from './complex';
 import { rational, rationalB } from './rational';

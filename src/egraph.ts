@@ -120,11 +120,14 @@ export default class EGraph {
 		}
 		return changed;
 	}
+	fixup(): void {
+	}
 
 	applyRules(rules: Rule[], rounds = 6): void {
 		for (let i = 0; i < rounds; i++) {
 			if (!this.runOneRound(rules))
 				break;
+			this.fixup();
 		}
 	}
 
@@ -140,6 +143,7 @@ export function applyRulesEgraph(node: symbolic, rules: Rule[], scorer: (n: symb
 
 	egraph.addSymbolic(node);
 	const enode = node.visit(node => egraph.addSymbolic(node));
+	const es0 = egraph.equivalenceSet(node.id);
 
 	egraph.applyRules(rules);
 
@@ -157,3 +161,36 @@ export function applyRulesEgraph(node: symbolic, rules: Rule[], scorer: (n: symb
 	}
 	return bestNode;
 }
+
+/*
+	fixup(): void {
+		const enodeMap = new Map<string, EClass>();
+		let eclasses = 0;
+
+		function addSymbolic(node: symbolic): EClass {
+			const nid		= node.id;
+			const existing	= enodeMap.get(nid);
+			if (existing)
+				return existing;
+
+			const eclass	= new EClass(`ec:${nid}`, new Set([node]));
+			enodeMap.set(nid, eclass);
+			++eclasses;
+			return eclass;
+		}
+
+		for (const [nid, _eclass] of this.enodeMap) {
+			const node = symbolic.getById(nid);
+			if (!node)
+				continue;
+			
+			addSymbolic(node);
+			node.visit(node => {
+				if (!(node instanceof EClass))
+					return addSymbolic(node);
+				return node;
+			});
+		}
+		this.enodeMap = enodeMap;
+	}
+		*/

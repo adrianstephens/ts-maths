@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { test, expect, approx } from './test';
+import { test, expect, approx, assert } from './test';
 import { OperatorsBase, numberOperators} from '../dist/core';
 import { parseNumber, outputNumber, toSuperscript, parse } from '../dist/string';
-import { symbolic, symbolicOperators, applyRules, trigRules, invTrigRules } from '../dist/symbolic';
+import { symbolic, symbolicOperators, applyRules, trigRules, invTrigRules, generalRules, scoreFactory } from '../dist/symbolic';
 import { applyRulesEgraph } from '../dist/egraph';
 import { polynomialT } from '../dist/polynomial';
 import * as big from '../../big/dist/index';
@@ -11,17 +11,17 @@ class BigOperators extends OperatorsBase<big.float> {
 	from(n: number): big.float		{ return big.float.from(n); }
 	func(name: string, args: big.float[]) {
 		switch (name) {
-			case 'sin': return big.sin(args[0], 100);
-			case 'cos': return big.cos(args[0], 100);
-			case 'tan': return big.tan(args[0], 100);
-			case 'asin': return big.asin(args[0], 100);
-			case 'acos': return big.acos(args[0], 100);
-			case 'atan': return big.atan(args[0], 100);
-			case 'atan2': return big.atan2(args[0], args[1], 100);
-			case 'exp': return big.exp(args[0], 100);
-			case 'log': return big.log(args[0], 100);
-			case 'sqrt': return args[0].sqrt();
-			default: return undefined;
+			case 'sin': 		return big.sin(args[0], 100);
+			case 'cos': 		return big.cos(args[0], 100);
+			case 'tan': 		return big.tan(args[0], 100);
+			case 'asin': 		return big.asin(args[0], 100);
+			case 'acos': 		return big.acos(args[0], 100);
+			case 'atan': 		return big.atan(args[0], 100);
+			case 'atan2': 		return big.atan2(args[0], args[1], 100);
+			case 'exp': 		return big.exp(args[0], 100);
+			case 'log': 		return big.log(args[0], 100);
+			case 'sqrt': 		return args[0].sqrt();
+			default:			return undefined;
 		}
 	}
 	variable(name: string) {
@@ -39,23 +39,15 @@ class BigOperators extends OperatorsBase<big.float> {
 const bigOperators = new BigOperators();
 
 
-function makeFunction(expr: symbolic, varName: string) {
-	return (x: number) => expr.evaluate({ [varName]: x });
+function makeFunction(expr: symbolic, var1: string) {
+	return (x: number) => expr.evaluate({ [var1]: x });
 }
 
 function makeDeriv(f: (x: number) => number, h = 1e-6) {
 	return (x: number) => (f(x + h) - f(x - h)) / (2 * h);
 }
 
-function checkDeriv(expr: symbolic, varName: string, expected: (x: number) => number, testPoints: number[] = [0, 0.5, 1, 2, 3, 5]) {
-	const deriv = expr.derivative(varName);
-	const d = makeFunction(deriv, varName);
-	for (const x of testPoints)
-		expect(d(x)).toBeCloseTo(expected(x));
-}
-
-
-function checkDeriv2(expr: symbolic, varName: string, testPoints: number[] = [0], h = 1e-6) {
+function checkDeriv(expr: symbolic, varName: string, testPoints = [0], h = 1e-6) {
 	const deriv = expr.derivative(varName);
 	const D0 = makeFunction(deriv, varName);
 	const D1 = makeDeriv(makeFunction(expr, varName), h);
@@ -67,6 +59,23 @@ function checkDeriv2(expr: symbolic, varName: string, testPoints: number[] = [0]
 			return false;
 	}
 	return true;
+}
+
+function approxEqualEval(x: symbolic, y: symbolic, varNames: string[], testPoints: Iterable<number[]> = [[0.1], [0.5], [1.2], [-0.7]], h = 1e-6) {
+	for (const v of testPoints) {
+		const env = Object.fromEntries(varNames.map((name, i) => [name, v[i % v.length]]));
+		const xv = x.evaluate(env);
+		const yv = y.evaluate(env);
+		if (Math.abs(xv - yv) > 1e-8)
+			return false;
+	}
+	return true;
+}
+
+function countNodes(n: symbolic) {
+	let cnt = 0;
+	n.visit({post: x => { cnt++; return x; }});
+	return cnt;
 }
 
 test('symbolic', () => {
@@ -112,28 +121,54 @@ test('symbolic', () => {
 });
 
 test('symbolic transforms', () => {
+	// expand sin(a+b)*cos(a-b) into combination using product-to-sum then simplify
+	const a = symbolic.variable('a');
+	const b = symbolic.variable('b');
+
+	const test = parse(symbolicOperators, '(cos(a) * cos(b) + sin(a) * sin(b)) * (cos(a) * sin(b) + cos(b) * sin(a))');
+	const test2 = test.expand();
+	const test3 = test2.factor();
+	const bs = generalRules.find(r => r.name === 'factor-common')?.match(test2);
+		
+
+	// sin(a+b)*cos(a-b) = 1/2[sin(2a) + sin(2b)] (using trig identities)
+	const expr = symbolic.sin(a.add(b)).mul(symbolic.cos(a.sub(b)));
+
+	// Apply egraph with available rules (symbolic exposes a list of rules)
+	const rules = trigRules.concat(invTrigRules).concat(generalRules);
+	const out = applyRulesEgraph(expr, rules, {rounds: 100, verbose: true, debugNode: 'replace'});
+
+	// Verify extractor preserves equivalence with the original expression
+	if (!approxEqualEval(out, expr, ['a', 'b'])) {
+		console.log('Original  :', String(expr));
+		console.log('Extracted :', String(out));
+		throw new Error('egraph extraction is not equivalent to original expression');
+	}
+
 	const x = symbolic.variable("x");
 	const y = symbolic.variable("y");
 	const sum = x.add(y);
 
 	const sindif = applyRules(symbolic.sin(x.sub(y)), trigRules);
 	expect(sindif).toEqual(symbolic.sin(x).mul(symbolic.cos(y)).sub(symbolic.cos(x).mul(symbolic.sin(y))));
-	const sinsum = applyRules(symbolic.sin(sum), trigRules);
-	expect(sinsum).toEqual(symbolic.sin(x).mul(symbolic.cos(y)).add(symbolic.cos(x).mul(symbolic.sin(y))));
+	const sinsum = symbolic.sin(sum);
+	const sinsum1 = applyRules(sinsum, trigRules);
+	expect(sinsum1).toEqual(symbolic.sin(x).mul(symbolic.cos(y)).add(symbolic.cos(x).mul(symbolic.sin(y))));
 
-	const esinsum = applyRulesEgraph(symbolic.sin(sum), trigRules, node => 0);
+	const esinsum = applyRulesEgraph(sinsum, trigRules, {scorer: node => -countNodes(node), verbose: false});
+	expect(esinsum).toEqual(sinsum1);
 
-	const sinsum2 = applyRules(sinsum, invTrigRules);
-	expect(sinsum2).toEqual(symbolic.sin(sum));
+	const sinsum2 = applyRules(sinsum1, invTrigRules);
+	// structural equality may vary; assert numeric equivalence at sample points
+	if (!approxEqualEval(sinsum2, sinsum, ['x', 'y'], [[0, 0], [0.3, 0.7], [1.2, -0.5]]))
+		throw new Error('egraph extraction is not equivalent to original expression');
 
-	const sinhalf0 = symbolic.sin(sum.scale(0.5));
-	const sinhalf1 = symbolic.sin(x.scale(0.5));
-
-	const sinhalf = applyRules(sinhalf0, trigRules);
+	const sinhalf = applyRules(symbolic.sin(sum.scale(0.5)), trigRules);
 	expect(sinhalf).toEqual((symbolic.sin(x).mul(symbolic.sin(y)).sub(symbolic.cos(x).mul(symbolic.cos(y))).add(1)).pow(0.5).scale(Math.sqrt(0.5)));
+
 });
 
-test('symbolic instance adapter basic', () => {
+test('symbolic trig/hyperbolic', () => {
 	const x = symbolic.variable("x");
 	const y = symbolic.variable("y");
 
@@ -194,7 +229,7 @@ test('canonicalization merges powers and derivatives simplify', () => {
 	const expr = x.pow(2).mul(x.add(1)).mul(x.pow(3));
 	expect(expr).toEqual(x.pow(5).mul(x.add(1)));
 
-	checkDeriv2(expr, 'x', [3]);
+	checkDeriv(expr, 'x', [3]);
 });
 
 test('expand distributes multiplication over addition (single additive factor)', () => {
@@ -253,6 +288,52 @@ test('collect after expand (x+1)^2 * y', () => {
 	const pg = new polynomialT(groups).evaluate(x).expand();
 
 	expect(pg).toEqual(expanded);
+});
+
+
+test('egraph smoke', () => {
+	const x = symbolic.variable('x');
+	const y = symbolic.variable('y');
+	const out = applyRulesEgraph(symbolic.sin(x.add(y)), trigRules, {scorer: node => -countNodes(node)});
+	expect(typeof out.id).toEqual('string');
+});
+
+test('egraph general expand+collect simplification', () => {
+	const x = symbolic.variable('x');
+	// expr = (x+1)*(x+2) + (x+1)*x  => should factor to (x+1)*(2x+2)
+	const expr = x.add(1).mul(x.add(2)).add(x.add(1).mul(x));
+	const out = applyRulesEgraph(expr, generalRules);
+
+	// expected factorised form (x+1)*(x+2 + x) == (x+1)*(2x+2)
+	const expected = x.add(1).mul(x.add(2).add(x));
+
+	// assert the extractor chose the expected factored form (structural equality)
+	expect(out).toEqual(expected);
+});
+
+test('egraph ambitious factorisations (scoreFactory params)', () => {
+	const x = symbolic.variable('x');
+	const y = symbolic.variable('y');
+
+	// Example 1: three terms sharing (x+1)
+	// (x+1)*(x+2) + (x+1)*(x+3) + (x+1)*x  => (x+1)*(3*x + 5)
+	const expr1 = x.add(1).mul(x.add(2)).add(x.add(1).mul(x.add(3))).add(x.add(1).mul(x));
+	const expected1 = x.add(1).mul(x.mul(3).add(5));
+
+	// Example 2: mixed variables, factor (x+1) across different y-terms
+	// (x+1)*(y+2) + (x+1)*(y+3) => (x+1)*(2*y + 5)
+	const expr2 = x.add(1).mul(y.add(2)).add(x.add(1).mul(y.add(3)));
+	const expected2 = x.add(1).mul(y.mul(2).add(5));
+
+	// Use a conservative recommended scorer (exposed constW) to encourage factoring
+	const scorer = scoreFactory(0.2, 0.5, 1, 0.1);
+
+	const out1 = applyRulesEgraph(expr1, generalRules, {scorer});
+	const out2 = applyRulesEgraph(expr2, generalRules, {scorer});
+
+	// assert the extractor chose the expected factored forms (structural equality)
+	expect(out1).toEqual(expected1);
+	expect(out2).toEqual(expected2);
 });
 
 

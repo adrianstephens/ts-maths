@@ -1,5 +1,6 @@
 node_modules
 src0
+tmp
 dist
 tests/*.js
 tests/*.d.ts

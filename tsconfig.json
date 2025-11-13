@@ -1,6 +1,6 @@
 {
 	"compilerOptions": {
-		"target": "ES2022",
+		"target": "esnext",
 		"module": "commonjs",
 		"strict": true,
 		"declaration": true,
@@ -10,7 +10,7 @@
 		"sourceMap": true,
 		"outDir": "./dist",
 		"lib": [
-			"es2022"
+			"esnext"
 		]
 	},
 	"include": [

@@ -51,27 +51,50 @@ class Interner<T extends object> {
 }
 
 export type Bindings = Record<string, symbolic>;
-export type Visitor = (node: symbolic) => symbolic;
-export type Prematch = (a: symbolic, b: symbolic, bindings: Bindings) => Bindings | null;
+
+export interface Visitor {
+	pre?:	(node: symbolic, parent?: symbolic) => symbolic | undefined;
+	post?:	(node: symbolic, parent?: symbolic) => symbolic | undefined;
+}
 
 export type Rule = {
 	name:		string;
-	match:		(node: symbolic, compare: Prematch) => Bindings | null;
+	match:		(node: symbolic) => Bindings | null;
 	replace:	(bs: Bindings) => symbolic;
 	guard?: 	(bs: Bindings) => boolean;
 };
 
-type ExpandOptions = {
+export type MatchOptions = {
+	exact?: boolean;
+	depth?: number;
+};
+
+export type ExpandOptions = {
+	depth?: number;
+	maxPow?: number;
 	limit?: 'small' | 'polynomial';
 };
 
-type StringifyOptions = {
+export type StringifyOptions = {
 	//parentheses?: 'all' | 'minimal' | 'none';
 	fromMul?: boolean;
 	superPower?: boolean;
 	printConst: (n: number) => string;
 };
 
+function visit(node: symbolic, recurse: () => symbolic, visitor: Visitor, parent?: symbolic): symbolic {
+	function postvisit(node: symbolic): symbolic {
+		return visitor.post?.(node, parent) ?? node;
+	}
+	if (visitor.pre) {
+		const n = visitor.pre(node, parent);
+		if (!n)
+			return node;
+		if (n !== node)
+			return postvisit(n);
+	}
+	return postvisit(recurse());
+}
 
 function printConst(n: number, opts?: StringifyOptions) {
 	return opts?.printConst?.(n) ?? n.toString();
@@ -126,6 +149,9 @@ export class symbolic implements ops<symbolic> {
 	}
 
 	constructor(public id: string) {}
+	is<T extends keyof typeof types>(type: T): this is InstanceType<(typeof types)[T]> {
+		return this instanceof types[type];
+	}
 
 	neg():		symbolic		{ return symbolicAdd.create([term(this, -1)]); }
 	recip():	symbolic		{ return symbolicMul.create([factor(this, -1)]); }
@@ -174,27 +200,20 @@ export class symbolic implements ops<symbolic> {
 	eq(b: symbolic) : boolean	{ return this === b;}
 
 	substitute(_map: Bindings):			symbolic	{ return this; }
-	expand(_options?: ExpandOptions):	symbolic	{ return this; }
+	expand(_opts?: ExpandOptions):		symbolic	{ return this; }
 	collect(_v: string):				symbolic[]	{ return [this]; }
 	factor():							symbolic	{ return this; }
-	visit(apply: Visitor, pre?: Visitor):symbolic	{ return apply(this); }
+	visit(visitor: Visitor, parent?: symbolic):		symbolic	{ return visit(this, () => this, visitor, parent); }
 
-	match(node: symbolic, prematch: Prematch, bindings: Bindings): Bindings | null {
-		return prematch(this, node, bindings);
+	match(node: symbolic, bindings: Bindings, _opts?: MatchOptions): Bindings | null {
+		return this === node ? bindings : null;
 	}
 
 	evaluate(_env?: Record<string, number>) :	number		{ return NaN; }
-	evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) 	:	T|undefined	{ return undefined; }
+	evaluateT<T>(_ops: Operators<T>, _env?: Record<string, T>) 	:	T|undefined	{ return undefined; }
 	derivative(_v: string):						symbolic	{ return zero;}
 	toString(_opts?: StringifyOptions):			string		{ return this.id; }
 }
-
-function visit(node: symbolic, apply: Visitor, pre?: Visitor):symbolic	{
-	if (pre)
-		node = pre(node);
-	return node.visit(apply, pre);
-}
-
 
 //-----------------------------------------------------------------------------
 // constant
@@ -206,8 +225,8 @@ class symbolicConstant extends symbolic {
 	constructor(id: string, public value: number) {
 		super(id);
 	}
-	neg(): symbolic				{ return symbolicConstant.create(-this.value); }
-	recip(): symbolic			{ return symbolicConstant.create(1 / this.value); }
+	neg():		symbolic		{ return symbolicConstant.create(-this.value); }
+	recip():	symbolic		{ return symbolicConstant.create(1 / this.value); }
 	npow(b: number): symbolic	{ return symbolicConstant.create(this.value ** b); }
 
 	scale(b: number): symbolic	{ return symbolicConstant.create(this.value * b); }
@@ -251,7 +270,6 @@ class symbolicVariable extends symbolic {
 	constructor(id: string, public name: string) {
 		super(id);
 	}
-
 	substitute(map: Bindings) : symbolic {
 		const val = map[this.name];
 		return val === undefined ? this : val;
@@ -271,10 +289,10 @@ class symbolicVariable extends symbolic {
 class symbolicMatcher extends symbolicVariable {
 	static create(name: string)	{ return this.interner.intern(`*:${name}`, id => new symbolicMatcher(id, name)); }
 
-	match(node: symbolic, prematch: Prematch, bindings: Bindings): Bindings | null {
+	match(node: symbolic, bindings: Bindings, _opts?: MatchOptions): Bindings | null {
 		const got = bindings[this.name];
 		if (got)
-			return prematch(got, node, bindings);
+			return got === node ? bindings : null;
 
 		bindings[this.name] = node;
 		return bindings;
@@ -293,7 +311,7 @@ function term(item: symbolic, coef = 1): term {
 	return { item, coef };
 }
 
-function addTerms(num: number, ...a: term[]): symbolic {
+export function addTerms(num: number, ...a: readonly Readonly<term>[]): symbolic {
 	const terms: term[] = [];
 	for (const i of a) {
 		if (isConst(i.item)) {
@@ -339,11 +357,11 @@ function addTerms(num: number, ...a: term[]): symbolic {
 
 	return symbolicAdd.create(nonzero, num);
 }
-
-function commonFactors(terms: term[]) {
+/*
+function commonFactors(terms: readonly Readonly<term>[]): readonly term[] {
 	interface factorInfo {
-		item: symbolic;
-		count: number;
+		item:	symbolic;
+		count:	number;
 		minpow: number;
 		maxpow: number;
 	}
@@ -352,7 +370,7 @@ function commonFactors(terms: term[]) {
 	for (const m of terms) {
 		if (m.item instanceof symbolicMul) {
 			for (const i of m.item.factors) {
-				const info = factors[i.item.id] ??= { item: i.item, count: 0, minpow: Infinity, maxpow: -Infinity };
+				const info = factors[i.item.id] ??= { item: i.item, count: 0, minpow: i.pow, maxpow: i.pow };
 				++info.count;
 				info.minpow = Math.min(info.minpow, i.pow);
 				info.maxpow = Math.max(info.maxpow, i.pow);
@@ -362,35 +380,182 @@ function commonFactors(terms: term[]) {
 
 	const factors2 = Object.values(factors).filter(i => i.count > 1).sort((a, b) => a.count - b.count);
 
-	if (factors2.length > 0) {
-		const factored: term[] = [];
-		let from = terms;
-		for (const f of factors2) {
-			const terms1: term[] = [];
-			const terms2: term[] = [];
-			
-			for (const i of from) {
-				if (i.item instanceof symbolicMul && i.item.factors.find(j => j.item === f.item)) {
-					const factors = i.item.factors.map(j => j.item === f.item ? factor(j.item, j.pow - f.minpow) : j).filter(i => i.pow !== 0);
-					terms2.push(term(mulFactors(i.item.num, ...factors), i.coef));
-				} else {
-					terms1.push(i);
-				}
+	if (factors2.length == 0)
+		return terms;
+
+	const	factored: term[] = [];
+	let		from = terms;
+	for (const f of factors2) {
+		if (from.length === 0)
+			break;
+		const terms1: term[] = [];
+		const terms2: term[] = [];
+		
+		for (const i of from) {
+			if (i.item instanceof symbolicMul && i.item.factors.find(j => j.item === f.item)) {
+				const factors = i.item.factors.map(j => j.item === f.item ? factor(j.item, j.pow - f.minpow) : j).filter(i => i.pow !== 0);
+				terms2.push(term(mulFactors(i.item.num, ...factors), i.coef));
+			} else {
+				terms1.push(i);
 			}
-			factored.push(term(addTerms(0, ...terms2).mul(f.item.pow(f.minpow))));
-			from = terms1;
 		}
-		terms.length = 0;
-		terms.push(...factored, ...from);
+		if (terms2.length)
+			factored.push(term(addTerms(0, ...terms2).mul(f.item.pow(f.minpow))));
+		from = terms1;
 	}
+	return [...factored, ...from];
+}
+*/
+
+interface factorInfo { item: symbolic; minpow: number; terms: Set<term>; }
+function factorAsSymbolic(f: factorInfo): symbolic {
+	return f.item.pow(f.minpow);
+}
+
+function getFactors(terms: readonly Readonly<term>[]) {
+	// collect factor counts and min powers across terms
+	const factors: Record<string, factorInfo> = {};
+
+	function addFactor(item: symbolic, pow: number, t: term) {
+		const info = factors[item.id] ??= { item: item, minpow: pow, terms: new Set<term>() };
+		info.terms.add(t);
+		info.minpow = Math.min(info.minpow, pow);
+	}
+	for (const t of terms) {
+		if (t.item instanceof symbolicMul) {
+			for (const f of t.item.factors)
+				addFactor(f.item, f.pow, t);
+		} else {
+			addFactor(t.item, 1, t);
+		}
+	}
+	return Object.values(factors);
+}
+
+function commonFactors(terms: readonly Readonly<term>[]): readonly term[] {
+	const factors		= getFactors(terms);
+	const candidates	= factors.filter(i => i.terms.size > 1);
+	const pairs: {factor0: factorInfo, factor1: factorInfo, terms: Set<term>}[] = [];
+
+	for (const factor0 of candidates) {
+		for (const factor1 of candidates) {
+			if (factor0 === factor1)
+				break;
+			const terms = factor0.terms.intersection(factor1.terms);
+			if (terms.size > 1) {
+				if (terms.size === factor0.terms.size || terms.size === factor1.terms.size) {
+					factor0.terms.clear();
+					factor1.terms.clear();
+				}
+				pairs.push({factor0, factor1, terms});
+			}
+		}
+	}
+
+	candidates.sort((a, b) => b.terms.size - a.terms.size);
+	pairs.sort((a, b) => b.terms.size - a.terms.size);
+
+	const	factored: term[] = [];
+	let 	remaining = new Set<term>(terms);
+
+	for (const f of pairs) {
+		if (remaining.size < 2)
+			break;
+		
+		const todo = f.terms.intersection(remaining);
+		if (todo.size < 2)
+			continue;
+
+		remaining = remaining.difference(f.terms);
+
+		const terms2 = Array.from(todo).map(t => {
+			if (t.item instanceof symbolicMul) {//must be
+				const newFactors = t.item.factors.map(ff => 
+					ff.item === f.factor0.item  ? factor(ff.item, ff.pow - f.factor0.minpow)
+				:	ff.item === f.factor1.item	? factor(ff.item, ff.pow - f.factor1.minpow)
+				:	ff
+				);
+				return term(mulFactors(t.item.num, ...newFactors), t.coef);
+			}
+			return t;
+		});
+
+		factored.push(term(addTerms(0, ...terms2).mul(factorAsSymbolic(f.factor0).mul(factorAsSymbolic(f.factor1)))));
+	}
+
+	for (const f of candidates) {
+		if (remaining.size < 2)
+			break;
+		
+		const todo = f.terms.intersection(remaining);
+		if (todo.size < 2)
+			continue;
+
+		remaining = remaining.difference(f.terms);
+
+		const terms2 = Array.from(todo).map(t => {
+			if (t.item instanceof symbolicMul) {
+				const newFactors = t.item.factors.map(ff => 
+					ff.item === f.item  ? factor(ff.item, ff.pow - f.minpow)
+				:	ff
+				);
+				return term(mulFactors(t.item.num, ...newFactors), t.coef);
+			}
+			return t.item === f.item ? term(one, t.coef) : t;
+		});
+
+		factored.push(term(addTerms(0, ...terms2).mul(factorAsSymbolic(f))));
+	}
+
+	return [...factored, ...remaining];
+/*
+// recursive factoring
+	function subfactor(remaining: term[], index: number): term[] {
+		if (remaining.length < 2)
+			return remaining;
+
+		const c = candidates[index];
+		if (!c)
+			return remaining;
+
+		const have: term[] = [];
+		const dont: term[] = [];
+
+		for (const t of remaining) {
+			if (t.item instanceof symbolicMul) {
+				const f = t.item.factors.find(ff => ff.item === c.item);
+				if (f) {
+					const newFactors = t.item.factors.map(ff => ff.item === c.item ? factor(ff.item, ff.pow - c.minpow) : factor(ff.item, ff.pow)).filter(ff => ff.pow !== 0);
+					have.push(term(mulFactors(t.item.num, ...newFactors), t.coef));
+					continue;
+				}
+			} else if (t.item === c.item) {
+				have.push(term(mulFactors(1), t.coef));
+				continue;
+			}
+			dont.push(t);
+		}
+
+		const result = subfactor(dont, index + 1);
+
+		if (have.length) {
+			const terms = subfactor(have, index + 1);
+			result.push(term(addTerms(0, ...terms).mul(c.item.pow(c.minpow))));
+		}
+
+		return result;
+	}
+	return subfactor(terms.slice(), 0);
+	*/
+
 }
 
 class symbolicAdd extends symbolic {
-	static create(terms: term[], num = 0) : symbolic	{
+	static create(terms: readonly term[], num = 0) : symbolic	{
 		return this.interner.intern(`a(${num ? `${num},` : ''}${terms.map(i => `${i.coef === 1 ? '' : i.coef === -1 ? '-' : i.coef}${i.item.id}`).join(',')})`, id => new symbolicAdd(id, terms, num));
 	}
 
-	constructor(id: string, public terms: term[], public num = 0) {
+	constructor(id: string, public terms: readonly Readonly<term>[], public num = 0) {
 		super(id);
 	}
 	neg(): symbolic {
@@ -413,19 +578,17 @@ class symbolicAdd extends symbolic {
 			:	addTerms(this.num, ...this.terms, term(b, 1));
 	}
 
-	match(node: symbolic, prematch: Prematch, bindings: Bindings): Bindings | null {
-		if (prematch(this, node, bindings))
-			return bindings;
-
+	match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
 		if (node instanceof symbolicAdd) {
-			if (this.num !== node.num)
+			if (opts?.exact && this.num != node.num)
 				return null;
 
-			const nterms = node.terms.slice();
+			const opts2 	= { ...opts, exact: true};
+			const nterms	= node.terms.slice();
 			for (const pterm of this.terms) {
 				let found = -1;
 				for (const nterm of nterms) {
-					if (pterm.coef === nterm.coef && pterm.item.match(nterm.item, prematch, bindings)) {
+					if (pterm.coef === nterm.coef && pterm.item.match(nterm.item, bindings, opts2)) {
 						found = nterms.indexOf(nterm);
 						break;
 					}
@@ -435,18 +598,19 @@ class symbolicAdd extends symbolic {
 
 				nterms.splice(found, 1);
 			}
-			return nterms.length === 0 ? bindings : null;
+			if (opts?.exact && nterms.length)
+				return null;
+
+			if (this.num != node.num || nterms.length)
+				bindings['_addrest'] = addTerms(this.num - node.num, ...nterms);
+
+			return bindings;
 		}
 		return null;
 	}
 
-	visit(apply: Visitor, pre: Visitor): symbolic {
-		if (pre) {
-			const p = pre(this);
-			if (p !== this)
-				return apply(addTerms(this.num, ...this.terms.map(i => term(i.item.visit(apply, pre), i.coef))));
-		}
-		return apply(addTerms(this.num, ...this.terms.map(i => term(i.item.visit(apply, pre), i.coef))));
+	visit(visitor: Visitor, parent?: symbolic): symbolic {
+		return visit(this, () => addTerms(this.num, ...this.terms.map((i) => term(i.item.visit(visitor, this), i.coef))), visitor, parent);
 	}
 
 	substitute(map: Bindings) : symbolic {
@@ -477,17 +641,12 @@ class symbolicAdd extends symbolic {
 		}
 		return groups;
 	}
-	expand(options?: ExpandOptions): symbolic {
-		return addTerms(this.num, ...this.terms.map(i => term(i.item.expand(options), i.coef)));
+	expand(opts?: ExpandOptions): symbolic {
+		return addTerms(this.num, ...this.terms.map(i => term(i.item.expand(opts), i.coef)));
 	}
 	factor(): symbolic {
-		const terms = this.terms.slice();
-		commonFactors(terms);
-
-		if (terms.length === 1 && this.num === 0)
-			return terms[0].coef === 1 ? terms[0].item : terms[0].item.scale(terms[0].coef);
-
-		return symbolicAdd.create(terms, this.num);
+		const terms = commonFactors(this.terms);
+		return addTerms(this.num, ...terms);
 	}
 
 	derivative(v: string) : symbolic {
@@ -529,7 +688,7 @@ function factor(item: symbolic, pow = 1): factor {
 	return { item, pow };
 }
 
-function mulFactors(num: number, ...f: factor[]): symbolic {
+export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 	const factors: factor[] = [];
 	for (const i of f) {
 		if (i.pow === 0)
@@ -568,7 +727,7 @@ function mulFactors(num: number, ...f: factor[]): symbolic {
 		return zero;
 
 	// canonical order
-	factors.sort((a, b) => compare(a.item.id, b.item.id) || (a.pow !== b.pow ? b.pow - a.pow : 0));
+	factors.sort((a, b) => compare(a.item.id, b.item.id));
 
 	// combine like factors by summing powers
 	const combined: factor[] = [];
@@ -601,14 +760,14 @@ function mulFactors(num: number, ...f: factor[]): symbolic {
 }
 
 class symbolicMul extends symbolic {
-	static create(factors: factor[], num = 1)	{
+	static create(factors: readonly factor[], num = 1)	{
 		return this.interner.intern(`m(${num !== 1 ? `${num},` : ''}${factors.map(i => `${i.item.id}${i.pow !== 1 ? i.pow : ''}`).join(',')})`, id => new symbolicMul(id, factors, num));
 	}
 
-	constructor(id: string, public factors: factor[], public num = 1) {
+	constructor(id: string, public factors: readonly Readonly<factor>[], public num = 1) {
 		super(id);
 	}
-
+	
 	neg(): symbolic {
 		return symbolicMul.create(this.factors, -this.num);
 	}
@@ -628,16 +787,17 @@ class symbolicMul extends symbolic {
 			:	b instanceof symbolicMul ? mulFactors(this.num * b.num, ...this.factors, ...b.factors)
 			:	mulFactors(this.num, ...this.factors, factor(b));
 	}
-	match(node: symbolic, prematch: Prematch, bindings: Bindings): Bindings | null {
+	match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
 		if (node instanceof symbolicMul) {
-			if (this.num !== node.num)
+			if (opts?.exact && this.num != node.num)
 				return null;
 
-			const nfactors = node.factors.slice();
+			const opts2 	= { ...opts, exact: true};
+			const nfactors	= node.factors.slice();
 			for (const pfactor of this.factors) {
 				let found = -1;
 				for (const nfactor of nfactors) {
-					if (pfactor.item.match(nfactor.item, prematch, bindings)) {
+					if (pfactor.pow === nfactor.pow && pfactor.item.match(nfactor.item, bindings, opts2)) {
 						found = nfactors.indexOf(nfactor);
 						break;
 					}
@@ -647,23 +807,35 @@ class symbolicMul extends symbolic {
 
 				nfactors.splice(found, 1);
 			}
-			return nfactors.length === 0 ? bindings : null;
+
+			if (opts?.exact && nfactors.length)
+				return null;
+
+			if (this.num != node.num || nfactors.length)
+				bindings['_mulrest'] = mulFactors(this.num / node.num, ...nfactors);
+
+			return bindings;
 		}
 		return null;
 	}
 	substitute(map: Bindings) : symbolic {
 		return mulFactors(this.num, ...this.factors.map(f => factor(f.item.substitute(map), f.pow)));
 	}
-	visit(apply: Visitor): symbolic {
-		return apply(mulFactors(this.num, ...this.factors.map(f => factor(f.item.visit(apply), f.pow))));
+	visit(visitor: Visitor, parent?: symbolic): symbolic {
+		return visit(this, () => mulFactors(this.num, ...this.factors.map((f) => factor(f.item.visit(visitor, this), f.pow))), visitor, parent);
 	}
-	expand(options?: ExpandOptions): symbolic {
-		const factors = this.factors.map(f => factor(f.item.expand(options), f.pow));
+	expand(opts?: ExpandOptions): symbolic {
+		let factors = this.factors;
+		if (opts?.depth ?? 2 > 1) {
+			const opts2	= opts?.depth ? { ...opts, depth: opts.depth - 1 } : opts;
+			factors		= factors.map(f => factor(f.item.expand(opts2), f.pow));
+		}
+
 		const additive: symbolicAdd[] = [];
 		const others: factor[] = [];
 
 		for (const f of factors) {
-			if (f.item instanceof symbolicAdd && f.pow > 0 && Number.isInteger(f.pow)) {
+			if (f.item instanceof symbolicAdd && f.pow > 0 && (!opts?.maxPow || f.pow < opts.maxPow) && Number.isInteger(f.pow)) {
 				for (let i = 0; i < f.pow; i++)
 					additive.push(f.item);
 			} else {
@@ -772,29 +944,29 @@ symbolic.set(zero.recip(), infinity);
 // functions
 //-----------------------------------------------------------------------------
 
+class unaryFunctionBase extends symbolic {
+	constructor(id: string, public arg: symbolic) { super(id); }
+	create(i: symbolic)						{ return (this.constructor as any).create(i); }
+	expand(opts?: ExpandOptions): symbolic	{ return this.create(this.arg.expand(opts)); }
+};
+
 function unaryFunction(name: string,
 	evaluate: (arg: number) => number,
 	derivative: (arg: symbolic) => symbolic,
 	toString = (a: symbolic, opts: StringifyOptions) => `${name}(${a.toString(opts)})`
 ) {
-	const C = class extends symbolic {
-		static create(i: symbolic)	{ return this.interner.intern(`${name}:${i.id}`, id => new C(id, i)); }
-		create(i: symbolic)			{ return (this.constructor as any).create(i); }
-
-		constructor(id: string, public arg: symbolic) {
-			super(id);
+	const C = class extends unaryFunctionBase {
+		static create(i: symbolic)	{
+			return this.interner.intern(`${name}:${i.id}`, id => new C(id, i));
 		}
-		match(node: symbolic, prematch: Prematch, bindings: Bindings): Bindings | null {
-			return node instanceof C && this.arg.match(node.arg, prematch, bindings) ? bindings : null;
+		match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
+			return node instanceof C && this.arg.match(node.arg, bindings, opts) ? bindings : null;
 		}
-		visit(apply: Visitor): symbolic {
-			return apply(this.create(this.arg.visit(apply)));
+		visit(visitor: Visitor, parent?: symbolic): symbolic {
+			return visit(this, () => this.create(this.arg.visit(visitor, this)), visitor, parent);
 		}
 		substitute(map: Bindings) : symbolic {
 			return this.create(this.arg.substitute(map));
-		}
-		expand(options?: ExpandOptions): symbolic {
-			return this.create(this.arg.expand(options));
 		}
 		derivative(v: string): symbolic { return derivative(this.arg).mul(this.arg.derivative(v)); }
 		evaluate(env?: Record<string, number>): number { return evaluate(this.arg.evaluate(env)); }
@@ -805,31 +977,29 @@ function unaryFunction(name: string,
 	return C;
 }
 
+class binaryFunctionBase extends symbolic {
+	constructor(id: string, public arg1: symbolic, public arg2: symbolic) { super(id); }
+	create(i: symbolic, j: symbolic)		{ return (this.constructor as any).create(i, j); }
+	expand(opts?: ExpandOptions): symbolic	{ return this.create(this.arg1.expand(opts), this.arg2.expand(opts)); }
+};
+
 function binaryFunction(name: string,
 	evaluate: (a: number, b: number) => number,
 	derivative: (a: symbolic, b: symbolic) => [symbolic, symbolic],
 	toString = (a: symbolic, b: symbolic, opts: StringifyOptions) => `${name}(${a.toString(opts)}, ${b.toString(opts)})`
 ) {
-	const C = class extends symbolic {
+	const C = class extends binaryFunctionBase {
 		static create(i: symbolic, j: symbolic)	{
 			return this.interner.intern(`${name}:${i.id}:${j.id}`, id => new C(id, i, j));
 		}
-		create(i: symbolic, j: symbolic)		{ return (this.constructor as any).create(i, j); }
-
-		constructor(id: string, public arg1: symbolic, public arg2: symbolic) {
-			super(id);
+		match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
+			return node instanceof C && this.arg1.match(node.arg1, bindings, opts) && this.arg2.match(node.arg2, bindings, opts) ? bindings : null;
 		}
-		match(node: symbolic, prematch: Prematch, bindings: Bindings): Bindings | null {
-			return node instanceof C && this.arg1.match(node.arg1, prematch, bindings) && this.arg2.match(node.arg2, prematch, bindings) ? bindings : null;
-		}
-		visit(apply: Visitor): symbolic {
-			return apply(this.create(this.arg1.visit(apply), this.arg2.visit(apply)));
+		visit(visitor: Visitor, parent?: symbolic): symbolic {
+			return visit(this, () => this.create(this.arg1.visit(visitor, this), this.arg2.visit(visitor, this)), visitor, parent);
 		}
 		substitute(map: Bindings) : symbolic {
 			return this.create(this.arg1.substitute(map), this.arg2.substitute(map));
-		}
-		expand(options?: ExpandOptions): symbolic {
-			return this.create(this.arg1.expand(options), this.arg2.expand(options));
 		}
 		derivative(v: string): symbolic {
 			const [d1, d2] = derivative(this.arg1, this.arg2);
@@ -917,11 +1087,21 @@ symbolic.set(symbolic.atanh(zero), zero);
 // transformation rules
 //-----------------------------------------------------------------------------
 
-function Rule(name: string, pattern: symbolic, replace: (bs: Bindings) => symbolic, guard?: (bs: Bindings) => boolean): Rule {
+function replaceRest(bs: Bindings, node: symbolic): symbolic {
+	const addrest = bs['_addrest'];
+	if (addrest)
+		node = node.add(addrest);
+	const mulrest = bs['_mulrest'];
+	if (mulrest)
+		node = node.mul(mulrest);
+	return node;
+}
+
+function PatternRule(name: string, pattern: symbolic, replace: (bs: Bindings) => symbolic, guard?: (bs: Bindings) => boolean): Rule {
 	return {
 		name,
-		match: (node, compare) => pattern.match(node, compare, {}),
-		replace,
+		match: node => pattern.match(node, {}),
+		replace: bs => replaceRest(bs, replace(bs)),
 		guard,
 	};
 }
@@ -930,81 +1110,173 @@ function bind(name: string) {
 	return symbolicMatcher.create(name);
 }
 
+export const generalRules: Rule[] = [
+	{
+		name: 'mul-distribute',
+		match(node: symbolic) {
+			const result = node.expand({ depth: 1, maxPow: 4 });
+			if (result !== node)
+				return { result };
+			return null;
+		},
+		replace(bs: Bindings): symbolic {
+			return bs.result;
+		}
+	},
+	{
+		name: 'collect-like-terms',
+		match(node: symbolic) {
+			const result = node.factor();
+			if (result !== node)
+				return { result };
+			return null;
+		},
+		replace(bs: Bindings) {
+			return bs.result;
+		}
+	},
+	PatternRule('factor-common',
+		// pattern: A*B + A*C  ->  A * (B + C)
+		bind('A').mul(bind('B')).add(bind('A').mul(bind('C'))),
+		bs => bs.A.mul(bs.B.add(bs.C))
+	),
+];
+
 export const trigRules: Rule[] = [
-	Rule('sin-sum',
+	PatternRule('sin-sum',
 		symbolic.sin(bind('A').add(bind('B'))),
 		bs => symbolic.sin(bs.A).mul(symbolic.cos(bs.B)).add(symbolic.cos(bs.A).mul(symbolic.sin(bs.B)))
 	),
-	Rule('sin-diff',
+	PatternRule('sin-diff',
 		symbolic.sin(bind('A').sub(bind('B'))),
 		bs => symbolic.sin(bs.A).mul(symbolic.cos(bs.B)).sub(symbolic.cos(bs.A).mul(symbolic.sin(bs.B)))
 	),
-	Rule('sin-half-angle',
+	PatternRule('sin-half-angle',
 		symbolic.sin(bind('A').scale(0.5)),
 		bs => symbolic.sqrt(one.sub(symbolic.cos(bs.A)).scale(0.5))
 	),
 
-	Rule('cos-sum',
+	PatternRule('cos-sum',
 		symbolic.cos(bind('A').add(bind('B'))),
 		bs => symbolic.cos(bs.A).mul(symbolic.cos(bs.B)).sub(symbolic.sin(bs.A).mul(symbolic.sin(bs.B)))
 	),
-	Rule('cos-diff',
+	PatternRule('cos-diff',
 		symbolic.cos(bind('A').sub(bind('B'))),
 		bs => symbolic.cos(bs.A).mul(symbolic.cos(bs.B)).add(symbolic.sin(bs.A).mul(symbolic.sin(bs.B)))
 	),
-	Rule('cos-half-angle',
+	PatternRule('cos-half-angle',
 		symbolic.cos(bind('A').scale(0.5)),
 		bs => symbolic.sqrt(one.add(symbolic.cos(bs.A)).scale(0.5))
 	),
 
-	Rule('tan-sum',
+	PatternRule('tan-sum',
 		symbolic.tan(bind('A').add(bind('B'))),
 		bs => symbolic.tan(bs.A).add(symbolic.tan(bs.B)).div(one.sub(symbolic.tan(bs.A).mul(symbolic.tan(bs.B))))
 	),
-	Rule('tan-diff',
+	PatternRule('tan-diff',
 		symbolic.tan(bind('A').sub(bind('B'))),
 		bs => symbolic.tan(bs.A).sub(symbolic.tan(bs.B)).div(one.add(symbolic.tan(bs.A).mul(symbolic.tan(bs.B))))
 	),
-	Rule('tan-half-angle',
+	PatternRule('tan-half-angle',
 		symbolic.tan(bind('A').scale(0.5)),
 		bs => symbolic.sin(bs.A).scale(0.5).div(symbolic.cos(bs.A).scale(0.5))
 	),
 
+	PatternRule('sin-cos-pythag',
+		symbolic.sin(bind('A')).pow(2).add(symbolic.cos(bind('A')).pow(2)),
+		_ => one
+	),
+	PatternRule('tan-secant-pythag',
+		symbolic.tan(bind('A')).pow(2).add(one),
+		bs => symbolic.cos(bs.A).pow(-2)
+	),
+	PatternRule('cot-cosecant-pythag',
+		one.add(symbolic.tan(bind('A')).pow(-2)),
+		bs => symbolic.sin(bs.A).pow(-2)
+	),
+	/*
+	PatternRule('sin-cos-product',
+		symbolic.sin(bind('A')).mul(symbolic.cos(bind('B'))),
+		bs => symbolic.sin(bs.A.add(bs.B)).mul(symbolic.cos(bs.A.sub(bs.B))).scale(0.5)
+	),
+	*/
+
+	// double-angle compression: sin(x) * cos(x) -> 1/2 * sin(2x)
+	PatternRule('double-angle-sin-compress',
+		symbolic.sin(bind('X')).mul(symbolic.cos(bind('X'))),
+		bs => symbolic.sin(bs.X.scale(2)).scale(0.5)
+	),
 ];
 
 export const invTrigRules: Rule[] = [
-	Rule('sin-sum',
+	PatternRule('sin-sum',
 		symbolic.sin(bind('A')).mul(symbolic.cos(bind('B'))).add(symbolic.cos(bind('A')).mul(symbolic.sin(bind('B')))),
 		bs => symbolic.sin(bs.A.add(bs.B)),
 	),
+	/*
+	PatternRule( 'sin-cos-product',
+		symbolic.sin(bind('A').add(bind('B'))).mul(symbolic.cos(bind('A').sub(bind('B')))),
+		bs => symbolic.sin(bs.A).mul(symbolic.cos(bs.B))
+	),
+	*/
+
+	// double-angle expansion: sin(2x) -> 2 * sin(x) * cos(x)
+	PatternRule('double-angle-sin-expand',
+		symbolic.sin(bind('X').scale(2)),
+		bs => symbolic.from(2).mul(symbolic.sin(bs.X).mul(symbolic.cos(bs.X)))
+	),
 ];
+
+export function scoreFactory(depthPenalty = 0.2, mulW = 0.5, addW = 1, constW = 0.1) {
+    return (n: symbolic) => {
+        let total = 0;
+		let depth = 1;
+
+        n.visit({
+            pre: (x: symbolic) => {
+                ++depth;
+                return x;
+            },
+            post: (x: symbolic) => {
+                --depth;
+                const w = x.is('mul') ? (x.factors.length - 1) * mulW
+                		: x.is('add') ? (x.terms.length - 1) * addW
+                		: x.is('const') ? constW
+                		: 0.5;
+                total += w * (1 + depthPenalty * depth);
+                return x;
+            }
+        });
+
+        return total;
+    };
+}
 
 export function applyRules(node: symbolic, rules: Rule[]): symbolic {
 	const cache		= new Map<string, symbolic>();
 
-	const prematch: Prematch = (a, b, bindings) => a === b ? bindings : null;
+	const visitor = {
+		post: (node: symbolic) => {
+			const cached = cache.get(node.id);
+			if (cached)
+				return cached;
 
-	const apply = (node: symbolic) => {
-		const cached = cache.get(node.id);
-		if (cached)
-			return cached;
-
-		for (const r of rules) {
-			const bs = r.match(node, prematch);
-			if (bs && (!r.guard || r.guard(bs))) {
-				const replaced		= r.replace(bs);
-				const simplified	= replaced.visit(apply);
-				cache.set(node.id, simplified);
-				return simplified;
+			for (const r of rules) {
+				const bs = r.match(node);
+				if (bs && (!r.guard || r.guard(bs))) {
+					const replaced		= r.replace(bs);
+					const simplified	= replaced.visit(visitor);
+					cache.set(node.id, simplified);
+					return simplified;
+				}
 			}
+			cache.set(node.id, node);
+			return node;
 		}
-		cache.set(node.id, node);
-		return node;
 	};
 
-	return node.visit(apply);
+	return node.visit(visitor);
 }
-
 
 class SymbolicOperators extends OperatorsBase<symbolic> {
 	from(n: number): symbolic		{ return symbolic.from(n); }
@@ -1024,3 +1296,28 @@ class SymbolicOperators extends OperatorsBase<symbolic> {
 	}
 };
 export const symbolicOperators = new SymbolicOperators();
+
+const types = {
+	const:	symbolicConstant,
+	var:	symbolicVariable,
+	add:	symbolicAdd,
+	mul: 	symbolicMul,
+	unary:	unaryFunctionBase,
+	binary:	binaryFunctionBase,
+	sin: 	symbolicSin,
+	cos: 	symbolicCos,
+	tan: 	symbolicTan,
+	asin: 	symbolicAsin,
+	acos: 	symbolicAcos,
+	atan: 	symbolicAtan,
+	atan2: 	symbolicAtan2,
+	exp: 	symbolicExp,
+	log: 	symbolicLog,
+	sinh: 	symbolicSinh,
+	cosh: 	symbolicCosh,
+	tanh: 	symbolicTanh,
+	asinh: 	symbolicAsinh,
+	acosh: 	symbolicAcosh,
+	atanh: 	symbolicAtanh,
+	pow: 	symbolicPow
+} as const;

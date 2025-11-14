@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import {ops} from './core';
+import {compareT, maxT, minT, ops, scalar, scalar2} from './core';
 import complex from './complex';
 import { polynomial, polynomialN } from './polynomial';
 
@@ -98,21 +98,21 @@ function make_swizzles4<T, T2, T3, T4>(fields: readonly string[], make2: (x: T, 
 // vector operations
 //-----------------------------------------------------------------------------
 
-export interface vops<C extends vops<C>> extends ops<C> {
-	create(...args: number[]): C;
+export interface vops<C extends vops<C, T>, T = number> extends ops<C> {
+	create(...args: T[]): C;
 
 	dup():				C;
 	abs():				C;
 	min(b: C):			C;
 	max(b: C):			C;
 	eq(b: C):			boolean;
-	dot(b: C):			number;
+	dot(b: C):			T;
 	perp():				C;
 
-	lensq(): 				number;
-	len(): 					number;
-	mag(): 					number;
-	selfScale(b: number): 	void;
+	lensq(): 				T;
+	len(): 					T;
+	mag(): 					number | scalar2<any>;
+	selfScale(b: T): 		void;
 	selfMul(b: C): 			void;
 	selfAdd(b: C): 			void;
 	selfSub(b: C): 			void;
@@ -171,10 +171,10 @@ export class vecImp<E extends string> implements vops<vector<E>> {
 	toString() 				{ return '('+this.values().join(', ')+')'; }
 	[Symbol.for("debug.description")]() { return this.toString(); }
 }
+
 export function vecClass<E extends string, S>() {
 	return vecImp as unknown as new (v: vec<number, E>) => S;
 }
-
 
 export class floatN extends Array<number> implements vops<floatN> {
 	constructor(...args: number[]) {
@@ -262,6 +262,66 @@ function QR(cols: floatN[]) {
 		return floatN.fromArray(Rj);
 	});
 	return { Q, R };
+}
+
+//-----------------------------------------------------------------------------
+// general vector type over T
+//-----------------------------------------------------------------------------
+
+export type vectorT<T extends scalar2<T>, E extends string> = vops<vectorT<T, E>, T> & vec<T, E>;
+export function vectorT<T extends scalar2<T>, E extends string>(e: readonly E[], ...v: T[]) {
+	return (new vecImpT<T, E>(vec(e, ...v))) as vectorT<T, E>;
+}
+
+export class vecImpT<T extends scalar2<T>, E extends string> implements vops<vectorT<T, E>, T> {
+	constructor(v: vec<T, E>) {
+		Object.assign(this, v);
+	}
+	private keys()		{ return Object.keys(this) as E[]; }
+	private values()	{ return Object.values(this) as T[]; }
+	private entries()	{ return Object.entries(this) as [E, T][]; }
+	private asVec()		{ return this as vec<T, E>; }
+
+	create(...args: T[]): vectorT<T, E> {
+		const ctor = this.constructor as new (v: vec<T, E>) => vectorT<T, E>;
+  		return new ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, args[i]])) as vec<T, E>);
+	}
+
+	dup() 					{ return this.create(...this.values()); }
+	neg() 					{ return this.create(...this.values().map(x => x.neg())); }
+	abs() 					{ return this.create(...this.values().map(x => x.abs())); }
+	scale(b: number) 		{ return this.create(...this.values().map(x => x.scale(b))); }
+	mul(b: vectorT<T, E>) 	{ return this.create(...this.entries().map(([k, v]) => v.mul(b[k]))); }
+	div(b: vectorT<T, E>) 	{ return this.create(...this.entries().map(([k, v]) => v.div(b[k]))); }
+	add(b: vectorT<T, E>) 	{ return this.create(...this.entries().map(([k, v]) => v.add(b[k]))); }
+	sub(b: vectorT<T, E>) 	{ return this.create(...this.entries().map(([k, v]) => v.sub(b[k]))); }
+	min(b: vectorT<T, E>) 	{ return this.create(...this.entries().map(([k, v]) => minT(v, b[k]))); }
+	max(b: vectorT<T, E>) 	{ return this.create(...this.entries().map(([k, v]) => maxT(v, b[k]))); }
+	eq(b: vectorT<T, E>) 	{ return this.entries().every(([k, v]) => compareT(v, b[k]) === 0); }
+	dot(b: vectorT<T, E>) 	{ return this.entries().reduce((acc, [k, v]) => acc.add(v.mul(b[k])), this.values()[0].from(0)); }
+	perp() 					{
+		const comps = this.values();
+		const i = comps.reduce((minI, c, k) => c.abs().lt(comps[minI].abs()) ? k : minI, 0);
+		const x = comps[i].div(this.lensq());
+		const zero = x.from(0), one = x.from(1);
+		return this.create(...comps.map((c, j) => (j === i ? one : zero).sub(x.mul(c))));
+	}
+
+	lensq() 					{ return this.dot(this as vectorT<T, E>); }
+	len() 						{ return this.lensq().sqrt(); }
+	mag()						{ return this.len().mag(); }
+	selfScale(b: T) 			{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].mul(b); }
+	selfMul(b: vectorT<T, E>) 	{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].mul(b[k]); }
+	selfAdd(b: vectorT<T, E>) 	{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].add(b[k]); }
+	selfSub(b: vectorT<T, E>) 	{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].sub(b[k]); }
+	clamp(min: vectorT<T, E>, max: vectorT<T, E>) 	{ return this.max(min).min(max); }
+
+	toString() 				{ return '('+this.values().join(', ')+')'; }
+	[Symbol.for("debug.description")]() { return this.toString(); }
+}
+
+export function vecClassT<T extends scalar2<T>, E extends string, S>() {
+	return vecImpT<T, E> as unknown as new (v: vec<T, E>) => S;
 }
 
 //-----------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import { parseNumber, outputNumber, toSuperscript, parse } from '../dist/string'
 import { symbolic, symbolicOperators, applyRules, trigRules, invTrigRules, generalRules, scoreFactory } from '../dist/symbolic';
 import { applyRulesEgraph } from '../dist/egraph';
 import { polynomialT } from '../dist/polynomial';
+import { E2, vectorT } from '../dist/vector';
 import * as big from '../../big/dist/index';
 
 class BigOperators extends OperatorsBase<big.float> {
@@ -136,14 +137,12 @@ test('symbolic transforms', () => {
 
 	// Apply egraph with available rules (symbolic exposes a list of rules)
 	const rules = trigRules.concat(invTrigRules).concat(generalRules);
-	const out = applyRulesEgraph(expr, rules, {rounds: 100, verbose: true, debugNode: 'replace'});
+	const out = applyRulesEgraph(expr, rules);//, {rounds: 100, verbose: true, debugNode: 'replace'});
 
-	// Verify extractor preserves equivalence with the original expression
-	if (!approxEqualEval(out, expr, ['a', 'b'])) {
-		console.log('Original  :', String(expr));
-		console.log('Extracted :', String(out));
+	console.log('Original  :', String(expr));
+	console.log('Extracted :', String(out));
+	if (!approxEqualEval(out, expr, ['a', 'b']))
 		throw new Error('egraph extraction is not equivalent to original expression');
-	}
 
 	const x = symbolic.variable("x");
 	const y = symbolic.variable("y");
@@ -337,4 +336,11 @@ test('egraph ambitious factorisations (scoreFactory params)', () => {
 });
 
 
+test('vector perp()', () => {
+	const x = symbolic.variable('x');
+	const y = symbolic.variable('y');
 
+	const v = vectorT(E2, x, y);
+	const d = v.dot(v);
+	console.log('v.dot(v) =', d.toString());
+});

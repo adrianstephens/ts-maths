@@ -6,7 +6,7 @@
 		"moduleResolution": "bundler",
 		"outDir": "./esm",
 		"lib": [
-			"ES2022",
+			"esnext",
 			"DOM"
 		]
 	},

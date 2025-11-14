@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import { ops, Operators, compare, isAlmostInteger, OperatorsBase } from './core';
+import { ops, scalar2, Operators, compare, isAlmostInteger, OperatorsBase } from './core';
 import { toSuperscript } from './string';
 
 // invariants:
@@ -109,7 +109,7 @@ function printPower(n: number, opts?: StringifyOptions) {
 
 type param = number|symbolic;
 
-export class symbolic implements ops<symbolic> {
+export class symbolic implements scalar2<symbolic> {
 	static interner = new Interner<symbolic>();
 
 	static from(i: number)			{ return Number.isFinite(i) ? symbolicConstant.create(i) : i === Infinity ? infinity : i === -Infinity ? infinity.neg() : nan; }
@@ -121,6 +121,15 @@ export class symbolic implements ops<symbolic> {
 	static get pi()					{ return pi; }
 	static get infinity()			{ return infinity; }
 	static get nan()				{ return nan; }
+
+	static sign(i: param)			{ return symbolicSign.create(asSymbolic(i)); }
+	static frac(i: param)			{ return symbolicFrac.create(asSymbolic(i)); }
+	static floor(i: param)			{ return symbolicFloor.create(asSymbolic(i)); }
+	static ceil(i: param)			{ return symbolicCeil.create(asSymbolic(i)); }
+	static trunc(i: param)			{ return symbolicTrunc.create(asSymbolic(i)); }
+	static round(i: param)			{ return symbolicRound.create(asSymbolic(i)); }
+	static min(a: param, b: param)	{ return symbolicMin.create(asSymbolic(a), asSymbolic(b)); }
+	static max(a: param, b: param)	{ return symbolicMax.create(asSymbolic(a), asSymbolic(b)); }
 
 	static sin(i: param)			{ return symbolicSin.create(asSymbolic(i)); }
 	static cos(i: param)			{ return symbolicCos.create(asSymbolic(i)); }
@@ -153,13 +162,28 @@ export class symbolic implements ops<symbolic> {
 		return this instanceof types[type];
 	}
 
-	neg():		symbolic		{ return symbolicAdd.create([term(this, -1)]); }
-	recip():	symbolic		{ return symbolicMul.create([factor(this, -1)]); }
+	from(n: number | bigint) { return symbolic.from(Number(n)); }
+	dup():		symbolic	{ return this; }
+
+	sign(): number {
+		const v = this.evaluate();
+		return Math.sign(v);
+	}
+	divmod(_b: symbolic): number | bigint {
+		throw new Error("Method not implemented.");
+	}
+	lt(): boolean {
+		throw new Error("Method not implemented.");
+	}
+
+	sqrt():		symbolic	{ return this.pow(1 / 2); }
+	abs():		symbolic	{ return symbolicAbs.create(this); }
+	neg():		symbolic	{ return symbolicAdd.create([term(this, -1)]); }
+	recip():	symbolic	{ return symbolicMul.create([factor(this, -1)]); }
 
 	npow(b: number): symbolic {
 		return b === 1 ? this : b === 0 ? one : symbolicMul.create([factor(this, b)]);
 	}
-
 
 	pow(b: param): symbolic {
 		return typeof b === 'number' ? this.npow(b)
@@ -169,7 +193,6 @@ export class symbolic implements ops<symbolic> {
 
 	scale(b: number): symbolic	{
 		return (b === 0 ? zero : b === 1 ? this : symbolicMul.create([factor(this)], b));
-		//return (b === 0 ? zero : b === 1 ? this : symbolicAdd.create([term(this, b)]));
 	}
 	add(b: param): symbolic	{
 		return typeof b === 'number' ? (b === 0 ? this : addTerms(b, term(this, 1)))
@@ -196,6 +219,7 @@ export class symbolic implements ops<symbolic> {
 			: b instanceof symbolicMul ? mulFactors(b.num, ...b.factors.map(i => factor(i.item, -i.pow)), factor(this))
 			: mulFactors(1, factor(this), factor(b.recip()));
 	}
+	mod(b: param): symbolic		{ return symbolicMod.create(this, asSymbolic(b)); }
 	mag(): number				{ const v = this.evaluate(); return Number.isFinite(v) ? Math.abs(v) : NaN; }
 	eq(b: symbolic) : boolean	{ return this === b;}
 
@@ -209,10 +233,12 @@ export class symbolic implements ops<symbolic> {
 		return this === node ? bindings : null;
 	}
 
-	evaluate(_env?: Record<string, number>) :	number		{ return NaN; }
+	evaluate(_env?: Record<string, number>) :	number			{ return NaN; }
 	evaluateT<T>(_ops: Operators<T>, _env?: Record<string, T>) 	:	T|undefined	{ return undefined; }
-	derivative(_v: string):						symbolic	{ return zero;}
-	toString(_opts?: StringifyOptions):			string		{ return this.id; }
+	derivative(_v: string):						symbolic		{ return zero;}
+	toString(_opts?: StringifyOptions):			string			{ return this.id; }
+	valueOf():									number | bigint { return this.evaluate(); }
+	[Symbol.for("debug.description")]():		string			{ return this.toString(); }
 }
 
 //-----------------------------------------------------------------------------
@@ -357,69 +383,15 @@ export function addTerms(num: number, ...a: readonly Readonly<term>[]): symbolic
 
 	return symbolicAdd.create(nonzero, num);
 }
-/*
-function commonFactors(terms: readonly Readonly<term>[]): readonly term[] {
-	interface factorInfo {
-		item:	symbolic;
-		count:	number;
-		minpow: number;
-		maxpow: number;
-	}
-	const factors: Record<string, factorInfo> = {};
 
-	for (const m of terms) {
-		if (m.item instanceof symbolicMul) {
-			for (const i of m.item.factors) {
-				const info = factors[i.item.id] ??= { item: i.item, count: 0, minpow: i.pow, maxpow: i.pow };
-				++info.count;
-				info.minpow = Math.min(info.minpow, i.pow);
-				info.maxpow = Math.max(info.maxpow, i.pow);
-			}
-		}
-	}
-
-	const factors2 = Object.values(factors).filter(i => i.count > 1).sort((a, b) => a.count - b.count);
-
-	if (factors2.length == 0)
-		return terms;
-
-	const	factored: term[] = [];
-	let		from = terms;
-	for (const f of factors2) {
-		if (from.length === 0)
-			break;
-		const terms1: term[] = [];
-		const terms2: term[] = [];
-		
-		for (const i of from) {
-			if (i.item instanceof symbolicMul && i.item.factors.find(j => j.item === f.item)) {
-				const factors = i.item.factors.map(j => j.item === f.item ? factor(j.item, j.pow - f.minpow) : j).filter(i => i.pow !== 0);
-				terms2.push(term(mulFactors(i.item.num, ...factors), i.coef));
-			} else {
-				terms1.push(i);
-			}
-		}
-		if (terms2.length)
-			factored.push(term(addTerms(0, ...terms2).mul(f.item.pow(f.minpow))));
-		from = terms1;
-	}
-	return [...factored, ...from];
-}
-*/
-
-interface factorInfo { item: symbolic; minpow: number; terms: Set<term>; }
-function factorAsSymbolic(f: factorInfo): symbolic {
-	return f.item.pow(f.minpow);
-}
-
+// collect factor counts and min powers across terms
 function getFactors(terms: readonly Readonly<term>[]) {
-	// collect factor counts and min powers across terms
-	const factors: Record<string, factorInfo> = {};
+	const factors: Record<string, factor & { terms: Set<term> }> = {};
 
 	function addFactor(item: symbolic, pow: number, t: term) {
-		const info = factors[item.id] ??= { item: item, minpow: pow, terms: new Set<term>() };
+		const info = factors[item.id] ??= { item: item, pow: pow, terms: new Set<term>() };
 		info.terms.add(t);
-		info.minpow = Math.min(info.minpow, pow);
+		info.pow = Math.min(info.pow, pow);
 	}
 	for (const t of terms) {
 		if (t.item instanceof symbolicMul) {
@@ -432,122 +404,84 @@ function getFactors(terms: readonly Readonly<term>[]) {
 	return Object.values(factors);
 }
 
+// scoring: prefer candidates that cover more terms and that simplify their inner sum under trig rules
 function commonFactors(terms: readonly Readonly<term>[]): readonly term[] {
-	const factors		= getFactors(terms);
-	const candidates	= factors.filter(i => i.terms.size > 1);
-	const pairs: {factor0: factorInfo, factor1: factorInfo, terms: Set<term>}[] = [];
+	const factors = getFactors(terms);
+	const singles = factors.filter(i => i.terms.size > 1);
+	const pairs: {a: factor, b: factor, terms: Set<term>}[] = [];
 
-	for (const factor0 of candidates) {
-		for (const factor1 of candidates) {
-			if (factor0 === factor1)
+	for (const a of singles) {
+		for (const b of singles) {
+			if (a === b)
 				break;
-			const terms = factor0.terms.intersection(factor1.terms);
-			if (terms.size > 1) {
-				if (terms.size === factor0.terms.size || terms.size === factor1.terms.size) {
-					factor0.terms.clear();
-					factor1.terms.clear();
-				}
-				pairs.push({factor0, factor1, terms});
-			}
+			const terms = a.terms.intersection(b.terms);
+			if (terms.size > 1)
+				pairs.push({a, b, terms});
 		}
 	}
 
-	candidates.sort((a, b) => b.terms.size - a.terms.size);
-	pairs.sort((a, b) => b.terms.size - a.terms.size);
-
-	const	factored: term[] = [];
-	let 	remaining = new Set<term>(terms);
-
-	for (const f of pairs) {
-		if (remaining.size < 2)
-			break;
-		
-		const todo = f.terms.intersection(remaining);
-		if (todo.size < 2)
-			continue;
-
-		remaining = remaining.difference(f.terms);
-
-		const terms2 = Array.from(todo).map(t => {
-			if (t.item instanceof symbolicMul) {//must be
-				const newFactors = t.item.factors.map(ff => 
-					ff.item === f.factor0.item  ? factor(ff.item, ff.pow - f.factor0.minpow)
-				:	ff.item === f.factor1.item	? factor(ff.item, ff.pow - f.factor1.minpow)
-				:	ff
-				);
-				return term(mulFactors(t.item.num, ...newFactors), t.coef);
-			}
-			return t;
-		});
-
-		factored.push(term(addTerms(0, ...terms2).mul(factorAsSymbolic(f.factor0).mul(factorAsSymbolic(f.factor1)))));
+	const scorer = scoreFactory();
+	const scoreCandidate = (terms: Set<term>, inner: symbolic) => terms.size * 10 - scorer(inner);
+	
+	function reducedSingle(t: term, f: factor) {
+		if (t.item instanceof symbolicMul) {
+			const newFactors = t.item.factors.map(ff => ff.item === f.item ? factor(ff.item, ff.pow - f.pow) : ff).filter(ff => ff.pow !== 0);
+			return term(mulFactors(t.item.num, ...newFactors), t.coef);
+		}
+		return t.item === f.item ? term(one, t.coef) : t;
 	}
 
-	for (const f of candidates) {
-		if (remaining.size < 2)
-			break;
-		
-		const todo = f.terms.intersection(remaining);
-		if (todo.size < 2)
-			continue;
+	function reducedPair(t: term, a: factor, b: factor) {
+		if (t.item instanceof symbolicMul) {
+			const newFactors = t.item.factors.map(f =>
+				f.item === a.item ? factor(f.item, f.pow - a.pow)
+			:   f.item === b.item ? factor(f.item, f.pow - b.pow)
+			:   f
+			).filter(ff => ff.pow !== 0);
+			return term(mulFactors(t.item.num, ...newFactors), t.coef);
+		}
+		return t;
+	}
 
-		remaining = remaining.difference(f.terms);
+	const factored: term[] = [];
+	let remaining = new Set<term>(terms);
 
-		const terms2 = Array.from(todo).map(t => {
-			if (t.item instanceof symbolicMul) {
-				const newFactors = t.item.factors.map(ff => 
-					ff.item === f.item  ? factor(ff.item, ff.pow - f.minpow)
-				:	ff
-				);
-				return term(mulFactors(t.item.num, ...newFactors), t.coef);
+	while (remaining.size >= 2) {
+		// find best candidate
+		type Candidate = { mul: symbolic; todo: Set<term>; inner: symbolic; score: number };
+
+		let best: Candidate | undefined;
+
+		// singles
+		for (const f of singles) {
+			const todo = f.terms.intersection(remaining);
+			if (todo.size > 1)  {
+				const inner = addTerms(0, ...Array.from(todo).map(t => reducedSingle(t, f)));
+				const score = scoreCandidate(todo, inner);
+				if (!best || score > best.score)
+					best = { mul: factorAsSymbolic(f), todo, inner, score };
 			}
-			return t.item === f.item ? term(one, t.coef) : t;
-		});
+		}
 
-		factored.push(term(addTerms(0, ...terms2).mul(factorAsSymbolic(f))));
+		// pairs
+		for (const p of pairs) {
+			const todo = p.terms.intersection(remaining);
+			if (todo.size > 1)  {
+				const inner = addTerms(0, ...Array.from(todo).map(t => reducedPair(t, p.a, p.b)));
+				const score = scoreCandidate(todo, inner);
+				if (!best || score > best.score)
+					best = { mul: factorAsSymbolic(p.a).mul(factorAsSymbolic(p.b)), todo, inner, score };
+			}
+		}
+
+		if (!best)
+			break;
+
+		factored.push(term(best.inner.mul(best.mul)));
+		remaining = remaining.difference(best.todo);
 	}
 
 	return [...factored, ...remaining];
-/*
-// recursive factoring
-	function subfactor(remaining: term[], index: number): term[] {
-		if (remaining.length < 2)
-			return remaining;
-
-		const c = candidates[index];
-		if (!c)
-			return remaining;
-
-		const have: term[] = [];
-		const dont: term[] = [];
-
-		for (const t of remaining) {
-			if (t.item instanceof symbolicMul) {
-				const f = t.item.factors.find(ff => ff.item === c.item);
-				if (f) {
-					const newFactors = t.item.factors.map(ff => ff.item === c.item ? factor(ff.item, ff.pow - c.minpow) : factor(ff.item, ff.pow)).filter(ff => ff.pow !== 0);
-					have.push(term(mulFactors(t.item.num, ...newFactors), t.coef));
-					continue;
-				}
-			} else if (t.item === c.item) {
-				have.push(term(mulFactors(1), t.coef));
-				continue;
-			}
-			dont.push(t);
-		}
-
-		const result = subfactor(dont, index + 1);
-
-		if (have.length) {
-			const terms = subfactor(have, index + 1);
-			result.push(term(addTerms(0, ...terms).mul(c.item.pow(c.minpow))));
-		}
-
-		return result;
-	}
-	return subfactor(terms.slice(), 0);
-	*/
-
 }
 
 class symbolicAdd extends symbolic {
@@ -563,13 +497,6 @@ class symbolicAdd extends symbolic {
 			return this.terms[0].item;
 		return symbolicAdd.create(this.terms.map(i => term(i.item, -i.coef)), -this.num);
 	}
-	/*
-	scale(b: number): symbolic {
-		return b === 0 ? zero : b === 1 ? this
-			//: this.terms.length === 1 ? symbolicAdd.create([term(this.terms[0].item, this.terms[0].coef * b)], this.num * b)
-			: mulFactors(b, factor(this));
-			//: symbolicAdd.create(this.terms.map(i => term(i.item, i.coef * b)), this.num * b);
-	}*/
 
 	add(b: param): symbolic	{
 		return  typeof b === 'number' ? symbolicAdd.create(this.terms, this.num + b)
@@ -681,11 +608,14 @@ class symbolicAdd extends symbolic {
 //-----------------------------------------------------------------------------
 
 interface factor {
-	item: symbolic;
-	pow: number;
+	item:	symbolic;
+	pow:	number;
 }
 function factor(item: symbolic, pow = 1): factor {
 	return { item, pow };
+}
+function factorAsSymbolic(f: factor): symbolic {
+	return f.item.pow(f.pow);
 }
 
 export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
@@ -974,6 +904,7 @@ function unaryFunction(name: string,
 
 		toString(opts: StringifyOptions): string { return toString(this.arg, {...opts, fromMul: false}); }
 	};
+
 	return C;
 }
 
@@ -1012,6 +943,55 @@ function binaryFunction(name: string,
 	};
 	return C;
 }
+
+// basic
+
+const symbolicAbs	= unaryFunction('abs', Math.abs, a => symbolicSign.create(a), a => `|${a}|`);
+const symbolicFloor	= unaryFunction('floor', Math.floor, _a => zero, a => `⌊${a}⌋`);
+const symbolicCeil	= unaryFunction('ceil', Math.ceil, _a => zero, a => `⌈${a}⌉`);
+const symbolicTrunc	= unaryFunction('trunc', Math.trunc, _a => zero);
+const symbolicRound	= unaryFunction('round', Math.round, _a => zero);
+
+const symbolicMod	= binaryFunction('mod', (a, b) => a % b, (a, b) => [one, symbolicFloor.create(a.div(b)).neg()], (a, b, opts) => `mod(${a.toString(opts)}, ${b.toString(opts)})`);
+const symbolicSign	= unaryFunction('sign', Math.sign, _a => zero);
+const symbolicFrac	= unaryFunction('frac', a => a - Math.floor(a), _a => one);
+
+// min/max implemented via abs to keep expressions smooth and composable:
+// min(a,b) = 0.5*(a + b - |a - b|)
+// max(a,b) = 0.5*(a + b + |a - b|)
+const symbolicMin = binaryFunction('min', (a, b) => Math.min(a, b), (a, b) => [
+	one.sub(symbolicSign.create(a.sub(b))).scale(0.5),
+	one.add(symbolicSign.create(a.sub(b))).scale(0.5)
+]);
+
+const symbolicMax = binaryFunction('max', (a, b) => Math.max(a, b), (a, b) => [
+	one.add(symbolicSign.create(a.sub(b))).scale(0.5),
+	one.sub(symbolicSign.create(a.sub(b))).scale(0.5)
+]);
+
+
+/*
+function defineProtoGetter<Ctor extends new (...args: any[]) => any, K extends string, R>(ctor: Ctor, key: K, getter: (this: InstanceType<Ctor>) => R) {
+	Object.defineProperty(ctor.prototype, key, {
+		configurable: false,
+		enumerable: false,
+		value: getter,
+	});
+	return ctor as unknown as Ctor & {[key in K]: typeof getter};
+}
+
+function defineStaticGetter<Ctor extends new (...args: any[]) => any, K extends string, V>(ctor: Ctor, key: K, value: V) {
+	Object.defineProperty(ctor, key, {
+		configurable: false,
+		enumerable: false,
+		value: value,
+	});
+	return ctor as unknown as Ctor & {[key in K]: V};
+}
+*/
+//export const symbolic2 = defineProtoGetter(symbolic, 'frac', function(this: symbolic) { return symbolicFrac.create(this); });
+//export let symbolic2 = defineStaticGetter(symbolic, 'frac', function(a: symbolic) { return symbolicFrac.create(a); });
+//symbolic2 = defineStaticGetter(symbolic, 'sign', function(a: symbolic) { return symbolicSign.create(a); });
 
 // trigonometric
 
@@ -1135,11 +1115,12 @@ export const generalRules: Rule[] = [
 			return bs.result;
 		}
 	},
+	/*
 	PatternRule('factor-common',
 		// pattern: A*B + A*C  ->  A * (B + C)
 		bind('A').mul(bind('B')).add(bind('A').mul(bind('C'))),
 		bs => bs.A.mul(bs.B.add(bs.C))
-	),
+	),*/
 ];
 
 export const trigRules: Rule[] = [

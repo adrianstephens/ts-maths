@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 
-import { scalar2, sincos } from "./core";
+import { scalarExt, sincos } from "./core";
 
 class _complex {
 	constructor(public r: number, public i: number) {}
@@ -19,7 +19,12 @@ class _complex {
 	add(b: complex): complex	{ return complex(this.r + b.r, this.i + b.i); }
 	sub(b: complex): complex	{ return complex(this.r - b.r, this.i - b.i); }
 	div(b: complex): complex	{ return this.mul(b.conj()).scale(1 / b.magSq()); }
-	
+
+	sqrt()	{
+		const m = this.abs();
+		return complex(Math.sqrt(0.5 * (m + this.r)), Math.sqrt(0.5 * (m - this.r)));
+	}
+
 	toString()	{ return `${this.r} ${this.i >= 0 ? '+' : '-'} ${Math.abs(this.i)}i`; }
 }
 
@@ -33,10 +38,7 @@ export const complex = Object.assign(
 	zero()				{ return complex(0, 0); },
 	fromPolar(r: number, t: number)	{ const {c, s} = sincos(t); return complex(c * r, s * r); },
 	sqrt(a: complex|number)	{
-		if (typeof a === 'number')
-			return a < 0 ? complex(0, Math.sqrt(-a)) : complex(Math.sqrt(a), 0);
-		const m = a.abs();
-		return complex(Math.sqrt(0.5 * (m + a.r)), Math.sqrt(0.5 * (m - a.r)));
+		return typeof a === 'number' ? (a < 0 ? complex(0, Math.sqrt(-a)) : complex(Math.sqrt(a), 0)) : a.sqrt();
 	},
 	ln(a: complex)		{ return complex(Math.log(a.abs()), a.arg()); },
 	exp(a: complex)		{ const {c, s} = sincos(a.i); const e = Math.exp(a.r); return complex(c * e, s * e); },
@@ -50,9 +52,10 @@ export const complex = Object.assign(
 	conjugatePair(c: complex) { return [c, c.conj()]; },
 });
 
-export class complexT<T extends scalar2<T>> {
+export class complexT<T extends scalarExt<T>> {
 	constructor(public r: T, public i: T) {}
-	static fromPolar<T extends scalar2<T>>(r: T, t: number)	{ const {c, s} = sincos(t); return new complexT(r.scale(c), r.scale(s)); }
+	static fromPolar<T extends scalarExt<T>>(r: T, t: number)		{ const {c, s} = sincos(t); return new complexT(r.scale(c), r.scale(s)); }
+	static conjugatePair<T extends scalarExt<T>>(c: complexT<T>	)	{ return [c, c.conj()]; }
 
 	dup() 		{ return new complexT(this.r.dup(), this.i.dup()); }
 	neg() 		{ return new complexT(this.r.neg(), this.i.neg()); }
@@ -68,6 +71,11 @@ export class complexT<T extends scalar2<T>> {
 	add(b: complexT<T>)	{ return new complexT(this.r.add(b.r), this.i.add(b.i)); }
 	sub(b: complexT<T>)	{ return new complexT(this.r.sub(b.r), this.i.sub(b.i)); }
 	div(b: complexT<T>) { return this.mul(b.conj()).rscale(b.magSq()); }
+
+	sqrt()	{
+		const m = this.abs();
+		return new complexT(m.add(this.r).scale(0.5).sqrt(), m.sub(this.r).scale(0.5).sqrt());
+	}
 
 	toString()	{ return `${this.r} ${this.i.sign() >= 0 ? '+' : '-'} ${this.i.abs()}i`; }
 	[Symbol.for("debug.description")]() { return `${this.r} + ${this.i} i`; }

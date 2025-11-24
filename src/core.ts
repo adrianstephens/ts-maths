@@ -1,15 +1,22 @@
 import { randomBytes } from 'crypto';
 
+export function isInstance<T>(x: any, i: new (...args: any[]) => T): x is T {
+	return x instanceof i;
+}
+
 export interface Operators<T> {
 	from(n: number): T;
 	func(name: string, args: T[]): T | undefined;
 	variable(name: string): T | undefined;
+	dup(a: T): T;
 	neg(a: T): T;
 	pow(a: T, b: T): T;
 	mul(a: T, b: T): T;
 	div(a: T, b: T): T;
 	add(a: T, b: T): T;
 	sub(a: T, b: T): T;
+	eq(a: T, b: T): boolean;
+	lt(a: T, b: T): boolean;
 }
 
 export abstract class OperatorsBase<T extends ops<T>> implements Operators<T> {
@@ -17,45 +24,57 @@ export abstract class OperatorsBase<T extends ops<T>> implements Operators<T> {
 	abstract func(name: string, args: T[]): T | undefined;
 	abstract variable(name: string): T | undefined;
 	abstract pow(a: T, b: T): T;
+	dup(a: T): T		{ return a.dup(); }
 	neg(a: T): T		{ return a.neg(); }
 	mul(a: T, b: T): T	{ return a.mul(b); }
 	div(a: T, b: T): T	{ return a.div(b); }
 	add(a: T, b: T): T	{ return a.add(b); }
 	sub(a: T, b: T): T	{ return a.sub(b); }
+	eq(_a: T, _b: T): boolean { throw new Error("Method not implemented."); }
+	lt(_a: T, _b: T): boolean { throw new Error("Method not implemented."); }
 }
 
-export interface ops<C extends ops<C>> {
+export interface ops<C extends ops<C, S>, S=number> {
+	dup():				C;
 	neg(): 				C;
-	scale(b: number):	C;
+	scale(b: S):		C;
 	mul(b: C):			C;
 	div(b: C):			C;
 	add(b: C): 			C;
 	sub(b: C): 			C;
-	mag():				number | scalar2<any>;
+	mag():				number | scalarExt<any>;
 }
 
-export interface scalar<C extends scalar<C>> extends ops<C> {
-	dup():				C;
-	sign():				number;
-	abs():				C;
-	recip():			C;
-	divmod(b: C):		number | bigint;
-	lt(b: C):			boolean;
+const ops = {
+	neg<T extends ops<T>>(a: T): T			{ return a.neg(); },
+	scale<T extends ops<T, S>, S>(a: T, b: S): T	{ return a.scale(b); },
+	mul<T extends ops<T>>(a: T, b: T): T	{ return a.mul(b); },
+	div<T extends ops<T>>(a: T, b: T): T	{ return a.div(b); },
+	add<T extends ops<T>>(a: T, b: T): T	{ return a.add(b); },
+	sub<T extends ops<T>>(a: T, b: T): T	{ return a.sub(b); },
+};
+
+export interface scalar<C extends scalar<C, S>, S=number> extends ops<C, S> {
 	from(n: number | bigint):	C;
-	valueOf():			number|bigint;
+	abs():				C;
+	sign():				number;
+	lt(b: C):			boolean;
+	valueOf():			number | bigint;
 }
 
-export interface scalar2<C extends scalar2<C>> extends scalar<C> {
+export interface scalarPow<C extends scalarPow<C>> extends scalar<C> {
 	sqrt(): 			C;
-	pow(n: number):		C;
+	recip():			C;
+	rpow(n: number, d: number):	C;
+	npow(n: number):	C;
+}
+
+export interface scalarExt<C extends scalarExt<C>> extends scalarPow<C> {
+	divmod(b: C):		number | bigint;
 }
 
 export function compare<T extends number|bigint|string>(a: T, b: T): number {
 	return a < b ? -1 : a > b ? 1 : 0;
-}
-
-export function isAlmostInteger(x: number, epsilon = Number.EPSILON) {
-	return Math.abs(x - Math.round(x)) < epsilon;
 }
 
 export function* lazySlice<T>(arr: T[], start?: number, end?: number): Generator<T> {
@@ -82,7 +101,20 @@ export function* lazySlice<T>(arr: T[], start?: number, end?: number): Generator
 // number
 //-----------------------------------------------------------------------------
 
+export type integer = number & { __brand: 'Integer' };
+
+export function isInteger(n: number): integer {
+    if (!Number.isInteger(n))
+        throw new Error('Not an integer');
+    return n as integer;
+}
+
+export function isAlmostInteger(x: number, epsilon = Number.EPSILON) {
+	return Math.abs(x - Math.round(x)) < epsilon;
+}
+
 export const numberOperators = {
+	dup(n: number): number		{ return n; },
 	from(n: number): number		{ return n; },
 	func(name: string, args: number[]) {
 		const fn = (Math as unknown as Record<string, (...args: number[]) => number>)[name];
@@ -103,7 +135,13 @@ export const numberOperators = {
 	div(a: number, b: number): number	{ return a / b; },
 	add(a: number, b: number): number	{ return a + b; },
 	sub(a: number, b: number): number	{ return a - b; },
+	eq(a: number, b: number): boolean	{ return a === b; },
+	lt(a: number, b: number): boolean	{ return a < b; }
 };
+
+export function copySign(a: number, b: number) {
+	return b < 0 ? -Math.abs(a) : Math.abs(a);
+}
 
 export function sincos(angle: number) {
 	return {s: Math.sin(angle), c: Math.cos(angle)};
@@ -117,9 +155,14 @@ export function sign(a: number) {
 }
 
 export function gcd(a: number, b: number): number {
-	while (b)
+	if (!a)
+		return b;
+	while (b > 1e-12)
 		[a, b] = [b, a % b];
 	return a;
+}
+export function gcd2(...b: number[]): number {
+	return b.slice(1).reduce((g, x) => gcd(g, x), b[0]);
 }
 
 export function lcm(...x: number[]) {
@@ -141,7 +184,7 @@ export function modPow(base: number, exp: number, mod: number): number {
 	return result;
 }
 
-export class scalarN implements scalar2<scalarN> {
+export class scalarN implements scalarExt<scalarN> {
 	constructor(public value: number) {}
 	dup(): 				scalarN		{ return new scalarN(this.value); }
 	neg(): 				scalarN		{ return new scalarN(-this.value); }
@@ -160,29 +203,25 @@ export class scalarN implements scalar2<scalarN> {
 	from(n: number | bigint)		{ return new scalarN(Number(n)); }
 
 	sqrt(): 			scalarN		{ return new scalarN(Math.sqrt(this.value)); }
-	pow(n: number):		scalarN		{ return new scalarN(this.value ** n); }
+	npow(n: number):	scalarN		{ return new scalarN(this.value ** n); }
+	rpow(n: number, d:number)		{ return new scalarN(this.value ** (n / d)); }
+//	pow(n: number):		scalarN		{ return new scalarN(this.value ** n); }
 
 	valueOf():			number		{ return this.value; }
 	toString()						{ return this.value.toString(); }
 }
 
-export function isInstance<T>(x: any, i: new (...args: any[]) => T): x is T {
-	return x instanceof i;
-}
-export function isScalar(x: ops<any>): x is scalar<any> {
-	return 'sign' in x;
-}
 export function asScalar(x: number|scalar<any>): scalar<any> {
 	if (typeof x === 'number')
 		return new scalarN(x);
 	return x;
 }
-export function asScalar2(x: number|scalar2<any>): scalar2<any> {
+export function asScalarExt(x: number|scalarExt<any>): scalarExt<any> {
 	if (typeof x === 'number')
 		return new scalarN(x);
 	return x;
 }
-export function asScalarT<T extends scalar<T>>(from: T, x: number|T): T {
+export function asScalarT<T extends scalarExt<T>>(from: T, x: number|T): T {
 	if (typeof x === 'number')
 		return from.from(x);
 	if (x instanceof from.constructor)
@@ -190,14 +229,13 @@ export function asScalarT<T extends scalar<T>>(from: T, x: number|T): T {
 	return from.from(+x);
 }
 
-
-export class extent1 {
+export class extent {
 	static fromCentreExtent(centre: number, size: number) {
 		const half = size * 0.5;
-		return new extent1(centre - half, centre + half);
+		return new extent(centre - half, centre + half);
 	}
 	static from<U extends Iterable<number>>(items: U) {
-		const ext = new extent1;
+		const ext = new extent;
 		for (const i of items)
 			ext.add(i);
 		return ext;
@@ -216,14 +254,14 @@ export class extent1 {
 		this.min = Math.min(this.min, p);
 		this.max = Math.max(this.max, p);
 	}
-	combine(b: extent1) {
+	combine(b: extent) {
 		this.min = Math.min(this.min, b.min);
 		this.max = Math.max(this.max, b.max);
 	}
-	encompasses(b: extent1) {
+	encompasses(b: extent) {
 		return this.min <= b.min && this.max >= b.max;
 	}
-	overlaps(b: extent1) {
+	overlaps(b: extent) {
 		return this.min <= b.max && this.max >= b.min;
 	}
 	contains(p: number) {
@@ -252,9 +290,14 @@ export function minB(a: bigint, b: bigint): bigint {
 }
 
 export function gcdB(a: bigint, b: bigint): bigint {
+	if (!a)
+		return b;
 	while (b)
 		[a, b] = [b, a % b];
 	return a;
+}
+export function gcdB2(...b: bigint[]): bigint {
+	return b.slice(1).reduce((g, x) => gcdB(g, x), b[0]);
 }
 export function lcmB(...x: bigint[]) {
 	return x.reduce((a, b) => {
@@ -283,11 +326,15 @@ export function randomB(bits: number): bigint {
 	return r;
 }
 
-export class scalarB implements scalar<scalarB> {
+export class scalarB implements scalarExt<scalarB> {
 	constructor(public value: bigint) {}
 	dup(): 				scalarB		{ return new scalarB(this.value); }
 	neg(): 				scalarB		{ return new scalarB(-this.value); }
+	sqrt():				scalarB		{ return new scalarB(rootB(this.value, 2)); }
 	scale(b: number):	scalarB		{ return new scalarB(this.value * BigInt(b)); }
+	npow(n: number):	scalarB		{ return new scalarB(this.value ** BigInt(n)); }
+	rpow(n: number, d:number):	scalarB		{ return new scalarB(this.value ** BigInt(n / d)); }
+	//pow(n: number):		scalarB 	{ return new scalarB(this.value ** BigInt(n)); }
 	mul(b: scalarB):	scalarB		{ return new scalarB(this.value * b.value); }
 	div(b: scalarB):	scalarB		{ return new scalarB(this.value / b.value); }
 	add(b: scalarB):	scalarB		{ return new scalarB(this.value + b.value); }
@@ -430,26 +477,66 @@ export function rootB(x: bigint, b: number): bigint {
 // Generics
 //-----------------------------------------------------------------------------
 
-export function maxT<T extends scalar<T>>(a: T, b: T) {
-	return a.lt(b) ? b : a;
-}
-export function minT<T extends scalar<T>>(a: T, b: T) {
-	return a.lt(b) ? a : b;
+export type has<K extends keyof scalarExt<any>> = ops<any> & Pick<scalarExt<any>, K>;
+export function has<K extends keyof scalarExt<any>>(f: K) {
+	return (x: ops<any>): x is ops<any> & Pick<scalarExt<any>, K> => f in x;
 }
 
-export function compareT<T extends scalar<T>>(a: T, b: T): number {
+export function hasStatic(x: any, f: string) {
+	const c = x.constructor;
+	if (f in c)
+		return c[f] as (...args: any[]) => any;
+	return undefined;
+}
+
+export function isScalar(x: ops<any>): x is scalar<any> {
+	return 'lt' in x;
+}
+export function isScalarExt(x: ops<any>): x is scalarExt<any> {
+	return 'rpow' in x && 'divmod' in x;
+}
+
+export function copySignT<T extends scalar<T>>(a: T, b: T) {
+	return b.sign() < 0 ? a.abs().neg() : a.abs();
+}
+
+export function maxT<T extends has<'lt'>>(a: T, b: T) {
+	return a.lt(b) ? b : a;
+}
+export function minT<T extends has<'lt'>>(a: T, b: T) {
+	return a.lt(b) ? a : b;
+}
+export function maxT2<T extends has<'lt'>>(...b: T[]) {
+	return b.slice(1).reduce((max, x) => max.lt(x) ? x : max, b[0]);
+}
+export function minT2<T extends has<'lt'>>(...b: T[]) {
+	return b.slice(1).reduce((min, x) => min.lt(x) ? min : x, b[0]);
+}
+
+export function compareT<T extends has<'lt'>>(a: T, b: T): number {
 	return a.lt(b) ? -1 : b.lt(a) ? 1 : 0;
 }
 
-export function gcdT<T extends scalar<T>>(a: T, b: T): T {
+export interface gcd {
+	divmod(b: this):	number | bigint | this;
+	sign():				number;
+	abs():				this;
+}
+
+export function gcdT<T extends gcd>(a: T, b: T): T {
 	a = a.abs();
 	b = b.abs();
+	if (!a.sign())
+		return b;
 
-	while (b) {
+	while (b.sign()) {
 		a.divmod(b);
 		[a, b] = [b, a];
 	}
 	return a;
+}
+export function gcdT2<T extends gcd>(...b: T[]): T {
+	return b.slice(1).reduce((g, x) => gcdT(g, x), b[0]);
 }
 
 export class extentT<T extends scalar<T>> {

@@ -1,4 +1,5 @@
-import { expect, test, assert } from './test';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { expect, test, assert, approx } from './test';
 import {
 	vec,
 	float2, float3, float4,
@@ -8,6 +9,8 @@ import {
 	matmul,
 	extent2, extent3,
 	vector, E6,
+	mat,
+	ColumnType,
 } from '../dist/vector';
 
 // Compile-time guard: ensure matmul doesn't widen column keys to `string`.
@@ -28,14 +31,14 @@ import {
 
 function assertOrthonormalBasis(m: float4x4, tol = 1e-9) {
 	const a = m.x, b = m.y, c = m.z, nv = m.w;
-	assert(Math.abs(a.len() - 1) < tol, 'a not unit');
-	assert(Math.abs(b.len() - 1) < tol, 'b not unit');
-	assert(Math.abs(c.len() - 1) < tol, 'c not unit');
-	assert(Math.abs(a.dot(b)) < tol, 'a·b not zero');
-	assert(Math.abs(a.dot(c)) < tol, 'a·c not zero');
-	assert(Math.abs(b.dot(c)) < tol, 'b·c not zero');
+	assert(approx(a.len(), 1, tol), 'a not unit');
+	assert(approx(b.len(), 1, tol), 'b not unit');
+	assert(approx(c.len(), 1, tol), 'c not unit');
+	assert(approx(a.dot(b), 0, tol), 'a·b not zero');
+	assert(approx(a.dot(c), 0, tol), 'a·c not zero');
+	assert(approx(b.dot(c), 0, tol), 'b·c not zero');
 	// last column should be unit (it's the input normalised)
-	assert(Math.abs(nv.len() - 1) < tol, 'nv not unit');
+	assert(approx(nv.len(), 1, tol), 'nv not unit');
 }
 
 test('swizzle and basic vector ops', () => {
@@ -51,7 +54,7 @@ test('swizzle and basic vector ops', () => {
 	expect(v2.add(v2)).toEqual(float2(2, 4));
 	expect(v2.scale(2)).toEqual(float2(2, 4));
 	assert(v3.dot(float3(1, 0, 0)) === 1, 'dot mismatch');
-	assert(Math.abs(normalise(v3).len() - 1) < 1e-12, 'normalise failed');
+	assert(approx(normalise(v3).len(), 1, 1e-12), 'normalise failed');
 });
 
 test('2x2 and 2x3 matmul / inverse / affine', () => {
@@ -200,7 +203,7 @@ test('float3x3.basis produces orthonormal rows/cols', () => {
 	// last column should be normalised dir
 	expect(m.z).toEqual(normalise(dir));
 	// columns should be orthogonal
-	assert(Math.abs(m.x.dot(m.y)) < 1e-12, 'float3x3 basis columns not orthogonal');
+	assert(approx(m.x.dot(m.y), 0, 1e-12), 'float3x3 basis columns not orthogonal');
 });
 
 
@@ -208,15 +211,15 @@ test('sincos_half and max_circle_point basic sanity', () => {
 	const s = sincos_half(float2(0.5, 0.5));
 	assert(s.len() > 0, 'sincos_half returned zero');
 	const m = max_circle_point(float2x2.identity());
-	assert(Math.abs(m.len() - 1) < 1e-12, 'max_circle_point not unit');
+	assert(approx(m.len(), 1, 1e-12), 'max_circle_point not unit');
 });
 
 
 test('matrix determinant small cases', () => {
 	const m2 = float2x2(float2(1,2), float2(3,4));
-	assert(Math.abs(m2.det() - -2) < 1e-12, '2x2 det mismatch');
+	assert(approx(m2.det(), -2, 1e-12), '2x2 det mismatch');
 	const m3 = float3x3(float3(1,0,0), float3(0,2,0), float3(0,0,3));
-	assert(Math.abs(m3.det() - 6) < 1e-12, '3x3 det mismatch');
+	assert(approx(m3.det(), 6, 1e-12), '3x3 det mismatch');
 });
 
 
@@ -227,4 +230,60 @@ test('matmul consistency across matmul free and instance', () => {
 	const r2 = matmul(a, b);
 	expect(r1.x).toEqual(r2.x);
 	expect(r1.y).toEqual(r2.y);
+});
+
+// ----- Numeric inverse checks added: validate A * A.inverse() == I for several cases
+function checkIdentity<C extends string, R extends string>(m: mat<ColumnType<R>, C>, tol = 1e-9) {
+	const cols = m.columns();
+	const n = cols.length;
+	for (let j = 0; j < n; ++j) {
+		const col = cols[j]._values;
+		for (let i = 0; i < n; ++i) {
+			const expected = i === j ? 1 : 0;
+			const diff = Math.abs(col[i] - expected);
+			if (diff > tol)
+				throw new Error(`not identity at (${i},${j}): got ${col[i]}, expected ${expected}`);
+		}
+	}
+}
+
+test('numeric inverse 2x2', () => {
+	const A = float2x2(
+		float2(2, 5),
+		float2(3, 7)
+	);
+	const I = A.matmul(A.inverse());
+	checkIdentity(I);
+});
+
+test('numeric inverse 3x3', () => {
+	const A = float3x3(
+		float3(2, 7, 17),
+		float3(3, 11, 19),
+		float3(5, 13, 23)
+	);
+	const I = A.matmul(A.inverse());
+	checkIdentity(I);
+});
+
+test('numeric inverse with pivoting (zero diagonal)', () => {
+	// Construct a matrix with a zero leading diagonal element to force pivoting
+	const A = float3x3(
+		float3(0, 1, 4),
+		float3(1, 0, 5),
+		float3(2, 3, 6)
+	);
+	const I = A.matmul(A.inverse());
+	checkIdentity(I);
+});
+
+test('numeric inverse random 4x4', () => {
+	// deterministic pseudo-random small integer matrix
+	let seed = 12345;
+	function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return (seed % 10) - 4; }
+	function rnd4() { return float4(rnd(), rnd(), rnd(), rnd()); }
+
+	const A = float4x4(rnd4(), rnd4(), rnd4(), rnd4());
+	const I = A.matmul(A.inverse());
+	checkIdentity(I, 1e-8);
 });

@@ -1,5 +1,10 @@
-import { scalar, gcd, absB, signB, gcdB, gcdT, bigIntDivideToNumber, minB, lazySlice, compareT } from "./core";
+import { scalar, gcd, absB, signB, gcdB, gcdT, bigIntDivideToNumber, minB, lazySlice, compareT, has } from "./core";
 
+type scalar1<T extends scalar<T>> = scalar<T> & has<'divmod'> & has<'recip'>;
+
+//-----------------------------------------------------------------------------
+// continued fractions
+//-----------------------------------------------------------------------------
 export function continuedFraction(x: number, maxTerms = 64, eps?: number): number[] {
 	const out: number[] = [];
 
@@ -14,7 +19,7 @@ export function continuedFraction(x: number, maxTerms = 64, eps?: number): numbe
 	return out;
 }
 
-export function continuedFractionT<T extends scalar<T>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
+export function continuedFractionT<T extends scalar1<T>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
 	const out: (bigint|number)[] = [];
 	const one = x.from(1);
 
@@ -76,7 +81,7 @@ export function rationalApprox(x: number, maxDen: number, eps?: number): [number
 	return [h1, k1];
 }
 
-export class rational {
+export class rational implements scalar<rational> {
 	static from(n: number, maxDen?: number): rational {
 		if (Number.isInteger(n))
 			return new rational(n, 1);
@@ -144,7 +149,7 @@ export class rational {
 // bigint rationals
 //-----------------------------------------------------------------------------
 
-function rationalApproxB<T extends scalar<T>>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
+function rationalApproxB<T extends scalar1<T>>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
 	const one	= x.from(1);
 	let b	= x.dup();
 	let h1	= BigInt(b.divmod(one)), h2 = 1n;
@@ -168,7 +173,7 @@ function rationalApproxB<T extends scalar<T>>(x: T, maxDen: bigint, eps?: T): [b
 }
 
 export class rationalB {
-	static from(n: number|bigint|scalar<any>, maxDen?: bigint): rationalB {
+	static from(n: number|bigint|scalar1<any>, maxDen?: bigint): rationalB {
 		if (typeof n === 'bigint')
 			return new rationalB(n, 1n);
 
@@ -242,7 +247,7 @@ export class rationalB {
 // generic rationals
 //-----------------------------------------------------------------------------
 
-function rationalApproxT<T extends scalar<T>>(x: T, maxDen: T, eps?: T): [T, T] {
+function rationalApproxT<T extends scalar1<T>>(x: T, maxDen: T, eps?: T): [T, T] {
 	const zero	= x.from(0);
 	const one	= x.from(1);
 	let b	= x.dup();
@@ -266,7 +271,7 @@ function rationalApproxT<T extends scalar<T>>(x: T, maxDen: T, eps?: T): [T, T] 
 	return [h1, k1];
 }
 
-export class rationalT<T extends scalar<T>> {
+export class rationalT<T extends scalar1<T>> {
 	constructor(public num: T, public den: T) {
 		if (this.den.sign() < 0) {
 			this.den = this.den.neg();

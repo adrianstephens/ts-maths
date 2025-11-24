@@ -6,11 +6,11 @@ import { Operators } from './core';
 // output
 //-----------------------------------------------------------------------------
 
-type FractionOptions = false | { char?: boolean; superSub?: boolean };
+type FractionOptions = false | { chars?: Record<number, Record<number, string>>; superSub?: boolean };
 
 type ConstOptions = {
 	fractions?: FractionOptions;
-	radicals?: string[];
+	radicals?: Record<number, string>;
 };
 
 const superscriptMap: Record<string, string> = {
@@ -39,7 +39,7 @@ const subscriptMap: Record<string, string> = {
 	'a': 'ₐ', 'e': 'ₑ', 'o': 'ₒ', 'x': 'ₓ', 'h': 'ₕ', 'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'p': 'ₚ', 's': 'ₛ', 't': 'ₜ'
 };
 
-const fractionChars: Record<number, Record<number, string>> = {
+export const fractionChars: Record<number, Record<number, string>> = {
 	'2': {'1': '½'},
 	'3': {'1': '⅓', '2': '⅔'},
 	'4': {'1': '¼', '3': '¾'},
@@ -51,7 +51,7 @@ const fractionChars: Record<number, Record<number, string>> = {
 	'10': {'1': '⅒'},
 };
 
-const radicalChars = {'2': '√', '3': '∛', '4': '∜'};
+export const radicalChars: Record<number, string> = {'2': '√', '3': '∛', '4': '∜'};
 
 function buildReverseMap(map: Record<string, string>): Record<string, string> {
 	return Object.entries(map).reduce((acc, [k, v]) => {
@@ -79,9 +79,9 @@ export function fromSuperscript(input: string): string { return transformString(
 export function toSubscript(input: string):		string { return transformString(input, subscriptMap);}
 export function fromSubscript(input: string): 	string { return transformString(input, revSubscriptMap);}
 
-export function fractionString(num: number, den: number, char = true, superSub = true): string {
+export function fractionString(num: number, den: number, chars = fractionChars, superSub = true): string {
 	return den === 1 ? num.toString()
-		: (char && fractionChars[den]?.[num])
+		: (chars && chars[den]?.[num])
 		|| (superSub ? toSuperscript(num.toString()) + '⁄' + toSubscript(den.toString())
 			: `${num}⁄${den}`
 		);
@@ -92,7 +92,7 @@ function radicalString(n: number, symbol: string, opts?: FractionOptions): strin
 		return isAlmostInteger(n) ? Math.round(n).toString() : undefined;
 	const [num, den] = rationalApprox(n, 1000);
 	if (Math.abs(n - num / den) < 1e-10)
-		return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts?.char, opts?.superSub);
+		return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts?.chars, opts?.superSub);
 }
 
 
@@ -110,7 +110,7 @@ export function outputNumber(n: number, opts?: ConstOptions): string {
 	return n.toString();
 }
 
-const revRational	= /^((\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))/;
+const reRational	= /^((\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))/;
 const reNumber 		= /^(((\d+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))|((\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?))/;
 
 export function parseNumber(s: string): [number, number] {
@@ -128,7 +128,7 @@ export function parseNumber(s: string): [number, number] {
 		return [1, num / den];
 	}
 
-	const f = revRational.exec(s);
+	const f = reRational.exec(s);
 	if (f)
 		return [f[0].length, +fromSuperscript(f[2]) / +fromSubscript(f[3])];
 
@@ -159,12 +159,41 @@ function parseNumber1(s: string): number {
 	return NaN;
 }
 
+type VerticalStyle = {left: string; right: string, mid: number};
+export const verticalStyles = {
+	bigBraces: {
+		left: ' ⎛⎜ ⎝', right: ' ⎞⎟ ⎠', mid: 2
+	},
+	brackets: {
+		left: ' ⎡⎢⎣', right: ' ⎤⎥⎦', mid: 1
+	},
+	medBraces: {
+		left: '⎧\u23aa⎩', right: '⎫\u23aa⎭', mid: 1
+	},
+	box: {
+		left: '┌│└', right: '┐│┘', mid: 1
+	},
+};
+
+export function verticalArray(array: string[], style: VerticalStyle): string {
+	const { left, right, mid } = style;
+	const n = array.length;
+
+	return array.map((line, r) => {
+		const i = r < mid ? r : Math.max(r + left.length - n, mid);
+		return left[i] + line + right[i];
+	}).join('\n');
+
+}
+
 //-----------------------------------------------------------------------------
 // parser
 //-----------------------------------------------------------------------------
 
-const reSuper = /^[⁰¹²³⁴⁵⁶⁷⁸⁹¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᐟ˙]+/;
-const reIdentifier = /^[\p{L}_][\p{L}\d_]*/u;
+const reSuper 		= /^[⁰¹²³⁴⁵⁶⁷⁸⁹¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᐟ˙]+/;
+const reIdentifier	= /^[\p{L}_][\p{L}\d_]*/u;
+const reMultiply	= /^[*⋅×]/;
+const reDivide		= /^[/÷]/;
 
 const knownSymbols: Record<string, string> = {
 	'π': 'pi',
@@ -293,9 +322,9 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 		let left = parsePower();
 		for (;;) {
 			skipSpaces();
-			if (skip('*') || skip('.') ||peekre(/^[\d.]/) || peekre(/^[\p{L}_]/u)) {
+			if (match(reMultiply) || peekre(/^[\d.]/) || peekre(/^[\p{L}_]/u)) {
 				left = ops.mul(left, parsePower());
-			} else if (skip('/')) {
+			} else if (match(reDivide)) {
 				left = ops.div(left, parsePower());
 			} else if (peek('(')) {
 				left = ops.mul(left, parsePower());

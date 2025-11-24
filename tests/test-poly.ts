@@ -1,14 +1,35 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { expect, test, assert, verify, approx, approxArray, makeApproxArray, sequence } from './test';
 import {polynomial, polynomialT, polynomialN, legendreTable, polynomialB} from '../dist/polynomial';
-import { symbolic } from '../dist/symbolic';
+import { generalRules, symbolic } from '../dist/symbolic';
 import complex, { complexT } from '../dist/complex';
 import {rational, rationalB} from '../dist/rational';
 import * as big from '../../big/dist/index';
+import { outputNumber, radicalChars, fractionChars } from '../dist/string';
+import EGraph, { applyRulesEgraph } from '../dist/egraph';
+
+symbolic.setDefaultStringifyOptions({
+	superPower: true,
+	radicalPower: true,
+	mulChar: '⋅',
+	printConst: n=>outputNumber(n, {fractions: {chars: fractionChars, superSub: true}, radicals: radicalChars})}
+);
 
 function toleranceForDegree(deg: number, offset = -55, scale = 2.5) {
 	return Math.pow(2, deg * scale + offset);
 }
+
+test('symbolic polynomials', () => {
+	let poly = new polynomialT<symbolic>([symbolic.from(1)]);
+	for (let j = 1; j < 8; ++j) {
+		poly = poly.mul(new polynomialT<symbolic>([symbolic.variable('ABCDEFGH'[j  - 1]).neg(), symbolic.from(1)]));
+		console.log(`degree ${j} polynomial: ${poly.toString()}`);
+		const roots = poly.realRoots();
+		console.log(roots.map(String).join('\n'));
+		console.log(roots.map(r => applyRulesEgraph(r, generalRules)).join('\n'));
+
+	}
+});
 
 test('roots', () => {
 	let poly = new polynomial([1]);
@@ -71,10 +92,3 @@ test('rational roots', () => {
 });
 
 
-test('symbolic polynomials', () => {
-	let poly = new polynomialT<symbolic>([symbolic.from(1)]);
-	for (let j = 1; j < 8; ++j) {
-		poly = poly.mul(new polynomialT<symbolic>([symbolic.variable('ABCDEFGH'[j  - 1]).neg(), symbolic.from(1)]));
-		console.log(`degree ${j} polynomial: ${poly.toString()}`);
-	}
-});

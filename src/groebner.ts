@@ -5,64 +5,50 @@
  * without introducing duplicate data structures.
  */
 
-import { symbolic } from './symbolic';
+import { factor, symbolic, mulFactors } from './symbolic';
+
+type  Monomial = number[];
 
 interface Term {
-	coef: symbolic;
-	mon: symbolic;
+	coef:	symbolic;
+	mon:	Monomial;
 }
+
+type Compare = (a: Monomial, b: Monomial) => number;
 
 // ============================================================================
 // MONOMIAL OPERATIONS (using symbolicMul structure)
 // ============================================================================
 
-/**
- * Extract exponents for given variables from a symbolicMul or variable
- * Returns exponents array matching the variables list
- */
-function getExponents(expr: symbolic, variables: readonly symbolic[]): number[] {
-	const exponents = new Array(variables.length).fill(0);
-	
-	if (expr.is('mul')) {
-		for (const factor of expr.factors) {
-			const idx = variables.indexOf(factor.item);
-			if (idx >= 0)
-				exponents[idx] = factor.pow;
-		}
-	} else {
-		const idx = variables.indexOf(expr);
-		if (idx >= 0)
-			exponents[idx] = 1;
-	}
-	
-	return exponents;
+function monomialToSymbolic(mon: Monomial, variables: readonly symbolic[]): symbolic {
+	return mulFactors(1, ...mon.map((exp, i) => factor(variables[i], exp)).filter(Boolean));
 }
 
 /**
  * Total degree of a monomial
  */
-function _degree(expr: symbolic, variables: readonly symbolic[]): number {
-	return getExponents(expr, variables).reduce((sum, e) => sum + e, 0);
+function degree(expr: Monomial): number {
+	return expr.reduce((sum, e) => sum + e, 0);
 }
 
 /**
  * Compare two monomials using graded reverse lexicographic ordering
  * Returns: >0 if a>b, <0 if a<b, 0 if equal
  */
-function compareGrevlex(a: symbolic, b: symbolic, variables: readonly symbolic[]): number {
-	const expA = getExponents(a, variables);
-	const expB = getExponents(b, variables);
-	
-	const degA = expA.reduce((sum, e) => sum + e, 0);
-	const degB = expB.reduce((sum, e) => sum + e, 0);
+function compareGrevlex(a: Monomial, b: Monomial): number {
+	const degA = degree(a);
+	const degB = degree(b);
 	
 	if (degA !== degB)
 		return degB - degA;
 	
 	// Reverse lex: compare from right to left
-	for (let i = variables.length - 1; i >= 0; i--) {
-		if (expA[i] !== expB[i])
-			return expA[i] - expB[i];
+	const n = Math.max(a.length, b.length);
+	for (let i = n - 1; i >= 0; i--) {
+		const aExp = a[i] ?? 0;
+		const bExp = b[i] ?? 0;
+		if (aExp !== bExp)
+			return aExp - bExp;
 	}
 	return 0;
 }
@@ -70,13 +56,14 @@ function compareGrevlex(a: symbolic, b: symbolic, variables: readonly symbolic[]
 /**
  * Compare using lexicographic ordering (for elimination)
  */
-function compareLex(a: symbolic, b: symbolic, variables: readonly symbolic[]): number {
-	const expA = getExponents(a, variables);
-	const expB = getExponents(b, variables);
-	
-	for (let i = 0; i < variables.length; i++) {
-		if (expA[i] !== expB[i])
-			return expB[i] - expA[i];
+function compareLex(a: Monomial, b: Monomial): number {
+	const n = Math.max(a.length, b.length);
+
+	for (let i = 0; i < n; i++) {
+		const aExp = a[i] ?? 0;
+		const bExp = b[i] ?? 0;
+		if (aExp !== bExp)
+			return bExp - aExp;
 	}
 	return 0;
 }
@@ -84,49 +71,38 @@ function compareLex(a: symbolic, b: symbolic, variables: readonly symbolic[]): n
 /**
  * Check if monomial a divides monomial b
  */
-function divides(a: symbolic, b: symbolic, variables: readonly symbolic[]): boolean {
-	const expA = getExponents(a, variables);
-	const expB = getExponents(b, variables);
-	return expA.every((e, i) => e <= expB[i]);
+function divides(a: Monomial, b: Monomial): boolean {
+	return a.every((e, i) => e <= (b[i] ?? 0));
 }
 
 /**
  * Divide monomial b by monomial a (returns quotient monomial)
  * Returns undefined if not divisible
  */
-function divideMonomial(b: symbolic, a: symbolic, variables: readonly symbolic[]): symbolic | undefined {
-	const expA = getExponents(a, variables);
-	const expB = getExponents(b, variables);
-	
+function divideMonomial(b: Monomial, a: Monomial): Monomial | undefined {
+	const n = Math.max(a.length, b.length);
 	const result: number[] = [];
-	for (let i = 0; i < variables.length; i++) {
-		const diff = expB[i] - expA[i];
+	for (let i = 0; i < n; i++) {
+		const diff = (b[i] ?? 0) - (a[i] ?? 0);
 		if (diff < 0)
 			return undefined;
-		result[i] = diff;
+		if (diff > 0)
+			result[i] = diff;
 	}
 	
-	// Build monomial from exponents
-	let mon = symbolic.from(1);
-	for (let i = 0; i < variables.length; i++) {
-		if (result[i] > 0)
-			mon = mon.mul(variables[i].npow(result[i]));
-	}
-	return mon;
+	return result;
 }
 
 /**
  * LCM of two monomials
  */
-function lcmMonomial(a: symbolic, b: symbolic, variables: readonly symbolic[]): symbolic {
-	const expA = getExponents(a, variables);
-	const expB = getExponents(b, variables);
-	
-	let result = symbolic.from(1);
-	for (let i = 0; i < variables.length; i++) {
-		const maxExp = Math.max(expA[i], expB[i]);
+function lcmMonomial(a: Monomial, b: Monomial): Monomial {
+	const result: Monomial = [];
+	const n = Math.max(a.length, b.length);
+	for (let i = 0; i < n; i++) {
+		const maxExp = Math.max(a[i] ?? 0, b[i] ?? 0);
 		if (maxExp > 0)
-			result = result.mul(variables[i].npow(maxExp));
+			result[i] = maxExp;
 	}
 	return result;
 }
@@ -140,34 +116,37 @@ function lcmMonomial(a: symbolic, b: symbolic, variables: readonly symbolic[]): 
  * Separates coefficient (non-variable factors) from monomial (variable powers)
  */
 function extractTerm(expr: symbolic, variables: readonly symbolic[]): Term {
+	const mon: Monomial = [];
+	
 	if (expr.is('mul')) {
 		const coefFactors: symbolic[] = expr.num !== 1 ? [symbolic.from(expr.num)] : [];
-		const monFactors: symbolic[] = [];
 		
 		for (const factor of expr.factors) {
-			if (variables.includes(factor.item)) {
-				monFactors.push(factor.item.npow(factor.pow));
+			const idx = variables.indexOf(factor.item);
+			if (idx >= 0) {
+				mon[idx] = factor.pow;
 			} else {
 				coefFactors.push(factor.item.npow(factor.pow));
 			}
 		}
 		
 		const coef = coefFactors.length === 0 ? symbolic.from(1) : coefFactors.reduce((a, b) => a.mul(b));
-		const mon = monFactors.length === 0 ? symbolic.from(1) : monFactors.reduce((a, b) => a.mul(b));
 		return { coef, mon };
 	}
 	
-	if (variables.includes(expr))
-		return { coef: symbolic.from(1), mon: expr };
-	
+	const idx = variables.indexOf(expr);
+	if (idx >= 0) {
+		mon[idx] = 1;
+		return { coef: symbolic.from(1), mon };
+	}
 	// Entire expression is coefficient
-	return { coef: expr, mon: symbolic.from(1) };
+	return { coef: expr, mon: [] };
 }
 
 /**
  * Get leading term from a polynomial (symbolicAdd)
  */
-function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: (a: symbolic, b: symbolic, variables: readonly symbolic[]) => number): Term | undefined {
+function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: Compare): Term | undefined {
 	// After expansion, unwrap if it got wrapped again
 	let scale = 1;
 	if (poly.is('mul') && poly.factors.length === 1 && poly.factors[0].pow === 1 && poly.factors[0].item.is('add')) {
@@ -187,7 +166,7 @@ function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: (
 		const term = extractTerm(poly.terms[i].item, variables);
 		// ordering(a, b) returns positive if b > a (i.e., b is larger)
 		// So ordering(bestMon, term.mon) > 0 means term.mon is larger than bestMon
-		if (ordering(bestMon, term.mon, variables) > 0) {
+		if (ordering(bestMon, term.mon) > 0) {
 			bestMon = term.mon;
 			bestCoef = term.coef.scale(poly.terms[i].coef * scale);
 		}
@@ -199,21 +178,21 @@ function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: (
 /**
  * S-polynomial: S(f, g) = (lcm/LT(f)) * f - (lcm/LT(g)) * g
  */
-export function sPolynomial(f: symbolic, g: symbolic, variables: readonly symbolic[], ordering: (a: symbolic, b: symbolic, vars: readonly symbolic[]) => number = compareGrevlex): symbolic {
+export function sPolynomial(f: symbolic, g: symbolic, variables: readonly symbolic[], ordering = compareGrevlex): symbolic {
 	const ltf = leadingTerm(f, variables, ordering);
 	const ltg = leadingTerm(g, variables, ordering);
 	
 	if (!ltf || !ltg)
 		return symbolic.from(0);
 	
-	const lcm = lcmMonomial(ltf.mon, ltg.mon, variables);
+	const lcm = lcmMonomial(ltf.mon, ltg.mon);
 	
-	const mf = divideMonomial(lcm, ltf.mon, variables)!;
-	const mg = divideMonomial(lcm, ltg.mon, variables)!;
+	const mf = divideMonomial(lcm, ltf.mon)!;
+	const mg = divideMonomial(lcm, ltg.mon)!;
 	
 	// Scale to cancel leading terms: (mf/cf)*f - (mg/cg)*g
-	const term1 = f.mul(mf).div(ltf.coef).expand();
-	const term2 = g.mul(mg).div(ltg.coef).expand();
+	const term1 = f.mul(monomialToSymbolic(mf, variables)).div(ltf.coef).expand();
+	const term2 = g.mul(monomialToSymbolic(mg, variables)).div(ltg.coef).expand();
 	
 	return term1.sub(term2).expand();
 }
@@ -227,29 +206,13 @@ export function polynomialDivision(
 	f: symbolic,
 	divisors: symbolic[],
 	variables: readonly symbolic[],
-	ordering: (a: symbolic, b: symbolic, vars: readonly symbolic[]) => number = compareGrevlex
+	ordering = compareGrevlex
 ): { quotients: symbolic[]; remainder: symbolic } {
 	const quotients = divisors.map(_ => symbolic.from(0));
-	let remainder = symbolic.from(0);
-	let dividend = f;
-	
-	let lastDividend = '';
-	let stuckCount = 0;
+	let remainder	= symbolic.from(0);
+	let dividend	= f;
 	
 	while (!isZero(dividend)) {
-		// Detect infinite loop
-		const dividendStr = dividend.id;
-		if (dividendStr === lastDividend) {
-			stuckCount++;
-			if (stuckCount > 2) {
-				console.error('Division stuck in infinite loop, dividend:', dividend.toString());
-				break;
-			}
-		} else {
-			stuckCount = 0;
-			lastDividend = dividendStr;
-		}
-		
 		const lt = leadingTerm(dividend, variables, ordering);
 		if (!lt)
 			break;
@@ -261,10 +224,10 @@ export function polynomialDivision(
 			if (!ltg)
 				continue;
 			
-			if (divides(ltg.mon, lt.mon, variables)) {
-				const m = divideMonomial(lt.mon, ltg.mon, variables)!;
+			if (divides(ltg.mon, lt.mon)) {
+				const m = divideMonomial(lt.mon, ltg.mon)!;
 				const c = lt.coef.div(ltg.coef);
-				const mc = m.mul(c);
+				const mc = monomialToSymbolic(m, variables).mul(c);
 				
 				quotients[i] = quotients[i].add(mc);
 				dividend = dividend.sub(divisors[i].mul(mc).expand());
@@ -274,7 +237,7 @@ export function polynomialDivision(
 		}
 		
 		if (!divided) {
-			const ltTerm = lt.mon.mul(lt.coef);
+			const ltTerm = monomialToSymbolic(lt.mon, variables).mul(lt.coef);
 			remainder = remainder.add(ltTerm);
 			dividend = dividend.sub(ltTerm);
 		}
@@ -289,7 +252,7 @@ export function polynomialDivision(
 export function groebnerBasis(
 	generators: symbolic[],
 	variables: readonly symbolic[],
-	ordering: (a: symbolic, b: symbolic, vars: readonly symbolic[]) => number = compareGrevlex
+	ordering = compareGrevlex
 ): symbolic[] {
 	// Expand all generators (GCD-factored muls will be unwrapped in leadingTerm)
 	const G = generators.filter(g => !isZero(g)).map(g => g.expand());
@@ -322,14 +285,14 @@ export function groebnerBasis(
 /**
  * Reduce Groebner basis to minimal form
  */
-function reduceGroebner(G: symbolic[], variables: readonly symbolic[], ordering: (a: symbolic, b: symbolic, vars: readonly symbolic[]) => number): symbolic[] {
+function reduceGroebner(G: symbolic[], variables: readonly symbolic[], ordering: Compare): symbolic[] {
 	// Make monic (leading coefficient = 1), but only if monomial is non-constant
 	let result = G.map(g => {
 		const lt = leadingTerm(g, variables, ordering);
 		if (!lt)
 			return g;
 		// Don't make monic if the monomial is just 1 (constant polynomial in these variables)
-		if (lt.mon === symbolic.one)
+		if (lt.mon.length === 0)
 			return g;
 		return g.div(lt.coef);
 	});
@@ -343,7 +306,7 @@ function reduceGroebner(G: symbolic[], variables: readonly symbolic[], ordering:
 			if (i === j)
 				return false;
 			const ltg = leadingTerm(g, variables, ordering);
-			return ltg && divides(ltg.mon, ltf.mon, variables);
+			return ltg && divides(ltg.mon, ltf.mon);
 		});
 		return !redundant;
 	});

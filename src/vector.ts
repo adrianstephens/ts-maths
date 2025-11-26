@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import {compareT, maxT, minT, ops, scalar, scalarExt, has} from './core';
 import complex from './complex';
-import { polynomial, polynomialN } from './polynomial';
+import { Polynomial, PolynomialN } from './polynomial';
 import { floatN, characteristic, eigenvalues, LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';
 import { Blade, BladeT } from './kvector';
 import { verticalArray, verticalStyles } from './string';
@@ -303,7 +303,7 @@ export interface matOps<C extends vops<C, any>, R extends string, S = scalarOf<C
 	mul0(v: vec<S, string>, col: string):	C;
 	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, vecKeys<M2, C>>;
 	trace():						S;
-	characteristic():				polynomialN;
+	characteristic():				PolynomialN<number>;
 	eigenvalues():					complex[];
 }
 
@@ -397,7 +397,7 @@ class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> i
 			trace += (this as any)[k][k];
 		return trace as scalarOf<C>;
 	}
-	characteristic(): polynomialN {
+	characteristic(): PolynomialN<number> {
 		return characteristic(this.columns().map(col => floatN.fromArray(col._values)));
 	}
 
@@ -430,8 +430,8 @@ class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any
 			trace = trace.add((this as any)[k][k]);
 		return trace as scalarOf<C>;
 	}
-	characteristic(): polynomialN {
-		return new polynomialN([]);
+	characteristic(): PolynomialN<number> {
+		return PolynomialN([0]);//new polynomialN([]);
 	}
 	eigenvalues(): complex[] {
 		return [];
@@ -685,7 +685,8 @@ class _float2x2 extends matClass<float2, E2>() {
 	inverse(): this		{ const r = 1 / this.det(); return this.create(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
 
 	eigenvalues(): complex[] {
-		return new polynomial([this.det(), -this.trace(), 1]).allRoots();
+		//return new polynomial([this.det(), -this.trace(), 1]).allRoots();
+		return Polynomial([this.det(), -this.trace(), 1]).allRoots!();
 	}
 }
 export const float2x2 = Object.assign(

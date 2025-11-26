@@ -1,6 +1,4 @@
-import { isAlmostInteger } from './core';
-import { rationalApprox } from './rational';
-import { Operators } from './core';
+import { Operators, isAlmostInteger, rationalApprox } from './core';
 
 //-----------------------------------------------------------------------------
 // output
@@ -192,7 +190,7 @@ export function verticalArray(array: string[], style: VerticalStyle): string {
 
 const reSuper 		= /^[⁰¹²³⁴⁵⁶⁷⁸⁹¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᐟ˙]+/;
 const reIdentifier	= /^[\p{L}_][\p{L}\d_]*/u;
-const reMultiply	= /^[*⋅×]/;
+const reMultiply	= /^[*.⋅×]/;
 const reDivide		= /^[/÷]/;
 
 const knownSymbols: Record<string, string> = {

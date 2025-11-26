@@ -7,7 +7,7 @@ import {
 	compare,	compareT,
 	lcm,		lcmB,
 	copySign,	copySignT,
-	gcd2,		gcdB2,	gcdT,	gcdT2,
+	gcd,		gcdB,	gcdT,
 	sign,		signB,
 	maxT,		maxT2,
 	absB,		rootB,
@@ -23,10 +23,73 @@ const sqrt3	= Math.sqrt(3);
 const defaultEpsilon = 1e-9;
 
 //-----------------------------------------------------------------------------
-//	helpers
+//	Interfaces
 //-----------------------------------------------------------------------------
 
-type ifScalar<T, U> = T extends scalar<any> ? U : never;
+type ifScalar<T, U>		= T extends scalar<any> ? U : never;
+type realRoots<T>		= T extends number ? number[] : T extends bigint ? rationalB[] : ifScalar<T, T[]>;
+type complexRoots<T>	= T extends number ? complex[] : T extends scalarExt<infer R> ? complexT<R>[] : never;
+type rationalRoots<T>	= T extends number ? rational[] : T extends bigint ? rationalB[] : T extends rational ? rational[] : T extends rationalB ? rationalB[] : ifScalar<T, rationalB[]>;
+type normalized<T>		= T extends bigint ? rationalB : T;
+
+type PolyNTypes = number | ops<any, any>;
+type PolyTypes = PolyNTypes | bigint;
+
+// Interface for normalized polynomials with implicit leading coefficient of 1
+export interface PolynomialN<C> {
+	c: C[];
+	degree():						number;
+	dup(): 							PolynomialN<C>;
+	evaluate(t: C):					C;
+	deriv():						Polynomial<C>;
+	mul(b: PolynomialN<C>):			PolynomialN<C>;
+	divmod(b: PolynomialN<C>):		Polynomial<C>;
+	rationalRoots():				rationalRoots<C>;
+	realRoots(epsilon?: number):	realRoots<C>;
+	allRoots?(epsilon?: number):	complexRoots<C>;
+	refine_roots(x: realRoots<C>, count?: number): realRoots<C>;
+}
+
+// Interface for regular polynomials
+export interface Polynomial<C> extends PolynomialN<C> {
+	leadCoeff(): C;
+	dup():							Polynomial<C>;
+	add(b: C | Polynomial<C>):		Polynomial<C>;
+	sub(b: C | Polynomial<C>):		Polynomial<C>;
+	scale(b: C):					Polynomial<C>;
+	rscale(b: C):					Polynomial<C>;
+	mul(b: Polynomial<C>):			Polynomial<C>;
+	divmod(b: Polynomial<C>):		Polynomial<C>;
+	div(b: Polynomial<C>):			Polynomial<C>;
+	selfAdd(b: C | Polynomial<C>):	void;
+	selfSub(b: C | Polynomial<C>):	void;
+	selfScale(b: C):				void;
+	selfRscale(b: C):				void;
+	content():						C;
+	abs():							Polynomial<C>;
+	sign():							number;
+	normalise(epsilon?: number):	PolynomialN<normalized<C>>;
+	map<U extends PolyTypes>(func: (c: C, i: number) => U): Polynomial<U>;
+}
+
+export function PolynomialN<T extends PolyNTypes>(c: T[]): PolynomialN<T> {
+	switch (typeof c[0]) {
+		case 'number':	return new polynomialN(c as number[]) as PolynomialN<number> as PolynomialN<T>;
+		default:		return new polynomialNT(c as any) as PolynomialN<ops<any, any>> as PolynomialN<T>;
+	}
+}
+
+export function Polynomial<T extends PolyTypes>(c: T[]): Polynomial<T> {
+	switch (typeof c[0]) {
+		case 'number':	return new polynomial(c as number[]) as Polynomial<number> as Polynomial<T>;
+		case 'bigint':	return new polynomialB(c as bigint[]) as Polynomial<bigint> as Polynomial<T>;
+		default:		return new polynomialT(c as any) as Polynomial<ops<any, any>> as Polynomial<T>;
+	}
+}
+
+//-----------------------------------------------------------------------------
+//	helpers
+//-----------------------------------------------------------------------------
 
 
 function insertSorted<T>(arr: T[], value: T, less: (a: T, b: T) => boolean = (a, b) => a < b): T[] {
@@ -83,7 +146,7 @@ function lessThan<T extends scalar<T>>(a: number | bigint | T, b: number): boole
 }
 
 //-----------------------------------------------------------------------------
-//	array ops
+//	sparse arrays
 //-----------------------------------------------------------------------------
 
 function sparseAdd(a: number[], b: number[]): number[] {
@@ -96,7 +159,7 @@ function sparseSub(a: number[], b: number[]): number[] {
 		a[i] = (a[i] || 0) - b[i];
 	return a;
 }
-function sparseMul(a: number[], b: number): number[] {
+function sparseScale(a: number[], b: number): number[] {
 	for (const i in a)
 		a[i] *= b;
 	return a;
@@ -120,6 +183,69 @@ function sparseEvaluate(c: number[], x: number, monomial: boolean): number {
 	}
     return result;
 }
+function sparseEvaluateNT<T extends ops<T> & has<'from'>>(c: number[], x: T, monomial: boolean): T {
+    let result	= x.from(0);
+    let xpow	= x.from(1);
+    let exp 	= 0;
+    
+    for (const i in c) {
+		const exp1 = +i;
+        while (exp++ < exp1)
+			xpow = xpow.mul(x);
+        result = result.add(xpow.scale(c[i]));
+    }
+	if (monomial) {
+		const exp1 = c.length - 1;
+        while (exp++ < exp1)
+			xpow = xpow.mul(x);
+        result = result.add(xpow);
+	}
+    return result;
+}
+function sparseMultiply(a: number[], b: number[], monomial: boolean) {
+	const r: number[] = [];
+	for (const i in a) {
+		const ai = a[i];
+		for (const j in b) {
+			const k = +i + +j;
+			r[k] = (r[k] ?? 0) + ai * b[j];
+		}
+	}
+	if (monomial) {
+		for (const i in a) {
+			const k = +i + b.length;
+			r[k] = (r[k] ?? 0) + a[i];
+		}
+		for (const i in b) {
+			const k = +i + a.length;
+			r[k] = (r[k] ?? 0) + b[i];
+		}
+	}
+	return r;
+}
+
+function sparseDivMod(a: number[], b: number[], monomial: boolean) {
+	const blen	= b.length - (monomial ? 0 : 1);
+	const qlen	= Math.max(a.length - b.length + 1, 0);
+	const bt	= b[blen];
+	const q: number[] = [];
+
+	for (let i = qlen; i--;) {
+		if (a[i + blen]) {
+			const at = monomial ? a[i + blen] : a[i + blen] / bt;//no division for monomial
+			q[i] = at;
+			for (const j in b)
+				a[i + +j] = (a[i + +j] || 0) - b[j] * at;
+		}
+	}
+	let rlen = blen;
+	while (rlen > 0 && !a[rlen - 1])
+		rlen--;
+	a.length = rlen;
+	return q;
+}
+
+
 
 function sparseAddB(a: bigint[], b: bigint[]): bigint[] {
 	for (const i in b)
@@ -131,7 +257,7 @@ function sparseSubB(a: bigint[], b: bigint[]): bigint[] {
 		a[i] = (a[i] || 0n) - b[i];
 	return a;
 }
-function sparseMulB(a: bigint[], b: bigint): bigint[] {
+function sparseScaleB(a: bigint[], b: bigint): bigint[] {
 	for (const i in a)
 		a[i] *= b;
 	return a;
@@ -154,6 +280,38 @@ function sparseEvaluateB(c: bigint[], x: bigint): bigint {
     }
     return result;
 }
+function sparseMultiplyB(a: bigint[], b: bigint[]) {
+	const r: bigint[] = [];
+	for (const i in a) {
+		const ai = a[i];
+		for (const j in b) {
+			const k = +i + +j;
+			r[k] = (r[k] ?? 0n) + ai * b[j];
+		}
+	}
+	return r;
+}
+
+function sparseDivModB(a: bigint[], b: bigint[]) {
+	const blen 	= b.length - 1;
+	const qlen	= Math.max(a.length - blen, 0);
+	const q: bigint[] = [];
+
+	for (let i = qlen; i--;) {
+		if (a[i + blen]) {
+			const at = a[i + blen];
+			q[i] = at;
+			for (const j in b)
+				a[i + +j] = (a[i + +j] || 0n) - b[j] * at;
+		}
+	}
+	let rlen = blen;
+	while (rlen > 0 && (a[rlen - 1] || 0n) === 0n)
+		rlen--;
+	a.length = rlen;
+	return q;
+}
+
 
 function sparseAddT<T extends ops<T>>(a: T[], b: T[]): T[] {
 	for (const i in b)
@@ -165,7 +323,7 @@ function sparseSubT<T extends ops<T>>(a: T[], b: T[]): T[] {
 		a[i] = a[i] ? a[i].sub(b[i]) : b[i];
 	return a;
 }
-function sparseMulT<T extends ops<T>>(a: T[], b: T|number): T[] {
+function sparseScaleT<T extends ops<T>>(a: T[], b: T|number): T[] {
 	if (typeof b === 'number') {
 		for (const i in a)
 			a[i] = a[i].scale(b);
@@ -177,7 +335,7 @@ function sparseMulT<T extends ops<T>>(a: T[], b: T|number): T[] {
 }
 function sparseDivT<T extends ops<T>>(a: T[], b: T|number): T[] {
 	if (typeof b === 'number')
-		return sparseMulT(a, 1 / b);
+		return sparseScaleT(a, 1 / b);
 	for (const i in a)
 		a[i] = a[i].div(b);
 	return a;
@@ -204,11 +362,142 @@ function sparseEvaluateT<T extends ops<T>>(c: T[], x: T, monomial: boolean): T {
     return result;
 }
 
+function sparseMultiplyT<T extends ops<T>>(a: T[], b: T[], monomial: boolean) {
+	const zero = a[0].scale(0);
+	const r: T[] = [];
+	for (const i in a) {
+		const ai = a[i];
+		for (const j in b) {
+			const k = +i + +j;
+			r[k] = (r[k] ?? zero).add(ai.mul(b[j]));
+		}
+	}
+	if (monomial) {
+		for (const i in a) {
+			const k = +i + b.length;
+			r[k] = (r[k] ?? zero).add(a[i]);
+		}
+		for (const i in b) {
+			const k = +i + a.length;
+			r[k] = (r[k] ?? zero).add(b[i]);
+		}
+	}
+	return r;
+}
+
+function sparseDivModT<T extends ops<T>>(a: T[], b: T[], monomial: boolean) {
+	const blen	= monomial ? b.length : b.length - 1;
+	const qlen	= Math.max(a.length - b.length + 1, 0);
+	const bt	= b[blen];
+	const q: T[] = [];
+
+	for (let i = qlen; i--;) {
+		if (a[i + blen]) {
+			const at = monomial ? a[i + blen] : a[i + blen].div(bt);
+			q[i] = at;
+			for (const j in b)
+				a[i + +j] = a[i + +j] ? a[i + +j].sub(at.mul(b[j])) : at.mul(b[j]).neg();
+		}
+	}
+	let rlen = blen;
+	while (rlen > 0 && (!a[rlen - 1] || lessThan(a[rlen - 1].mag(), defaultEpsilon)))
+		rlen--;
+	a.length = rlen;
+	return q;
+}
+
+//-----------------------------------------------------------------------------
+//	dense arrays
+//-----------------------------------------------------------------------------
+/*
+function denseEvaluate(c: number[], t: number, monomial: boolean): number {
+	let i = c.length;
+	let r = c[--i];
+	if (monomial)
+		r += t;
+	while (i--)
+		r = r * t + c[i];
+	return r;
+}
+
+function denseEvaluateNT<T extends ops<T> & has<'from'>>(c: number[], t: T, monomial: boolean): T {
+	let i = c.length;
+	let r = t.from(c[--i]);
+	if (monomial)
+		r = r.add(t);
+	while (i--)
+		r = r.mul(t).add(t.from(c[i]));
+	return r;
+}
+
+function denseMultiply(a: number[], b: number[], monomial: boolean) {
+	const r = new Array<number>(a.length + b.length).fill(0);
+	for (let i = 0; i < a.length; i++)
+		for (let j = 0; j < b.length; j++)
+			r[i + j] += a[i] * b[j];
+
+	if (monomial) {
+		for (let i = 0; i < a.length; i++)
+			r[i + b.length] += a[i];
+
+		for (let i = 0; i < b.length; i++)
+			r[i + a.length] += b[i];
+	}
+}
+
+function denseEvaluateB(c: bigint[], x: bigint): bigint {
+	let i = c.length;
+	let r = c[--i];
+	while (i--)
+		r = r * x + c[i];
+	return r;
+}
+function denseEvaluateBR(c: bigint[], x: rationalB): rationalB {
+	let i = c.length;
+	let acc		= c[--i];
+	let denPow = 1n;
+	while (i--) {
+		denPow *= x.den;
+		acc = acc * x.num + c[i] * denPow;
+	}
+	return new rationalB(acc, denPow);
+}
+
+function denseMultiplyB(a: bigint[], b: bigint[]) {
+	const r = new Array<bigint>(a.length + b.length - 1).fill(0n);
+	for (let i = 0; i < a.length; i++)
+		for (let j = 0; j < b.length; j++)
+			r[i + j] += a[i] * b[j];
+	return r;
+}
+
+
+function denseEvaluateT<T extends ops<T>>(c: T[], t: T, monomial: boolean): T {
+	let i = c.length;
+	let r = c[--i];
+	if (monomial)
+		r = r.add(t);
+	while (i--)
+		r = r.mul(t).add(c[i]);
+	return r;
+}
+
+function denseMultiplyT<T extends ops<T>>(a: T[], b: T[], monomial: boolean) {
+	const zero = a[0].scale(0);
+	const blen = monomial ? b.length : b.length - 1;
+	return Array.from({ length: a.length + blen }, (_, k) => {
+		let sum = zero;
+		for (let i = Math.max(0, k - blen); i <= Math.min(a.length - 1, k); i++)
+			sum = sum.add(a[i].mul(b[k - i]));
+		return sum;
+	});
+}
+*/
 //-----------------------------------------------------------------------------
 //	Polynomial with real coefficients
 //-----------------------------------------------------------------------------
 
-export class polynomial {
+class polynomial implements Polynomial<number> {
 	private trim() {
 		while (this.c.length > 1 && this.c[this.c.length - 1] === 0)
 			this.c.pop();
@@ -222,69 +511,43 @@ export class polynomial {
 	evaluate(t: number): number;
 	evaluate(t: number[]): number[];
 	evaluate(t: number|number[]|complex) {
-		let i = this.c.length;
-		if (typeof t === 'number') {
-			return sparseEvaluate(this.c, t, false);
-			//dense
-			//let r = this.c[--i];
-			//while (i--)
-			//	r = r * t + this.c[i];
-			//return r;
-		}
-		if (Array.isArray(t)) {
-			const r = new Array<number>(t.length).fill(this.c[--i]);
-			while (i--)
-				r.forEach((x, j) => r[j] = x * t[j] + this.c[i]);
-			return r;
-		}
-		let r = complex(this.c[--i]);
-		while (i--)
-			r = r.mul(t).add(complex(this.c[i]));
-		return r;
+		if (typeof t === 'number')
+			return sparseEvaluate(this.c, t, false); // or denseEvaluate(this.c, t, false);
+
+		if (Array.isArray(t))
+			return t.map(t => sparseEvaluate(this.c, t, false));//or denseEvaluate(this.c, t, true);
+
+		return sparseEvaluateNT(this.c, t, false);
 	}
 	deriv() {
 		return new polynomial(this.c.slice(1).map((v, i) => v * (i + 1)));
 	}
 	add(b: number|polynomial) {
 		if (typeof b === 'number')
-			return new polynomial([this.c[0] + b, ...this.c.slice(1)]);
+			return new polynomial([(this.c[0] ?? 0) + b, ...this.c.slice(1)]);
 		return new polynomial(sparseAdd(this.c.slice(), b.c));
 	}
 	sub(b: number|polynomial) {
 		if (typeof b === 'number')
-			return new polynomial([this.c[0] - b, ...this.c.slice(1)]);
+			return new polynomial([(this.c[0] ?? 0) - b, ...this.c.slice(1)]);
 		return new polynomial(sparseSub(this.c.slice(), b.c));
 	}
-	mul(b: number|polynomial) {
-		if (typeof b === 'number')
-			return new polynomial(this.c.map(a => a * b));
-
-		const r: number[] = [];
-		for (const i in this.c) {
-			const ai = this.c[i];
-			for (const j in b.c) {
-				const k = +i + +j;
-				r[k] = (r[k] ?? 0) + ai * b.c[j];
-			}
-		}
-/*
-		//dense
-		const r = new Array<number>(this.c.length + b.c.length - 1).fill(0);
-		for (let i = 0; i < this.c.length; i++)
-			for (let j = 0; j < b.c.length; j++)
-				r[i + j] += this.c[i] * b.c[j];
-*/
-		return new polynomial(r);
+	scale(b: number) {
+		return new polynomial(this.c.map(a => a * b));
 	}
-	div(b: number|polynomial) {
-		if (typeof b === 'number')
-			return this.mul(1 / b);
+	rscale(b: number) {
+		return this.scale(1 / b);
+	}
+	mul(b: polynomial) {
+		return new polynomial(sparseMultiply(this.c, b.c, false));//or denseMultiply(this.c, b.c, false);
+	}
+	div(b: polynomial) {
 		return this.dup().divmod(b);
 	}
 
 	selfAdd(b: number|polynomial) {
 		if (typeof b === 'number') {
-			this.c[0] += b;
+			this.c[0] = (this.c[0] ?? 0) + b;
 		} else {
 			sparseAdd(this.c, b.c);
 			this.trim();
@@ -292,59 +555,25 @@ export class polynomial {
 	}
 	selfSub(b: number|polynomial) {
 		if (typeof b === 'number') {
-			this.c[0] -= b;
+			this.c[0] = (this.c[0] ?? 0) - b;
 		} else {
 			sparseSub(this.c, b.c);
 			this.trim();
 		}
 	}
-	selfMul(b: number) {
-		sparseMul(this.c, b);
+	selfScale(b: number) {
+		sparseScale(this.c, b);
 	}
-	selfDiv(b: number) {
-		this.selfMul(1 / b);
+	selfRscale(b: number) {
+		sparseScale(this.c, 1 / b);
 	}
 
-	divmod(b: polynomial) {
-		const a		= this.c;
-		const bdeg	= b.c.length - 1;
-		const alen	= a.length;
-		const bt	= b.c[bdeg];
-		const q		= new Array<number>(Math.max(0, alen - bdeg));
-		for (let i = q.length; i--;) {
-			const at = a[i + bdeg] / bt;
-			q[i] = at;
-			for (let j = 0; j < bdeg; j++)
-				a[i + j] -= b.c[j] * at;
-		}
-
-		let rlen = bdeg;
-		while (rlen > 0 && a[rlen - 1] === 0)
-			rlen--;
-		this.c.length = rlen;
-		return new polynomial(q);
+	divmod(b: polynomial): polynomial {
+		return new polynomial(sparseDivMod(this.c, b.c, false));// or denseDivmod(a, b);
 	}
-	divRoot(root: number | rational): [polynomial, number] {
-		let i = this.c.length - 1;
-		if (i < 1)
-			return [new polynomial([]), i ? this.c[0] : 0];
 
-		const b = new Array<number>(i);
-		if (typeof root === 'number') {
-			b[i - 1] = this.c[i];
-			while (--i)
-				b[i - 1] = this.c[i] + root * b[i];
-			return [new polynomial(b), this.c[0] + root * b[0]];
-
-		} else {
-			b[i - 1] = this.c[i];
-			while (--i)
-				b[i - 1] = this.c[i] * root.den + root.num * b[i];
-			return [new polynomial(b), this.c[0] * root.den + root.num * b[0]];
-		}
-	}
 	content() {
-		return gcd2(...this.c);
+		return gcd(...this.c);
 	}
 	abs() {
 		return this.leadCoeff() < 0 ? new polynomial(this.c.map(v => -v)) : this;
@@ -359,7 +588,7 @@ export class polynomial {
 		const f = 1 / this.c[i];
 		return new polynomialN(this.c.slice(0, i).map(v => v * f));
 	}
-	rationalRoots(): number[] | rational[] {
+	rationalRoots(): rational[] {
 		return rationalRoots(this.dup());
 	}
 	realRoots(epsilon = defaultEpsilon): number[] {
@@ -373,6 +602,10 @@ export class polynomial {
 		const	d2	= d1.deriv();
 		return x.map(x => halley(this, d1, d2, x, count));
 	}
+	map<U extends PolyTypes>(func: (c: number, i: number) => U): Polynomial<U> {
+		return Polynomial(this.c.map((c, i) => func(c, i)));
+	}
+
 	toString(debug = false) {
 		return this.c.map((coef, i) => {
 			const s = i === this.degree() ? '' : coef < 0 ? ' - ' : ' + ';
@@ -388,7 +621,7 @@ export class polynomial {
 //	Normalised Polynomial with implicit leading coefficient of 1
 //-----------------------------------------------------------------------------
 
-export class polynomialN {
+export class polynomialN implements PolynomialN<number> {
 	constructor(public c: number[]) {}
 	degree()	{ return this.c.length; }
 	dup()		{ return new polynomialN(this.c.slice()); }
@@ -397,83 +630,24 @@ export class polynomialN {
 	evaluate(t: number): number;
 	evaluate(t: number[]): number[];
 	evaluate(t: number|number[]|complex) {
-		let i = this.c.length;
-
-		if (typeof t === 'number') {
-			return sparseEvaluate(this.c, t, true);
-			/*let r = t + this.c[--i];
-			while (i--)
-				r = r * t + this.c[i];
-			return r;*/
-		}
-		if (Array.isArray(t)) {
-			const lead = this.c[--i];
-			const r = t.map(x => x + lead);
-			while (i--)
-				r.forEach((x, j) => r[j] = x * t[j] + this.c[i]);
-			return r;
-		}
-		// complex
-		let r = t.add(complex(this.c[--i]));
-		while (i--)
-			r = r.mul(t).add(complex(this.c[i]));
-		return r;
+		if (typeof t === 'number')
+			return sparseEvaluate(this.c, t, true);//or denseEvaluate(this.c, t, true);
+		if (Array.isArray(t))
+			return t.map(t => sparseEvaluate(this.c, t, true));//or denseEvaluate(this.c, t, true);
+		return sparseEvaluateNT(this.c, t, true);// or denseEvaluateNT(this.c, t, true);
 	}
 	deriv() {
 		return new polynomial([...this.c.slice(1).map((v, i) => v * (i + 1)), this.c.length]);
 	}
 	mul(b: polynomialN) {
-		const r: number[] = [];
-		for (const i in this.c) {
-			const ai = this.c[i];
-			for (const j in b.c) {
-				const k = +i + +j;
-				r[k] = (r[k] ?? 0) + ai * b.c[j];
-			}
-		}
-		for (const i in this.c) {
-			const k = +i + b.c.length;
-			r[k] = (r[k] ?? 0) + this.c[i];
-		}
-
-		for (const i in b.c) {
-			const k = +i + this.c.length;
-			r[k] = (r[k] ?? 0) + b.c[i];
-		}
-/*
-		//dense
-		const r = new Array<number>(this.c.length + b.c.length).fill(0);
-		for (let i = 0; i < this.c.length; i++)
-			for (let j = 0; j < b.c.length; j++)
-				r[i + j] += this.c[i] * b.c[j];
-
-		for (let i = 0; i < this.c.length; i++)
-			r[i + b.c.length] += this.c[i];
-
-		for (let i = 0; i < b.c.length; i++)
-			r[i + this.c.length] += b.c[i];
-*/
-		return new polynomialN(r);
+		return new polynomialN(sparseMultiply(this.c, b.c, true));// or denseMultiply(this.c, b.c, true);
 	}
 
 	divmod(b: polynomialN) {
-		const a		= this.c;
-		const alen	= a.length;
-		const blen	= b.c.length;
-		const q = new Array<number>(Math.max(0, alen - blen + 1));
-
-		for (let i = q.length; i--;) {
-			const at = a[i + blen];
-			q[i] = at;
-			for (let j = 0; j < blen; j++)
-				a[i + j] -= b.c[j] * at;
-		}
-
-		let rlen = blen;
-		while (rlen > 0 && a[rlen - 1] === 0)
-			rlen--;
-		this.c.length = rlen;
-		return new polynomial(q);
+		return new polynomial(sparseDivMod(this.c, b.c, true));// or denseDivmod(a, b.c);
+	}
+	rationalRoots(): rational[] {
+		return rationalRoots(new polynomial([...this.c, 1]));
 	}
 	realRoots(epsilon = defaultEpsilon): number[] {
 		return normPolyRealRoots(this.c, epsilon);
@@ -498,7 +672,7 @@ export class polynomialN {
 //	Polynomial with bigint coefficients
 //-----------------------------------------------------------------------------
 
-export class polynomialB {
+export class polynomialB implements Polynomial<bigint> {
 	private trim() {
 		while (this.c.length > 1 && this.c[this.c.length - 1] === 0n)
 			this.c.pop();
@@ -512,114 +686,61 @@ export class polynomialB {
 	evaluate(t: bigint): bigint;
 	evaluate(t: rationalB): rationalB;
 	evaluate(t: bigint|rationalB|bigint[]) {
-		let i = this.c.length;
-		if (Array.isArray(t)) {
-			const r = new Array<bigint>(t.length).fill(this.c[--i]);
-			while (i--)
-				r.forEach((x, j) => r[j] = x * t[j] + this.c[i]);
-			return r;
-		}
-		if (t instanceof rationalB) {
-			return new rationalB(sparseEvaluateB(this.c, t.num), sparseEvaluateB(this.c, t.den));
-			//dense
-			/*
-			let acc		= this.c[--i];
-			let denPow = 1n;
-			while (i--) {
-				denPow *= t.den;
-				acc = acc * t.num + this.c[i] * denPow;
-			}
-			return new rationalB(acc, denPow);
-			*/
-		}
-
-		return sparseEvaluateB(this.c, t);
-		//dense
-		/*
-		let r = this.c[--i];
-		while (i--)
-			r = r * t + this.c[i];
-		return r;
-		*/
+		if (Array.isArray(t))
+			return t.map(t => sparseEvaluateB(this.c, t));
+		if (t instanceof rationalB)
+			return new rationalB(sparseEvaluateB(this.c, t.num), sparseEvaluateB(this.c, t.den));// or denseEvaluateBR(this.c, t);
+		return sparseEvaluateB(this.c, t); // or denseEvaluateB(this.c, t);
 	}
 	deriv() {
 		return new polynomialB(this.c.slice(1).map((v, i) => v * BigInt(i + 1)));
 	}
 	add(b: bigint|polynomialB) {
 		if (typeof b === 'bigint')
-			return new polynomialB([this.c[0] + b, ...this.c.slice(1)]);
-		return new polynomialB(Array.from({length: Math.max(this.c.length, b.c.length)}, (_, i) => (this.c[i] || 0n) + (b.c[i] || 0n)));
+			return new polynomialB([(this.c[0] ?? 0n) + b, ...this.c.slice(1)]);
+		return new polynomialB(sparseAddB(this.c.slice(), b.c));
 	}
 	sub(b: bigint|polynomialB) {
 		if (typeof b === 'bigint')
-			return new polynomialB([this.c[0] - b, ...this.c.slice(1)]);
-		return new polynomialB(Array.from({length: Math.max(this.c.length, b.c.length)}, (_, i) => (this.c[i] || 0n) - (b.c[i] || 0n)));
+			return new polynomialB([(this.c[0] ?? 0n) - b, ...this.c.slice(1)]);
+		return new polynomialB(sparseSubB(this.c.slice(), b.c));
 	}
-	mul(b: bigint|polynomialB) {
-		if (typeof b === 'bigint')
-			return new polynomialB(this.c.map(a => a * b));
-
-		const r: bigint[] = [];
-		for (const i in this.c) {
-			const ai = this.c[i];
-			for (const j in b.c) {
-				const k = +i + +j;
-				r[k] = (r[k] ?? 0n) + ai * b.c[j];
-			}
-		}
-		/*dense
-		const r = new Array<bigint>(this.c.length + b.c.length - 1).fill(0n);
-		for (let i = 0; i < this.c.length; i++)
-			for (let j = 0; j < b.c.length; j++)
-				r[i + j] += this.c[i] * b.c[j];
-		*/
-		return new polynomialB(r);
+	scale(b: bigint) {
+		return new polynomialB(this.c.map(a => a * b));
 	}
-	div(b: bigint|polynomialB) {
-		if (typeof b === 'bigint')
-			return new polynomialB(sparseDivB(this.c.slice(), b));
+	rscale(b: bigint) {
+		return new polynomialB(this.c.map(a => a / b));
+	}
+	mul(b: polynomialB) {
+		return new polynomialB(sparseMultiplyB(this.c, b.c));//or denseMultiplyB(this.c, b.c);
+	}
+	div(b: polynomialB) {
 		return this.dup().divmod(b);
 	}
 
 	selfAdd(b: bigint|polynomialB) {
 		if (typeof b === 'bigint')
-			this.c[0] += b;
+			this.c[0] = (this.c[0] ?? 0n) + b;
 		else
 			sparseAddB(this.c, b.c);
 		this.trim();
 	}
 	selfSub(b: bigint|polynomialB) {
 		if (typeof b === 'bigint')
-			this.c[0] -= b;
+			this.c[0] = (this.c[0] ?? 0n) - b;
 		else
 			sparseSubB(this.c, b.c);
 		this.trim();
 	}
-	selfMul(b: bigint) {
-		sparseMulB(this.c, b);
+	selfScale(b: bigint) {
+		sparseScaleB(this.c, b);
 	}
-	selfDiv(b: bigint) {
+	selfRscale(b: bigint) {
 		sparseDivB(this.c, b);
 	}
 
 	divmod(b: polynomialB) {
-		const bdeg 	= b.c.length - 1;
-		const bt	= b.c[bdeg];
-		const a		= this.c.map(v => v * bt);
-		const q		= new Array<bigint>(Math.max(0, a.length - bdeg));
-
-		for (let i = q.length; i--;) {
-			const at = a[i + bdeg] / bt;
-			q[i] = at;
-			for (let j = 0; j < bdeg; j++)
-				a[i + j] -= b.c[j] * at;
-		}
-
-		let rlen = bdeg;
-		while (rlen > 0 && a[rlen - 1] === 0n)
-			rlen--;
-		this.c = a.slice(0, rlen);
-		return new polynomialB(q);
+		return new polynomialB(sparseDivModB(this.c, b.c));// or denseDivmodB(a, b.c);
 	}
 	pseudoRemainder(b: polynomialB) {
 		const a		= this.c;
@@ -645,7 +766,7 @@ export class polynomialB {
 		this.c.length = rlen;
 	}
 	content() {
-		return gcdB2(...this.c);
+		return gcdB(...this.c);
 	}
 	abs() {
 		return this.leadCoeff() < 0n ? new polynomialB(this.c.map(v => -v)) : this;
@@ -662,36 +783,22 @@ export class polynomialB {
 		return new polynomialNT<rationalB>(this.c.slice(0, i).map(v => new rationalB(v, d)));
 	}
 
-	divRoot(root: bigint|rationalB): [polynomialB, bigint] {
-		let i = this.c.length - 1;
-		if (i < 1)
-			return [new polynomialB([]), i ? this.c[0] : 0n];
-
-		const b = new Array<bigint>(i);
-		if (typeof root === 'bigint') {
-			b[i - 1] = this.c[i];
-			while (--i)
-				b[i - 1] = this.c[i] + root * b[i];
-			return [new polynomialB(b), this.c[0] + root * b[0]];
-
-		} else {
-			b[i - 1] = this.c[i];
-			while (--i)
-				b[i - 1] = this.c[i] * root.den + root.num * b[i];
-			return [new polynomialB(b), this.c[0] * root.den + root.num * b[0]];
-		}
-	}
-
-	rationalRoots(): bigint[]|rationalB[] {
+	rationalRoots(): rationalB[] {
 		return rationalRootsB(this.dup());
 	}
 
-	realRoots() {
+	realRoots(): rationalB[] {
 		const p = this.dup();
-		const roots: (bigint|rationalB)[] = rationalRootsB(p);
+		const roots: rationalB[] = rationalRootsB(p);
 		if (p.degree() > 0)
 			roots.push(...p.normalise().realRoots());
 		return roots;
+	}
+	refine_roots(x: rationalB[], count = 1) : rationalB[] {
+		return this.normalise().refine_roots(x, count);
+	}
+	map<U extends PolyTypes>(func: (c: bigint, i: number) => U): Polynomial<U> {
+		return Polynomial(this.c.map((c, i) => func(c, i)));
 	}
 
 	toString(debug = false) {
@@ -709,9 +816,6 @@ export class polynomialB {
 //	Polynomial with generic coefficients supporting ops interface
 //-----------------------------------------------------------------------------
 
-type inferComplexRoots<T> = T extends scalarExt<infer R> ? complexT<R>[] : never;
-type inferRationalRoots<T> = ifScalar<T, number[]|rational[]|bigint[]|rationalB[]>;
-
 function trim<T extends {sign(): number}>(c: T[]) {
 	let i = c.length - 1;
 	while (i && c[i].sign() === 0)
@@ -719,126 +823,74 @@ function trim<T extends {sign(): number}>(c: T[]) {
 	c.length = i + 1;
 }
 
-export class polynomialT<T extends ops<T>> {
+export class polynomialT<T extends ops<T>> implements Polynomial<T> {
 	constructor(public c: T[]) {
 		if (arrayOf(c, has('sign')))
 			trim(c);
 	}
 	degree()	{ return this.c.length - 1; }
 	leadCoeff() { return this.c[this.c.length - 1]; }
-	dup()		{ return new polynomialT<T>(this.c.slice()); }
+	dup() { return new polynomialT<T>(this.c.slice()); }
 
 	evaluate(t: T): T;
 	evaluate(t: T[]): T[];
 	evaluate(t: T|T[]) {
-		let i = this.c.length;
-		if (i === 0)
-			throw new Error('polynomialT.evaluate: polynomial has no coefficients');
-		
-		if (Array.isArray(t)) {
-			const r = new Array<T>(t.length).fill(this.c[--i]);
-			while (i--) {
-				const c = this.c[i];
-				r.forEach(c ? (x, j) => r[j] = x.mul(t[j] as T).add(c) : (x, j) => r[j] = x.mul(t[j] as T));
-			}
-			return r;
-		} else {
-			return sparseEvaluateT(this.c, t, false);
-			/*
-			//dense
-			let r = this.c[--i];
-			if (typeof t === 'number') {
-				while (i--) {
-					const c = this.c[i];
-					r = c ? r.scale(t).add(c) : r.scale(t);
-				}
-			} else {
-				while (i--) {
-					const c = this.c[i];
-					r = c ? r.mul(t).add(c) : r.mul(t);
-				}
-			}
-			return r;
-			*/
-		}
+		if (Array.isArray(t))
+			return t.map(t => sparseEvaluateT(this.c, t, false));
+		return sparseEvaluateT(this.c, t, false);//or denseEvaluateT(this.c, t);
 	}
 	deriv() {
 		return new polynomialT(this.c.slice(1).map((v, i) => v.scale(i + 1)));
 	}
-	add(b: T|polynomialT<T>) {
+	add(b: T|polynomialT<T>): polynomialT<T> {
 		if (b instanceof polynomialT)
-			return new polynomialT(Array.from({length: Math.max(this.c.length, b.c.length)}, (_, i) =>
-				this.c[i] ? (b.c[i] ? this.c[i].add(b.c[i]) : this.c[i]) : b.c[i].neg()
-			));
+			return new polynomialT(sparseAddT(this.c.slice(), b.c));
 		return new polynomialT([this.c[0].add(b), ...this.c.slice(1)]);
 	}
-	sub(b: T|polynomialT<T>) {
+	sub(b: T|polynomialT<T>): polynomialT<T> {
 		if (b instanceof polynomialT)
-			return new polynomialT(Array.from({length: Math.max(this.c.length, b.c.length)}, (_, i) =>
-				this.c[i] ? (b.c[i] ? this.c[i].sub(b.c[i]) : this.c[i]) : b.c[i].neg()
-			));
+			return new polynomialT(sparseSubT(this.c.slice(), b.c));
 		return new polynomialT([this.c[0].sub(b), ...this.c.slice(1)]);
 	}
-	mul(b: number|polynomialT<T>|T) {
-		if (b instanceof polynomialT) {
-			const zero = this.c[0].scale(0);
-			return new polynomialT(Array.from({ length: this.c.length + b.c.length - 1 }, (_, k) => {
-				let sum = zero;
-				for (let i = Math.max(0, k - b.c.length + 1); i <= Math.min(this.c.length - 1, k); i++)
-					sum = sum.add(this.c[i].mul(b.c[k - i]));
-				return sum;
-			}));
-		}
-
+	scale(b: number|T): polynomialT<T> {
 		return new polynomialT(typeof b === 'number' ? this.c.map(a => a.scale(b)) : this.c.map(a => a.mul(b)));
 	}
-	div(b: number|polynomialT<T>|T) {
-		if (b instanceof polynomialT)
-			return this.dup().divmod(b);
-		return new polynomialT(typeof b === 'number' ? this.c.map(a => a.scale(1 / b)) : this.c.map(a => a.div(b)));
+	rscale(b: number|T): polynomialT<T> {
+		return typeof b === 'number' ? this.scale(1 / b) : new polynomialT(this.c.map(a => a.div(b)));
+	}
+	mul(b: polynomialT<T>) {
+		return new polynomialT(sparseMultiplyT(this.c, b.c, false));// or denseMultiplyT(this.c, b.c, false);
+	}
+	div(b: polynomialT<T>) {
+		return this.dup().divmod(b);
 	}
 	selfAdd(b: T|polynomialT<T>) {
-		if (b instanceof polynomialT)
+		if (b instanceof polynomialT) {
 			sparseAddT(this.c, b.c);
-		else
+		} else {
 			this.c[0] = this.c[0].add(b);
-		if (arrayOf(this.c, has('sign')))
-			trim(this.c);
+			if (arrayOf(this.c, has('sign')))
+				trim(this.c);
+		}
 	}
 	selfSub(b: T|polynomialT<T>) {
-		if (b instanceof polynomialT)
+		if (b instanceof polynomialT) {
 			sparseSubT(this.c, b.c);
-		else
+		} else {
 			this.c[0] = this.c[0].sub(b);
-		if (arrayOf(this.c, has('sign')))
-			trim(this.c);
+			if (arrayOf(this.c, has('sign')))
+				trim(this.c);
+		}
 	}
-	selfMul(b: number|T) {
-		sparseMulT(this.c, b);
+	selfScale(b: number|T) {
+		sparseScaleT(this.c, b);
 	}
-	selfDiv(b: number|T) {
+	selfRscale(b: number|T) {
 		sparseDivT(this.c, b);
 	}
 	
 	divmod(b: polynomialT<T>) {
-		const a		= this.c;
-		const bdeg	= b.degree();
-		const alen	= a.length;
-		const bt	= b.c[bdeg];
-		const q		= new Array<T>(Math.max(0, alen - bdeg));
-
-		for (let i = q.length; i--;) {
-			const at = a[i + bdeg].div(bt);
-			q[i] = at;
-			for (let j = 0; j < bdeg; j++)
-				a[i + j] = a[i + j].sub(at.mul(b.c[j]));
-		}
-
-		let rlen = bdeg;
-		while (rlen > 0 && lessThan(a[rlen - 1].mag(), defaultEpsilon))
-			rlen--;
-		this.c.length = rlen;
-		return new polynomialT(q);
+		return new polynomialT(sparseDivModT(this.c, b.c, false));
 	}
 
 	pseudoRemainder(b: polynomialT<T>) {
@@ -867,60 +919,60 @@ export class polynomialT<T extends ops<T>> {
 
 	content(): ifScalar<T, T> {
 		if (arrayOf(this.c, isScalarExt))
-			return gcdT2(...this.c) as any as ifScalar<T, T>;
+			return gcdT(...this.c) as any as ifScalar<T, T>;
 		return undefined as never;
 	}
-	abs() {
+	abs() : Polynomial<T> {
 		return arrayOf(this.c, has('sign')) && this.c[this.c.length-1].sign() < 0 ? new polynomialT(this.c.map(v => v.neg())) : this;
 	}
 	sign() {
 		return this.c.length === 0 ? 0 : arrayOf(this.c, has('sign')) ? this.c[this.c.length-1].sign() : NaN;
 	}
 
-	normalise(epsilon = defaultEpsilon) {
+	normalise(epsilon = defaultEpsilon): PolynomialN<normalized<T>> {
 		let i = this.c.length - 1;
 		while (i && lessThan(this.c[i].mag(), epsilon))
 			i--;
 		const f = this.c[i];
-		return new polynomialNT<T>(this.c.slice(0, i).map(v => v.div(f)));
+		return new polynomialNT<T>(this.c.slice(0, i).map(v => v.div(f))) as unknown as PolynomialN<normalized<T>>;
 	}
 
-	rationalRoots(): inferRationalRoots<T> {
+	rationalRoots(): rationalRoots<T> {
 		if (arrayOf(this.c, isScalar)) {
 			if (arrayOf(this.c, v => isInstance(v, rationalB))) {
 				const m = lcmB(...this.c.map((v: rationalB) => v.den));
 				const p2 = new polynomialB(this.c.map((v: rationalB) => v.num * (m / v.den)));
-				return rationalRootsB(p2) as inferRationalRoots<T>;
+				return rationalRootsB(p2) as rationalRoots<T>;
 
 			} else if (arrayOf(this.c, v => isInstance(v, rational))) {
 				const m = lcm(...this.c.map((v: rational) => v.den));
 				const p2 = new polynomial(this.c.map((v: rational) => v.num * (m / v.den)));
-				return rationalRoots(p2) as inferRationalRoots<T>;
+				return rationalRoots(p2) as rationalRoots<T>;
 
 			} else {
 				const p2 = this.c.map(c => rationalB.from(c as any, 1n << 32n));
 				const m = lcmB(...p2.map(v => v.den));
 				const p4 = new polynomialB(p2.map(v => v.num * (m / v.den)));
-				return rationalRootsB(p4) as inferRationalRoots<T>; 
+				return rationalRootsB(p4) as rationalRoots<T>; 
 			}
 		}
 		return undefined as never;
 	}
 
-	realRoots(epsilon = defaultEpsilon): ifScalar<T, T[]>  {
-		return this.normalise().realRoots(epsilon);
+	realRoots(epsilon = defaultEpsilon): realRoots<T> {
+		return this.normalise().realRoots(epsilon) as realRoots<T>;
 	}
-	allRoots(epsilon = defaultEpsilon): inferComplexRoots<T>  {
-		return this.normalise().allRoots(epsilon);
+	allRoots(epsilon = defaultEpsilon): complexRoots<T> {
+		return this.normalise().allRoots!(epsilon) as complexRoots<T>;
+	}
+	map<U extends PolyTypes>(func: (c: T, i: number) => U): Polynomial<U> {
+		return Polynomial(this.c.map((c, i) => func(c, i)));
 	}
 
-	map(func: (c: T, i: number) => number) {
-		return new polynomial(this.c.map((c, i) => func(c, i)));
-	}
-	refine_roots(x: T[], count = 1): T[] {
+	refine_roots(x: realRoots<T>, count = 1): realRoots<T> {
 		const	d1	= this.deriv();
 		const	d2	= d1.deriv();
-		return x.map(x => halleyT(this, d1, d2, x, count));
+		return x.map(x => halleyT(this, d1, d2, x, count)) as realRoots<T>;
 	}
 	toString(debug = false) {
 		if (this.c.length < 2)
@@ -936,7 +988,7 @@ export class polynomialT<T extends ops<T>> {
 //	Normalised General Polynomial with implicit leading coefficient of 1
 //-----------------------------------------------------------------------------
 
-export class polynomialNT<T extends ops<T>> {
+export class polynomialNT<T extends ops<T>> implements PolynomialN<T> {
 	constructor(public c: T[]) {}
 	degree()	{ return this.c.length; }
 	dup()		{ return new polynomialNT<T>(this.c.slice()); }
@@ -944,73 +996,65 @@ export class polynomialNT<T extends ops<T>> {
 	evaluate(t: T): T;
 	evaluate(t: T[]): T[];
 	evaluate(t: T|T[]) {
-		let i = this.c.length;
-		if (Array.isArray(t)) {
-			const lead = this.c[--i];
-			const r = t.map(x => x.add(lead));
-			while (i--)
-				r.forEach((x, j) => r[j] = x.mul(t[j] as T).add(this.c[i]));
-			return r;
-		} else {
-			return sparseEvaluateT(this.c, t, true);
-			/* dense
-			let r = t.add(this.c[--i]);
-			while (i--)
-				r = r.mul(t).add(this.c[i]);
-			return r;
-			*/
-		}
+		if (Array.isArray(t))
+			return t.map(t => sparseEvaluateT(this.c, t, true));
+		return sparseEvaluateT(this.c, t, true);//or denseEvaluateT(this.c, t);
 	}
 
-	//deriv<U extends scalar<any>>(this: polynomialNT<U>) : polynomialT<U> {
-	deriv() : polynomialT<T> {
+	deriv() {
 		if (isScalar(this.c[0]))
-			return new polynomialT([...this.c.slice(1).map((v, i) => v.scale(i + 1)), this.c[0].from(this.c.length)]);
+			return new polynomialT<T>([...this.c.slice(1).map((v, i) => v.scale(i + 1)), this.c[0].from(this.c.length)]);
 		return undefined as never;
 	}
-	mul(b: polynomialNT<T>) {
-		const zero = this.c[0].scale(0);
-		return new polynomialNT(Array.from({ length: this.c.length + b.c.length }, (_, k) => {
-			let sum = zero;
-			for (let i = Math.max(0, k - b.c.length); i <= Math.min(this.c.length, k); i++)
-				sum = sum.add(this.c[i].mul(b.c[k - i]));
-			return sum;
-		}));
+	mul(b: PolynomialN<T>) {
+		return new polynomialNT<T>(sparseMultiplyT(this.c, b.c, true));
 	}
-	divmod(b: polynomialNT<T>) {
-		const blen	= b.c.length;
-		const dc = new Array<T>(this.c.length - blen);
+	divmod(b: PolynomialN<T>) {
+		return new polynomialT<T>(sparseDivModT(this.c, b.c, true));
+	}
 
-		for (let i = dc.length; --i;) {
-			const d = this.c[i + blen];
-			for (let j = 0; j < b.c.length; j++)
-				this.c[i - j] = this.c[i-j].sub(d.mul(b.c[j]));
-			dc[i] = d;
+	rationalRoots(): rationalRoots<T> {
+		if (arrayOf(this.c, isScalar)) {
+			if (arrayOf(this.c, v => isInstance(v, rationalB))) {
+				const m = lcmB(...this.c.map((v: rationalB) => v.den));
+				const p2 = new polynomialB([...this.c.map((v: rationalB) => v.num * (m / v.den)), m]);
+				return rationalRootsB(p2) as rationalRoots<T>;
+
+			} else if (arrayOf(this.c, v => isInstance(v, rational))) {
+				const m = lcm(...this.c.map((v: rational) => v.den));
+				const p2 = new polynomial([...this.c.map((v: rational) => v.num * (m / v.den)), m]);
+				return rationalRoots(p2) as rationalRoots<T>;
+
+			} else {
+				const p2 = this.c.map(c => rationalB.from(c as any, 1n << 32n));
+				const m = lcmB(...p2.map(v => v.den));
+				const p4 = new polynomialB([...p2.map(v => v.num * (m / v.den)), m]);
+				return rationalRootsB(p4) as rationalRoots<T>; 
+			}
 		}
-		this.c.length = b.c.length - 1;
-		return new polynomialT(dc);
+		return undefined as never;
 	}
 
-	realRoots(epsilon = defaultEpsilon): ifScalar<T, T[]> {
+	realRoots(epsilon = defaultEpsilon): realRoots<T> {
 		if (polyNOf(this, isScalar)) {
 			const eps = this.c[0].from(epsilon);
 			if (polyNOf(this, has('rpow')))
-				return normPolyRealRootsT(this.c, eps) as ifScalar<T, T[]>;
+				return normPolyRealRootsT(this.c, eps) as realRoots<T>;
 			else
-				return this.refine_roots(sturmIsolateIntervalsT(this, eps).map(i => bisectRootT(this, i.min, i.max, eps))) as ifScalar<T, T[]>;
+				return this.refine_roots(sturmIsolateIntervalsT(this, eps).map(i => bisectRootT(this, i.min, i.max, eps))) as realRoots<T>;
 		}
 		return undefined as never;
 	}
 
-	allRoots(epsilon = defaultEpsilon): inferComplexRoots<T> {
+	allRoots(epsilon = defaultEpsilon): complexRoots<T> {
 		if (arrayOf(this.c, isScalarExt))
-			return normPolyComplexRootsT(this.c, this.c[0].from(epsilon)) as inferComplexRoots<T>;
+			return normPolyComplexRootsT(this.c, this.c[0].from(epsilon)) as complexRoots<T>;
 		return undefined as never;
 	}
-	refine_roots(x: T[], count = 1) : T[] {
+	refine_roots(x: realRoots<T>, count = 1): realRoots<T> {
 		const	d1	= this.deriv();
 		const	d2	= d1.deriv();
-		return x.map(x => halleyT(this, d1, d2, x, count));
+		return x.map(x => halleyT(this as polynomialNT<T>, d1, d2, x, count)) as realRoots<T>;
 	}
 	toString(debug = false) {
 		return	this.degree() === 0 ? '1'
@@ -1031,7 +1075,7 @@ export function polyGCDT<T extends ops<T>>(A: polynomialT<T>, B: polynomialT<T>)
 	const seq = subresultantPRST(A, B);
 	for (let i = seq.length; i--;) {
 		if (seq[i].degree() > 0)
-			return seq[i].div(seq[i].leadCoeff());//normalise();
+			return seq[i].rscale(seq[i].leadCoeff());//normalise();
 	}
 	return new polynomialT<T>([]);
 }
@@ -1048,7 +1092,7 @@ export function subresultantPRST<T extends ops<T>>(A: polynomialT<T>, B: polynom
 
 		const cont = A.content();
 		if (cont !== undefined)
-			A.selfDiv(cont);
+			A.selfRscale(cont);
 
 		seq.push(A.dup());
 		[A, B] = [B, A];
@@ -1097,7 +1141,7 @@ export function squareFreeFactorizationT<T extends ops<T>>(f: polynomialT<T>) {
 		if (fi.degree() > 0) {
 			const cont = fi.content();
 			if (cont)
-				fi.selfDiv(cont);
+				fi.selfRscale(cont);
 			res.push({ factor: fi, multiplicity: i });
 		}
 
@@ -1550,14 +1594,12 @@ function normPolyRealRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): T[] {
 				const	h	= g.mul(g).sub(f.mul(f).mul(f));
 			
 				switch (h.sign()) {
-					default:
 					case -1: {
 						//3 real roots
 						const	s0		= g.sign() < 0 ? h.neg().sqrt() : h.sqrt();
 						const	angle	= hasStatic(s0, 'atan2')?.(s0, g).div(3) ?? Math.atan2(Number(s0), Number(g)) / 3;
 						const	c		= hasStatic(s0, 'cos')?.(angle) ?? k[0].from(Math.cos(angle));
 						const	s		= hasStatic(s0, 'sin')?.(angle) ?? k[0].from(Math.sin(angle));
-						//const	c		= k[0].from(Math.cos(angle)), s = k[0].from(Math.sin(angle));
 						const	rf		= f.sqrt();
 						const	r = [
 							c.scale(2).mul(rf).sub(e),
@@ -1566,6 +1608,7 @@ function normPolyRealRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): T[] {
 						];
 						return has('lt')(rf) ? r.sort(compareT) : r;
 					}
+					default:
 					case 1: {
 						//1 real root, 2 imaginary (y + iz) & (y - iz)
 						const	rh = h.sqrt();
@@ -1926,7 +1969,6 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 				const	h	= g.mul(g).sub(f.mul(f).mul(f));
 			
 				switch (h.sign()) {
-					default:
 					case -1: {
 						//3 real roots
 						const	s0		= copySignT(h.neg().sqrt(), g);
@@ -1941,6 +1983,7 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 							new complexT((c.neg().add(s.scale(sqrt3))).mul(rf).sub(e), zero),
 						];
 					}
+					default:
 					case 1: {
 						//1 real root, 2 imaginary (y + iz) & (y - iz)
 						const	rh = h.sqrt();
@@ -2082,9 +2125,9 @@ export function legendrePolynomial(n: number): polynomial {
 
 	for (let k = 2; k <= n; ++k) {
 		const x = new polynomial([0, 1]); // x
-		const term1 = x.mul(P1).mul(2 * k - 1);
-		const term2 = P0.mul(k - 1);
-		const Pk = term1.sub(term2).mul(1 / k);
+		const term1 = x.mul(P1).scale(2 * k - 1);
+		const term2 = P0.scale(k - 1);
+		const Pk = term1.sub(term2).scale(1 / k);
 
 		P0 = P1;
 		P1 = Pk;
@@ -2123,7 +2166,7 @@ export function interpolate(points: [number, number][]): polynomial {
 			}
 		}
 		if (Math.abs(denom) > 1e-18)
-			res.selfAdd(L.mul(yi / denom));
+			res.selfAdd(L.scale(yi / denom));
 	}
 	return res;
 }
@@ -2140,7 +2183,7 @@ export function interpolateT<T extends ops<T>>(points: [T, T][], one: T): polyno
 				denom	= denom.mul(xi.sub(xj));
 			}
 		}
-		res.selfAdd(L.mul(yi.div(denom)));
+		res.selfAdd(L.scale(yi.div(denom)));
 	}
 	return res;
 }
@@ -2149,12 +2192,32 @@ export function interpolateT<T extends ops<T>>(points: [T, T][], one: T): polyno
 // Integer/Rational Root Theorem extractor for polynomials with bigint coefficients
 //-----------------------------------------------------------------------------
 
+function divRootB(c: bigint[], root: bigint|rationalB): [bigint[], bigint] {
+	let i = c.length - 1;
+	if (i < 1)
+		return [[], i ? c[0] : 0n];
+
+	const b = new Array<bigint>(i);
+	if (typeof root === 'bigint') {
+		b[i - 1] = c[i];
+		while (--i)
+			b[i - 1] = c[i] + root * b[i];
+		return [b, c[0] + root * b[0]];
+
+	} else {
+		b[i - 1] = c[i];
+		while (--i)
+			b[i - 1] = c[i] * root.den + root.num * b[i];
+		return [b, c[0] * root.den + root.num * b[0]];
+	}
+}
+
 function removeMultiplicityB(p: polynomialB, root: bigint|rationalB): boolean {
 	while (p.degree() > 0) {
-		const [ quotient, remainder ] = p.divRoot(root);
+		const [ quotient, remainder ] = divRootB(p.c, root);
 		if (remainder !== 0n)
 			return false;
-		p.c = quotient.c;
+		p.c = quotient;
 	}
 	return true;
 }
@@ -2199,35 +2262,41 @@ function* rationalDivisorsB(numFactors: Map<bigint, number>, denFactors: Map<big
 }
 
 // modifies p to remove found roots
-export function rationalRootsB(p: polynomialB): bigint[] | rationalB[] {
-	const roots0: bigint[] = [];
+export function rationalRootsNB(p: polynomialB): bigint[] {
+	const roots: bigint[] = [];
 	if (p.c[0] === 0n)
-		roots0.push(0n);
+		roots.push(0n);
 
 	while (p.c[0] === 0n)
-		p = p.divRoot(0n)[0];
+		p.c = divRootB(p.c, 0n)[0];
 
-	if (p.leadCoeff() === 1n) {
-		const a0		= p.c[0];
-		const factors	= new factorisationB(a0);
-		const bound		= lagrangeImprovedB(p.c.slice(0, -1));
+	const a0		= p.c[0];
+	const factors	= new factorisationB(a0);
+	const bound		= lagrangeImprovedB(p.c.slice(0, -1));
 
-		for (const x of factors.divisors(bound)) {
-			if (p.evaluate(x) === 0n) {
-				roots0.push(x);
-				if (removeMultiplicityB(p, x))
-					break;
-			}
-			if (p.evaluate(-x) === 0n) {
-				roots0.push(-x);
-				if (removeMultiplicityB(p, -x))
-					break;
-			}
+	for (const x of factors.divisors(bound)) {
+		if (p.evaluate(x) === 0n) {
+			roots.push(x);
+			if (removeMultiplicityB(p, x))
+				break;
 		}
-		return roots0.sort(compare);
+		if (p.evaluate(-x) === 0n) {
+			roots.push(-x);
+			if (removeMultiplicityB(p, -x))
+				break;
+		}
 	}
+	return roots.sort(compare);
+}
 
-	const roots: rationalB[] = roots0.map(r => new rationalB(r));
+// modifies p to remove found roots
+export function rationalRootsB(p: polynomialB): rationalB[] {
+	const roots: rationalB[] = [];
+	if (p.c[0] === 0n)
+		roots.push(rationalB.from(0n))                                  ;
+
+	while (p.c[0] === 0n)
+		p.c = divRootB(p.c, 0n)[0];
 
 	const a0 = absB(p.c[0]);
 	const an = absB(p.leadCoeff());
@@ -2262,12 +2331,32 @@ export function rationalRootsB(p: polynomialB): bigint[] | rationalB[] {
 	return roots.sort((a, b) => a.compare(b));
 }
 
+function divRoot(c: number[], root: number | rational): [number[], number] {
+	let i = c.length - 1;
+	if (i < 1)
+		return [[], i ? c[0] : 0];
+
+	const b = new Array<number>(i);
+	if (typeof root === 'number') {
+		b[i - 1] = c[i];
+		while (--i)
+			b[i - 1] = c[i] + root * b[i];
+		return [b, c[0] + root * b[0]];
+
+	} else {
+		b[i - 1] = c[i];
+		while (--i)
+			b[i - 1] = c[i] * root.den + root.num * b[i];
+		return [b, c[0] * root.den + root.num * b[0]];
+	}
+}
+
 function removeMultiplicity(p: polynomial, root: number|rational): boolean {
 	while (p.degree() > 0) {
-		const [ quotient, remainder ] = p.divRoot(root);
+		const [ quotient, remainder ] = divRoot(p.c, root);
 		if (remainder !== 0)
 			return false;
-		p.c = quotient.c;
+		p.c = quotient;
 	}
 	return true;
 }
@@ -2312,13 +2401,13 @@ function* rationalDivisors(numFactors: number[], denFactors: number[], limit?: r
 }
 
 // modifies p to remove found roots
-export function rationalRoots(p: polynomial): number[] | rational[] {
+function rationalRoots(p: polynomial): rational[] {
 	const roots0: number[] = [];
 	if (p.c[0] === 0)
 		roots0.push(0);
 
 	while (p.c[0] === 0)
-		p = p.divRoot(0)[0];
+		p.c = divRoot(p.c, 0)[0];
 
 	const r = p.c.map(c => rational.from(c));
 	const m = lcm(...r.map(v => v.den));
@@ -2343,7 +2432,7 @@ export function rationalRoots(p: polynomial): number[] | rational[] {
 					break;
 			}
 		}
-		return roots0;
+		return roots0.map(r => rational.from(r));
 	}
 
 	const roots: rational[] = roots0.map(r => new rational(r));
@@ -2453,5 +2542,5 @@ export function discriminantT<T extends scalar<T>>(p: polynomialT<T>) {
 	if (n < 1)
 		return p.c[0].from(0);
 	const	R	= resultantT(p, p.deriv());
-	return (((n * (n - 1))) & 2 ? R.neg():	R).div(p.leadCoeff());
+	return (((n * (n - 1))) & 2 ? R.neg() : R).div(p.leadCoeff());
 }

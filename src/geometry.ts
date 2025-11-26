@@ -1,5 +1,6 @@
 import {vops, float2, normalise, approx_equal, mid, lerp} from './vector';
-import {legendreTable, polynomial, polynomialT} from './polynomial';
+//import {legendreTable, polynomial, polynomialT} from './polynomial';
+import {legendreTable, Polynomial} from './polynomial';
 
 function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number, t: number, maxIter = 20, tol = 1e-6) {
 	for (let i = 0; i < maxIter; i++) {
@@ -289,7 +290,7 @@ export class bezier3<T extends vops<T>> implements shape<T> {
 	}
 
 	spline()	{ 
-		return new polynomialT<T>([
+		return Polynomial([
 			this.c0,	//t
 			this.c1.sub(this.c0).scale(3),	//t
 			this.c0.sub(this.c2).scale(3).sub(this.c1.scale(6)),	//t^2
@@ -397,10 +398,10 @@ export class bezierSpline3<T extends vops<T>> extends spline<T, bezier3<T>> {
 //	reduce spline<bezier3> to spline<bezier2>
 //-----------------------------------------------------------------------------
 
-function curvature_from_tangent(t: polynomialT<float2>) {
+function curvature_from_tangent(t: Polynomial<float2>) {
 	const	t2	= t.deriv();
 	const	p	= t.map(c => c.x).mul(t2.map(c => c.y)).sub(t2.map(c => c.x).mul(t.map(c => c.y)));
-	return new polynomial(p.c.slice(0, t.c.length * 2 - 1));
+	return Polynomial(p.c.slice(0, t.c.length * 2 - 1));
 }
 
 export function reduce_spline(b: bezier3<float2>, max: number, tol: number) : bezierSpline2<float2> {
@@ -425,7 +426,8 @@ export function reduce_spline(b: bezier3<float2>, max: number, tol: number) : be
 			const 	b2 		= new bezier2<float2>(b3.c0, c1, b3.c3);
 			const	p2		= b2.evaluate(0.5);
 			const	s0		= b3.spline().sub(p2);
-			const	s		= s0.map(c => c.lensq()).deriv();
+			const	s1		= s0.map(c => c.lensq());
+			const	s		= s1.deriv();
 			const	root	= s.refine_roots([0.5], 2);
 			const	p3		= b3.evaluate(root[0]);
 	

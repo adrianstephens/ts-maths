@@ -1,4 +1,4 @@
-import { scalar, gcd, absB, signB, gcdB, gcdT, bigIntDivideToNumber, minB, lazySlice, compareT, has } from "./core";
+import { scalar, gcd, absB, signB, gcdB, divB, minB, lazySlice, has, rationalApprox, rationalApproxB } from "./core";
 
 type scalar1<T extends scalar<T>> = scalar<T> & has<'divmod'> & has<'recip'>;
 
@@ -52,34 +52,6 @@ function *convergents<T extends scalar<T>>(terms: (bigint|number)[]): Generator<
 //-----------------------------------------------------------------------------
 // number rationals
 //-----------------------------------------------------------------------------
-
-export function rationalApprox(x: number, maxDen: number, eps?: number): [number, number] {
-	// binary check for exact representation
-	if ((x * Math.pow(2, 53) & -1) === 0) {
-		const m = x * (1 << (53 - 32));
-		const z = m & -m;
-		if (z > 1 << (53 - 32 - 4)) {
-			const d = (1 << (53 - 32)) / z;
-			return [x * d, d];
-		}
-	}
-	
-	let h1 = Math.floor(x), h2 = 1;
-	let k1 = 1, k2 = 0;
-	let b = x - h1;
-
-	while (b && (eps === undefined || eps < Math.abs(b))) {
-		b = 1 / b;
-		const f = Math.floor(b);
-		const h = f * h1 + h2;
-		const k = f * k1 + k2;
-		if (k > maxDen)
-			break;
-		[h2, h1, k2, k1] = [h1, h, k1, k];
-		b -= f;
-	}
-	return [h1, k1];
-}
 
 export class rational implements scalar<rational> {
 	static from(n: number, maxDen?: number): rational {
@@ -149,29 +121,6 @@ export class rational implements scalar<rational> {
 // bigint rationals
 //-----------------------------------------------------------------------------
 
-function rationalApproxB<T extends scalar1<T>>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
-	const one	= x.from(1);
-	let b	= x.dup();
-	let h1	= BigInt(b.divmod(one)), h2 = 1n;
-	let k1	= 1n, k2 = 0n;
-
-	if (b.sign() < 0) {
-		--h1;
-		b = b.add(one);
-	}
-
-	while (b.sign() !== 0 && (eps === undefined || eps.lt(b.abs()))) {
-		b = b.recip();
-		const f = BigInt(b.divmod(one));
-		const h = h1 * f + h2;
-		const k = k1 * f + k2;
-		if (k > maxDen)
-			break;
-		[h2, h1, k2, k1] = [h1, h, k1, k];
-	}
-	return [h1, k1];
-}
-
 export class rationalB {
 	static from(n: number|bigint|scalar1<any>, maxDen?: bigint): rationalB {
 		if (typeof n === 'bigint')
@@ -225,7 +174,7 @@ export class rationalB {
 	frac():		rationalB	{ return new rationalB(this.num % this.den, this.den); }
 	floor():	bigint		{ return this.num / this.den; }
 	sign():		number		{ return this.num === 0n ? 0 : this.num > 0n ? 1 : -1; }
-	mag():	 	number		{ return bigIntDivideToNumber(absB(this.num), this.den); }
+	mag():	 	number		{ return divB(absB(this.num), this.den); }
 
 	set(b: rationalB):	rationalB	{ this.num = b.num; this.den = b.den; return this; }
 	scale(b: number):	rationalB	{ return this.mul(rationalB.from(b)); }
@@ -240,37 +189,13 @@ export class rationalB {
 	compare(b: rationalB):	number	{ return signB(this.num * b.den - b.num * this.den); }
 
 	toString()			{ return this.den === 1n ? `${this.num}` : `${this.num} / ${this.den}`; }
-	valueOf():	number	{ return bigIntDivideToNumber(this.num, this.den); }
+	valueOf():	number	{ return divB(this.num, this.den); }
 }
 
 //-----------------------------------------------------------------------------
 // generic rationals
 //-----------------------------------------------------------------------------
-
-function rationalApproxT<T extends scalar1<T>>(x: T, maxDen: T, eps?: T): [T, T] {
-	const zero	= x.from(0);
-	const one	= x.from(1);
-	let b	= x.dup();
-	let a	= x.divmod(one);
-	if (b.sign() < 0) {
-		--a;
-		b = b.add(one);
-	}
-	let h1	= x.from(a), h2 = one;
-	let k1	= one, k2 = zero;
-
-	while (b.sign() !== 0 && (eps === undefined || eps.lt(b.abs()))) {
-		b = b.recip();
-		const f = Number(b.divmod(one));
-		const h = h1.scale(f).add(h2);
-		const k = k1.scale(f).add(k2);
-		if (k > maxDen)
-			break;
-		[h2, h1, k2, k1] = [h1, h, k1, k];
-	}
-	return [h1, k1];
-}
-
+/*
 export class rationalT<T extends scalar1<T>> {
 	constructor(public num: T, public den: T) {
 		if (this.den.sign() < 0) {
@@ -322,3 +247,4 @@ export class rationalT<T extends scalar1<T>> {
 
 	toString()	{ return `${this.num} / ${this.den}`; }
 }
+*/

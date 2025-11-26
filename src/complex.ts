@@ -5,6 +5,7 @@ import { scalarExt, sincos } from "./core";
 class _complex {
 	constructor(public r: number, public i: number) {}
 
+	from(b: number)			{ return complex(b, 0); }
 	dup(): 		complex		{ return complex(this.r, this.i); }
 	neg(): 		complex		{ return complex(-this.r, -this.i); }
 	conj(): 	complex		{ return complex(this.r, -this.i); }

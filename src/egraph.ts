@@ -1,4 +1,5 @@
-import {symbolic, Rule, scoreFactory, StringifyOptions} from './symbolic';
+import { symbolic } from './symbolic';
+import { Rule, scoreFactory } from './symbolicRules';
 
 class EClass extends symbolic {
 	parent?: EClass;
@@ -8,7 +9,7 @@ class EClass extends symbolic {
 	constructor(id: string, public nodes: Set<symbolic>) { super(id); }
 	repr(): symbolic|undefined { const it = this.nodes.values(); const first = it.next(); return first.value; }
 //	toString(_opts?: StringifyOptions): string { return `EClass ${this.repr() ?? this.id}`; }
-	_toString(_opts: StringifyOptions): string { return `EClass ${this.id}`; }
+	_toString(): string { return `EClass ${this.id}`; }
 }
 
 export default class EGraph {
@@ -25,7 +26,7 @@ export default class EGraph {
 		let bestScore = Infinity;
 		
 		for (const node of eclass.nodes) {
-			const score = this.scorer(node);
+			const score = this.scorer(node, bestScore);
 			if (score < bestScore) {
 				bestScore = score;
 				best = node;
@@ -54,7 +55,7 @@ export default class EGraph {
 	}
 
 	private computeCanonicalSig(node: symbolic): string {
-		const mapped = node.visit({pre: (n: symbolic) => this.eclassOfNode(n.id) ?? n});
+		const mapped = node.visit({noRemake: true, pre: (n: symbolic) => this.eclassOfNode(n.id) ?? n});
 		return mapped.id;
 	}
 	
@@ -64,7 +65,7 @@ export default class EGraph {
 			return false;
 
 		if (this.verbose)
-			console.log('egraph-diagnostic: merging', String(a), 'with', String(b));
+			console.log(`egraph-diagnostic: merging ${a} with ${b}`);
 
 		if (this.validate && !this.validate(a.repr()!, b.repr()!))
 			throw new Error("Validation failed during merge");
@@ -101,6 +102,7 @@ export default class EGraph {
 
 			const orderedChildEcs: EClass[] = [];
 			parent.visit({
+				noRemake: true,
 				post: (child: symbolic, parent2?: symbolic) => {
 					if (parent === parent2) {
 						const ce = this.eclassOfNode(child.id);
@@ -112,8 +114,8 @@ export default class EGraph {
 			});
 			
 			// Update best nodes for each child eclass
-			for (const ec of orderedChildEcs)
-				this.updateBestNode(ec);
+			//for (const ec of orderedChildEcs)
+			//	this.updateBestNode(ec);
 			
 			// Strategy: Only expand combinations involving the best node from each eclass
 			// This prevents combinatorial explosion while ensuring good candidates are tried
@@ -122,9 +124,10 @@ export default class EGraph {
 				if (nodes.length === 1)
 					return nodes;
 				// For eclasses with multiple nodes, include the best one plus originals
-				const best = ec.bestNode!;
-				const originals = nodes.slice(0, Math.min(2, nodes.length)); // Keep first 2 as originals
-				return originals.includes(best) ? originals : [best, ...originals];
+				//const best = ec.bestNode!;
+				//const originals = nodes.slice(0, Math.min(2, nodes.length)); // Keep first 2 as originals
+				//return originals.includes(best) ? originals : [best, ...originals];
+				return nodes;
 			});
 			
 			const total = childCandidates.reduce((acc, c) => acc * c.length, 1);
@@ -140,6 +143,7 @@ export default class EGraph {
 
 					i = 0;
 					const concrete = parent.visit({
+						//noRemake: true,
 						pre: (n: symbolic, parent2?: symbolic) => parent === parent2 ? selection[i++] : n
 					});
 
@@ -172,9 +176,14 @@ export default class EGraph {
 		// Post-order traversal: children are processed before parents so their eclasses exist when we handle a parent.
 		// For each visited node we compute a canonical signature (by substituting immediate children with their current eclass reps), create or reuse an EClass
 		node.visit({
-			pre: (n: symbolic) => {
-				if (this.eclassOfNode(n.id))
+			noRemake: true,
+			pre: (n: symbolic, parent?: symbolic) => {
+				const eclass = this.eclassOfNode(n.id);
+				if (eclass) {
+					if (parent)
+						eclass.parents.add(parent);
 					return undefined;
+				}
 				return n;
 			},
 			post: (n: symbolic, parent?: symbolic) => {
@@ -183,7 +192,7 @@ export default class EGraph {
 					return undefined;
 
 				if (this.verbose)
-					console.log('egraph-diagnostic: adding node', String(n));
+					console.log(`egraph-diagnostic: adding node ${n}`, n);
 
 				const key = this.computeCanonicalSig(n);
 
@@ -208,7 +217,7 @@ export default class EGraph {
 
 		const out = this.eclassOfNode(node.id);
 		if (!out)
-			throw new Error(`addSymbolic: failed to register node ${node.id}`);
+			throw new Error(`addSymbolic: failed to register node ${node}`);
 		return out;
 	}
 
@@ -223,23 +232,23 @@ export default class EGraph {
 
 				if (!bs || (r.guard && !r.guard(bs))) {
 					if (debugNode === 'all' || debugNode === nid)
-						console.warn('egraph-diagnostic: rule', r.name, 'on', String(node), bs ? "matched, but guard failed" : "no match");
+						console.warn(`egraph-diagnostic: rule ${r.name} on ${node} ${bs ? "matched, but guard failed" : "no match"}`);
 					continue;
 				}
 
 				const rep = r.replace(bs);
 				if (this.verbose || debugNode === 'all' || debugNode === 'replace' || debugNode === nid)
-					console.log('egraph-diagnostic: rule', r.name, 'on', String(node), 'produced', rep ? String(rep) : '<none>');
+					console.log(`egraph-diagnostic: rule ${r.name} on ${node} produced ${rep ? rep : '<none>'}:`, node, rep);
 
 				if (this.validate && !this.validate(node, rep))
-					throw new Error(`EGraph validation failed for rule ${r.name} on node ${String(node)} producing ${String(rep)}`);
+					throw new Error(`EGraph validation failed for rule ${r.name} on node ${node} producing ${rep}`);
 
 				const eclass	= this.eclassOfNode(nid)!;
 				const existing	= this.addSymbolic(rep);
 				const changed1	= this.mergeClasses(eclass, existing);
 
 				if (!this.verbose && changed1 && (debugNode === 'changed' || debugNode === 'all' || debugNode === nid))
-					console.log('egraph-diagnostic: merged', String(eclass), 'with', String(existing));
+					console.log(`egraph-diagnostic: merged ${eclass} with ${existing}`);
 
 				changed ||= changed1;
 			}
@@ -269,7 +278,7 @@ export default class EGraph {
 		if (this.verbose) {
 			console.warn('egraph-diagnostic: reps=', roots.map(r => r.id));
 			for (const ec of roots)
-				console.warn({rep: ec.id, bestCost: ec.bestScore, bestNode: String(ec.bestNode), nodes: Array.from(ec.nodes).map(String)});
+				console.warn({rep: ec.id, bestCost: ec.bestScore, bestNode: ec.bestNode, nodes: Array.from(ec.nodes).map(String)});
 		}
 
 		// Iterative stabilization: rebuild candidates by substituting children with best representatives
@@ -277,17 +286,20 @@ export default class EGraph {
 			changed = false;
 			for (const ec of roots) {
 				for (const node of ec.nodes) {
-					const candidate = node.visit({pre: (n: symbolic) => {
-						if (n === node)
-							return n;
-						const ce = this.eclassOfNode(n.id);
-						return ce?.bestNode ?? n;
-					}});
+					const candidate = node.visit({
+						noRemake: true,
+						pre: (n: symbolic) => {
+							if (n === node)
+								return n;
+							const ce = this.eclassOfNode(n.id);
+							return ce?.bestNode ?? n;
+						}
+					});
 
 					const cost = scorer(candidate);
 					if (cost < ec.bestScore!) {
 						if (this.verbose)
-							console.warn('egraph-diagnostic: updating best for', ec.id, 'from', ec.bestScore, 'to', cost, 'node:', String(candidate));
+							console.warn(`egraph-diagnostic: updating best for ${ec.id} from ${ec.bestScore} to ${cost} node: ${candidate}`);
 						ec.bestNode = candidate;
 						ec.bestScore = cost;
 						changed = true;
@@ -299,7 +311,7 @@ export default class EGraph {
 		if (this.verbose) {
 			console.warn('egraph-diagnostic: final best choices:');
 			for (const ec of roots)
-				console.warn('  rep=', ec.id, 'cost=', ec.bestScore, 'node=', String(ec.bestNode));
+				console.warn(`  rep=${ec.id} cost=${ec.bestScore} node=${ec.bestNode}`);
 		}
 		
 		return root.bestNode!;

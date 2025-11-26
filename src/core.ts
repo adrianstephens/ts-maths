@@ -154,22 +154,69 @@ export function sign(a: number) {
 	return a > 0 ? 1 : a < 0 ? -1 : 0;
 }
 
-export function gcd(a: number, b: number): number {
-	if (!a)
-		return b;
-	while (b > 1e-12)
-		[a, b] = [b, a % b];
+export function gcd(...values: number[]): number {
+	let a = 0;
+	for (let b of values) {
+		if (a) {
+			while (b)
+				[a, b] = [b, a % b];
+		} else {
+			a = b;
+		}
+	}
 	return a;
-}
-export function gcd2(...b: number[]): number {
-	return b.slice(1).reduce((g, x) => gcd(g, x), b[0]);
 }
 
 export function lcm(...x: number[]) {
-	return x.reduce((a, b) => {
-		const g = gcd(a, b);
-		return (a / g) * b;
-	}, 1);
+	return x.reduce((a, b) => (a / gcd(a, b)) * b, 1);
+}
+
+export function denominator(x: number, maxDen: number, eps = Number.EPSILON): number {
+	x = Math.abs(x) % 1;
+	if (x <= eps)
+		return 1;
+
+	let k1 = 1, k2 = 0;
+	do {
+		x = 1 / x;
+		const f = Math.floor(x);
+		x -= f;
+		[k2, k1] = [k1, f * k1 + k2];
+	} while (x > eps && k1 < maxDen);
+	return k1;
+}
+
+export function commonDenominator(numbers: number[], maxDen = 1000, eps = Number.EPSILON) {
+	let scale = 1;
+	for (const n of numbers) {
+		scale *= denominator(n * scale, maxDen, eps);
+		if (scale > maxDen)
+			return 0;
+	}
+	return scale;
+}
+
+export function rationalApprox(x: number, maxDen: number, eps = Number.EPSILON): [number, number] {
+	// binary check for exact representation
+	const bits	= 1 << 20;
+	const m		= x * bits;
+	if (Number.isInteger(m)) {
+		const d = bits / (m & -m);
+		if (d < maxDen)
+			return [x * d, d];
+	}
+	
+	let h1 = Math.floor(x), h2 = 1;
+	let k1 = 1, k2 = 0;
+	let b = x - h1;
+
+	while (b > eps && k1 < maxDen) {
+		b = 1 / b;
+		const f = Math.floor(b);
+		[h2, h1, k2, k1] = [h1, f * h1 + h2, k1, f * k1 + k2];
+		b -= f;
+	}
+	return [h1, k1];
 }
 
 export function modPow(base: number, exp: number, mod: number): number {
@@ -289,21 +336,21 @@ export function minB(a: bigint, b: bigint): bigint {
 	return a < b ? a : b;
 }
 
-export function gcdB(a: bigint, b: bigint): bigint {
-	if (!a)
-		return b;
-	while (b)
-		[a, b] = [b, a % b];
+export function gcdB(...values: bigint[]): bigint {
+	let a = 0n;
+	for (let b of values) {
+		if (a) {
+			while (b)
+				[a, b] = [b, a % b];
+		} else {
+			a = b;
+		}
+	}
 	return a;
 }
-export function gcdB2(...b: bigint[]): bigint {
-	return b.slice(1).reduce((g, x) => gcdB(g, x), b[0]);
-}
+
 export function lcmB(...x: bigint[]) {
-	return x.reduce((a, b) => {
-		const g = gcdB(a, b);
-		return (a / g) * b;
-	}, 1n);
+	return x.reduce((a, b) => (a / gcdB(a, b)) * b, 1n);
 }
 
 export function modPowB(base: bigint, exp: bigint, mod: bigint): bigint {
@@ -422,7 +469,7 @@ function highestSetB(x: bigint): number {
 	return 1n << BigInt(b) <= x ? s + b + 1 : s + b;
 }
 
-export function bigIntDivideToNumber(a: bigint, b: bigint): number {
+export function divB(a: bigint, b: bigint): number {
 	if (b === 0n)
 		return Infinity;
 	if (a === 0n)
@@ -521,22 +568,68 @@ export interface gcd {
 	divmod(b: this):	number | bigint | this;
 	sign():				number;
 	abs():				this;
+	scale(n: number):	this;
 }
 
-export function gcdT<T extends gcd>(a: T, b: T): T {
-	a = a.abs();
-	b = b.abs();
-	if (!a.sign())
-		return b;
-
-	while (b.sign()) {
-		a.divmod(b);
-		[a, b] = [b, a];
+export function gcdT<T extends gcd>(...values: T[]): T {
+	let a: T | undefined;
+	for (let b of values) {
+		b = b.abs();
+		if (a && a.sign()) {
+			while (b.sign()) {
+				a.divmod(b);
+				[a, b] = [b, a];
+			}
+		} else {
+			a = b;
+		}
 	}
-	return a;
+	return a!;
 }
-export function gcdT2<T extends gcd>(...b: T[]): T {
-	return b.slice(1).reduce((g, x) => gcdT(g, x), b[0]);
+
+export function lcmT<T extends gcd>(...x: T[]) {
+	return x.slice(1).reduce((a, b) => b.scale(Number(a.divmod(gcdT(a, b)))), x[0]);
+}
+
+type rationalApprox = has<'from'> & has<'divmod'> & has<'recip'> & has<'lt'>;
+/*
+export function rationalApproxT<T extends rationalApprox>(x: T, maxDen: T, eps?: T): [T, T] {
+	const zero	= x.from(0);
+	const one	= x.from(1);
+	let b	= x.dup();
+	let a	= b.divmod(one);
+	if (b.sign() < 0) {
+		--a;
+		b = b.add(one);
+	}
+	let h1	= x.from(a), h2 = one;
+	let k1	= one, k2 = zero;
+
+	while (b.sign() !== 0 && k1.lt(maxDen) && (eps === undefined || eps.lt(b.abs()))) {
+		b = b.recip();
+		const f = Number(b.divmod(one));
+		[h2, h1, k2, k1] = [h1, h1.scale(f).add(h2), k1, k1.scale(f).add(k2)];
+	}
+	return [h1, k1];
+}
+*/
+export function rationalApproxB<T extends rationalApprox>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
+	const one	= x.from(1);
+	let b	= x.dup();
+	let h1	= BigInt(b.divmod(one)), h2 = 1n;
+	let k1	= 1n, k2 = 0n;
+
+	if (b.sign() < 0) {
+		--h1;
+		b = b.add(one);
+	}
+
+	while (b.sign() !== 0 && k1 < maxDen && (eps === undefined || eps.lt(b.abs()))) {
+		b = b.recip();
+		const f = BigInt(b.divmod(one));
+		[h2, h1, k2, k1] = [h1, h1 * f + h2, k1, k1 * f + k2];
+	}
+	return [h1, k1];
 }
 
 export class extentT<T extends scalar<T>> {

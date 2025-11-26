@@ -112,8 +112,12 @@ test('symbolic', () => {
 	const comp2 = comp.and(comp.not());
 	const comp3 = comp.or(comp.not());
 
-	const part = x.greater(0).ifelse(x.mul(2), 
-		x.less(0).ifelse(x.mul(-2), 1)
+	const part = x.greater(0).then(
+		() => x.mul(2), 
+		() => x.less(0).then(
+			() => x.mul(-2),
+			() => symbolic.one
+		)
 	);
 
 	const e2 = sum.div(sum2);

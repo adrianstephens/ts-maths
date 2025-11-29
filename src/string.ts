@@ -88,7 +88,7 @@ export function fractionString(num: number, den: number, chars = fractionChars, 
 function radicalString(n: number, symbol: string, opts?: FractionOptions): string|undefined {
 	if (opts === false)
 		return isAlmostInteger(n) ? Math.round(n).toString() : undefined;
-	const [num, den] = rationalApprox(n, 1000);
+	const [num, den] = rationalApprox(n, 1000, 1e-8);
 	if (Math.abs(n - num / den) < 1e-10)
 		return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts?.chars, opts?.superSub);
 }
@@ -160,6 +160,9 @@ function parseNumber1(s: string): number {
 type VerticalStyle = {left: string; right: string, mid: number};
 export const verticalStyles = {
 	bigBraces: {
+		left: '⎛⎜⎝', right: '⎞⎟⎠', mid: 1
+	},
+	bigBraces1: {
 		left: ' ⎛⎜ ⎝', right: ' ⎞⎟ ⎠', mid: 2
 	},
 	brackets: {

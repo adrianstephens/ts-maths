@@ -175,6 +175,14 @@ function commonFactors(terms: readonly Readonly<term>[], scorer: (sym: symbolic)
 	return [...factored, ...remaining];
 }
 
+export function factored(node: symbolic) {
+	if (!node.is('add'))
+		return node;
+	const scorer = scoreFactory();
+	const terms = commonFactors(node.terms, scorer);
+	return addTerms(node.num, ...terms);
+}
+
 //-----------------------------------------------------------------------------
 // transformation rules
 //-----------------------------------------------------------------------------

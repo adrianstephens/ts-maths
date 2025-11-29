@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { expect, test, assert, verify, approx, approxArray, makeApproxArray, sequence } from './test';
+import { expect, test, assert, verify, approxArray, makeApproxArray, sequence } from './test';
 import {rational, rationalB} from '../dist/rational';
 import * as big from '../../big/dist/index';
 

@@ -41,12 +41,13 @@ export interface PolynomialN<C> {
 	degree():						number;
 	dup(): 							PolynomialN<C>;
 	evaluate(t: C):					C;
+	evaluate(t: C[]):				C[];
 	deriv():						Polynomial<C>;
 	mul(b: PolynomialN<C>):			PolynomialN<C>;
 	divmod(b: PolynomialN<C>):		Polynomial<C>;
 	rationalRoots():				rationalRoots<C>;
 	realRoots(epsilon?: number):	realRoots<C>;
-	allRoots?(epsilon?: number):	complexRoots<C>;
+	allRoots(epsilon?: number):		complexRoots<C>;
 	refine_roots(x: realRoots<C>, count?: number): realRoots<C>;
 }
 
@@ -65,6 +66,7 @@ export interface Polynomial<C> extends PolynomialN<C> {
 	selfSub(b: C | Polynomial<C>):	void;
 	selfScale(b: C):				void;
 	selfRscale(b: C):				void;
+	pseudoRemainder(b: Polynomial<C>): void;
 	content():						C;
 	abs():							Polynomial<C>;
 	sign():							number;
@@ -72,18 +74,31 @@ export interface Polynomial<C> extends PolynomialN<C> {
 	map<U extends PolyTypes>(func: (c: C, i: number) => U): Polynomial<U>;
 }
 
-export function PolynomialN<T extends PolyNTypes>(c: T[]): PolynomialN<T> {
+// Overloads to ensure numeric literal arrays like `[-1, 1]` resolve to `Polynomial<number>`
+export function PolynomialN(c: readonly number[]): PolynomialN<number>;
+export function PolynomialN<T extends ops<T>>(c: T[]): PolynomialN<T>;
+export function PolynomialN(c: readonly any[]) {
 	switch (typeof c[0]) {
-		case 'number':	return new polynomialN(c as number[]) as PolynomialN<number> as PolynomialN<T>;
-		default:		return new polynomialNT(c as any) as PolynomialN<ops<any, any>> as PolynomialN<T>;
+		case 'number':
+			return new polynomialN((c as number[])) as PolynomialN<number>;
+		default:
+			return new polynomialNT(c as any) as PolynomialN<ops<any, any>>;
 	}
 }
 
-export function Polynomial<T extends PolyTypes>(c: T[]): Polynomial<T> {
+// Overloads to ensure numeric literal arrays like `[-1, 1]` resolve to `Polynomial<number>`
+export function Polynomial(c: readonly number[]): Polynomial<number>;
+export function Polynomial(c: readonly bigint[]): Polynomial<bigint>;
+export function Polynomial<T extends ops<T>>(c: T[]): Polynomial<T>;
+export function Polynomial<T extends PolyTypes>(c: T[]): Polynomial<T>;
+export function Polynomial(c: readonly any[]) {
 	switch (typeof c[0]) {
-		case 'number':	return new polynomial(c as number[]) as Polynomial<number> as Polynomial<T>;
-		case 'bigint':	return new polynomialB(c as bigint[]) as Polynomial<bigint> as Polynomial<T>;
-		default:		return new polynomialT(c as any) as Polynomial<ops<any, any>> as Polynomial<T>;
+		case 'number':
+			return new polynomial((c as number[])) as Polynomial<number>;
+		case 'bigint':
+			return new polynomialB(c as bigint[]) as Polynomial<bigint>;
+		default:
+			return new polynomialT(c as any) as Polynomial<ops<any, any>>;
 	}
 }
 
@@ -171,14 +186,18 @@ function sparseEvaluate(c: number[], x: number, monomial: boolean): number {
     
     for (const i in c) {
 		const exp1 = +i;
-        while (exp++ < exp1)
+        while (exp < exp1) {
             xpow *= x;
+			++exp;
+		}
         result += c[i] * xpow;
     }
 	if (monomial) {
 		const exp1 = c.length - 1;
-        while (exp++ < exp1)
+        while (exp < exp1) {
             xpow *= x;
+			++exp;
+		}
         result += xpow;
 	}
     return result;
@@ -190,14 +209,18 @@ function sparseEvaluateNT<T extends ops<T> & has<'from'>>(c: number[], x: T, mon
     
     for (const i in c) {
 		const exp1 = +i;
-        while (exp++ < exp1)
+        while (exp < exp1) {
 			xpow = xpow.mul(x);
+			++exp;
+		}
         result = result.add(xpow.scale(c[i]));
     }
 	if (monomial) {
 		const exp1 = c.length - 1;
-        while (exp++ < exp1)
+        while (exp < exp1) {
 			xpow = xpow.mul(x);
+			++exp;
+		}
         result = result.add(xpow);
 	}
     return result;
@@ -274,8 +297,10 @@ function sparseEvaluateB(c: bigint[], x: bigint): bigint {
     
     for (const i in c) {
 		const exp1 = +i;
-        while (exp++ < exp1)
+        while (exp < exp1) {
             xpow *= x;
+			++exp;
+		}
         result += c[i] * xpow;
     }
     return result;
@@ -349,14 +374,18 @@ function sparseEvaluateT<T extends ops<T>>(c: T[], x: T, monomial: boolean): T {
 		const exp1 = +i;
 		if (exp1 === 0)
 			continue;
-		while (exp++ < exp1)
+		while (exp < exp1) {
 			xpow = xpow.mul(x);
+			++exp;
+		}
 		result = result.add(c[exp1].mul(xpow));
 	}
 	if (monomial) {
 		const exp1 = c.length - 1;
-		while (exp++ < exp1)
+		while (exp < exp1) {
 			xpow = xpow.mul(x);
+			++exp;
+		}
 		result = result.add(xpow);
 	}
     return result;
@@ -571,6 +600,8 @@ class polynomial implements Polynomial<number> {
 	divmod(b: polynomial): polynomial {
 		return new polynomial(sparseDivMod(this.c, b.c, false));// or denseDivmod(a, b);
 	}
+	pseudoRemainder(b: polynomial) {
+	}
 
 	content() {
 		return gcd(...this.c);
@@ -594,8 +625,8 @@ class polynomial implements Polynomial<number> {
 	realRoots(epsilon = defaultEpsilon): number[] {
 		return this.normalise().realRoots(epsilon);
 	}
-	allRoots(): complex[] {
-		return this.normalise().allRoots();
+	allRoots(epsilon = defaultEpsilon): complex[] {
+		return this.normalise(epsilon).allRoots(epsilon);
 	}
 	refine_roots(x: number[], count = 1) {
 		const	d1	= this.deriv();
@@ -794,6 +825,9 @@ export class polynomialB implements Polynomial<bigint> {
 			roots.push(...p.normalise().realRoots());
 		return roots;
 	}
+	allRoots(): never {
+		return undefined as never;
+	}
 	refine_roots(x: rationalB[], count = 1) : rationalB[] {
 		return this.normalise().refine_roots(x, count);
 	}
@@ -830,7 +864,7 @@ export class polynomialT<T extends ops<T>> implements Polynomial<T> {
 	}
 	degree()	{ return this.c.length - 1; }
 	leadCoeff() { return this.c[this.c.length - 1]; }
-	dup() { return new polynomialT<T>(this.c.slice()); }
+	dup() 		{ return new polynomialT<T>(this.c.slice()); }
 
 	evaluate(t: T): T;
 	evaluate(t: T[]): T[];

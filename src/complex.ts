@@ -1,8 +1,8 @@
 /* eslint-disable no-restricted-syntax */
 
-import { scalarExt, sincos } from "./core";
+import { OperatorsBase, Operators, scalarExt, approx, sincos } from "./core";
 
-class _complex {
+export class _complex {
 	constructor(public r: number, public i: number) {}
 
 	from(b: number)			{ return complex(b, 0); }
@@ -20,12 +20,22 @@ class _complex {
 	add(b: complex): complex	{ return complex(this.r + b.r, this.i + b.i); }
 	sub(b: complex): complex	{ return complex(this.r - b.r, this.i - b.i); }
 	div(b: complex): complex	{ return this.mul(b.conj()).scale(1 / b.magSq()); }
+	npow(b: number): complex	{ return complex.fromPolar(Math.pow(this.mag(), b), this.arg() * b); }
+	pow(b: complex): complex	{
+		const ln_r	= Math.log(this.mag());
+		const theta	= this.arg();
+		return complex.fromPolar(Math.exp(ln_r * b.r - theta * b.i), ln_r * b.i + theta * b.r);
+	}
+
+
+	eq(b: complex):	boolean		{ return this.r === b.r && this.i === b.i; }
+	approx(b: complex, eps = 1e-8):	boolean		{ return approx(this.r, b.r, eps) && approx(this.i, b.i, eps); }
 
 	sqrt()	{
 		const m = this.abs();
 		return complex(Math.sqrt(0.5 * (m + this.r)), Math.sqrt(0.5 * (m - this.r)));
 	}
-
+	
 	toString()	{ return `${this.r} ${this.i >= 0 ? '+' : '-'} ${Math.abs(this.i)}i`; }
 }
 
@@ -52,6 +62,7 @@ export const complex = Object.assign(
 
 	conjugatePair(c: complex) { return [c, c.conj()]; },
 });
+complex.prototype = _complex.prototype;
 
 export class complexT<T extends scalarExt<T>> {
 	constructor(public r: T, public i: T) {}
@@ -83,3 +94,17 @@ export class complexT<T extends scalarExt<T>> {
 }
 
 export default complex;
+
+export const complexOps: Operators<complex> = {
+	...OperatorsBase(_complex),
+	variable(name: string): complex | undefined {
+		switch (name) {
+			case 'pi':			return complex(Math.PI);
+			case 'e':			return complex(Math.E);
+			case 'infinity':	return complex(Infinity);
+			default:			return undefined;
+		}
+	},
+	lt: (a: complex, b: complex) => a.eq(b),
+};
+

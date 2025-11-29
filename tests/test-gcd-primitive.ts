@@ -1,25 +1,25 @@
-import { polynomial, polynomialT, polyGCDT } from '../src/polynomial';
+import { Polynomial, polyGCDT } from '../src/polynomial';
 import { rational } from '../src/rational';
 
 console.log('running test-gcd-primitive.ts (diagnostics enabled)');
 
 // gcd((x-1)^3*(x-2), (x-1)^2*(x-3)) -> (x-1)^2  (with scaled integer coefficients)
 (function() {
-    const base1 = new polynomial([ -1, 1 ]); // x-1
-    const base2 = new polynomial([ -2, 1 ]); // x-2
-    const base3 = new polynomial([ -3, 1 ]); // x-3
+    const base1 = Polynomial([ -1, 1 ]); // x-1
+    const base2 = Polynomial([ -2, 1 ]); // x-2
+    const base3 = Polynomial([ -3, 1 ]); // x-3
 
     const p1 = base1.mul(base1).mul(base1).mul(base2); // (x-1)^3 * (x-2)
     const p2 = base1.mul(base1).mul(base3); // (x-1)^2 * (x-3)
 
     // scale coefficients by 2 to create content > 1 and verify primitive PRS removes it
-    const p1s = new polynomial(p1.c.map(v => v * 2));
-    const p2s = new polynomial(p2.c.map(v => v * 2));
+    const p1s = Polynomial(p1.c.map(v => v * 2));
+    const p2s = Polynomial(p2.c.map(v => v * 2));
 
     console.log('constructed base polynomials; degrees:', p1s.c.length - 1, p2s.c.length - 1);
 
-    const a = new polynomialT(p1s.c.map(c => rational.from(c)));
-    const b = new polynomialT(p2s.c.map(c => rational.from(c)));
+    const a = Polynomial(p1s.c.map(c => rational.from(c)));
+    const b = Polynomial(p2s.c.map(c => rational.from(c)));
 
     // NOTE: calling primitiveSubresultantPRS directly causes a TypeScript
     // generic constraint mismatch for some scalar wrappers (rational). To

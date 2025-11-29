@@ -1,4 +1,5 @@
-import { test, assert, approx, approxArray } from './test';
+import { test, assert,  approxArray } from './test';
+import { approx } from '../dist/core';
 import { vector, mat, E6, floatN, float3x3, float2, float2x2, float3, float4, float4x4 } from '../dist/vector';
 
 

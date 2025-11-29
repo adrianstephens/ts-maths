@@ -1,51 +1,28 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { test, expect, approx, assert } from './test';
-import { OperatorsBase, numberOperators, scalar } from '../dist/core';
+import { test, expect } from './test';
+import { Operators, OperatorsBase, numberOperators, approx, scalar } from '../dist/core';
 import { parseNumber, outputNumber, toSuperscript, parse } from '../dist/string';
-import { symbolic, symbolicOperators, applyRules, trigRules, invTrigRules, generalRules, scoreFactory, Visitor } from '../dist/symbolic';
+import { symbolic, symbolicOperators } from '../dist/symbolic';
+import { applyRules, trigRules, invTrigRules, generalRules, scoreFactory, factored } from '../dist/symbolicRules';
 import { applyRulesEgraph, EGraphOptions } from '../dist/egraph';
-import { polynomialT } from '../dist/polynomial';
+import { Polynomial } from '../dist/polynomial';
 import { vscalar, vectorT, normalise, mat, E2, E3, E4, E5 , vector, float2, float3, float4, float2x2, float3x3, float4x4} from '../dist/vector';
-import * as big from '../../big/dist/index';
+import big from '../../big/dist/index';
 
 symbolic.setDefaultStringifyOptions({ccode: true, radicalPower: true, superPower: true});
 
-class BigOperators extends OperatorsBase<big.float> {
-	from(n: number): big.float		{ return big.float.from(n); }
-	func(name: string, args: big.float[]) {
-		switch (name) {
-			case 'sin': 		return big.sin(args[0], 100);
-			case 'cos': 		return big.cos(args[0], 100);
-			case 'tan': 		return big.tan(args[0], 100);
-			case 'asin': 		return big.asin(args[0], 100);
-			case 'acos': 		return big.acos(args[0], 100);
-			case 'atan': 		return big.atan(args[0], 100);
-			case 'atan2': 		return big.atan2(args[0], args[1], 100);
-			case 'exp': 		return big.exp(args[0], 100);
-			case 'log': 		return big.log(args[0], 100);
-			case 'sqrt': 		return args[0].sqrt();
-			default:			return undefined;
-		}
-	}
+const bigOperators: Operators<big> = {
+	...OperatorsBase(big),
+	from(n: number) { return big.from(n, 100); },
 	variable(name: string) {
 		switch (name) {
 			case 'pi':			return big.pi(100);
 			case 'e':			return big.exp(1, 100);
-			case 'infinity':	return big.float.Infinity;
+			case 'infinity':	return big.Infinity;
 			default:			return undefined;
 		}
-	}
-	pow(a: big.float, b: big.float): big.float {
-		return a.pow(b);
-	}
-	eq(a: big.float, b: big.float): boolean {
-		return a.eq(b);
-	}
-	lt(a: big.float, b: big.float): boolean {
-		return a.lt(b);
-	}
+	},
 };
-const bigOperators = new BigOperators();
 
 
 function makeFunction(expr: symbolic, var1: string) {
@@ -87,6 +64,22 @@ function countNodes(n: symbolic) {
 	return cnt;
 }
 
+test('bug', () => {
+	const bindings = { a: 1, b: 2, c: 3, d: 4 }
+	const validate = (a: symbolic, b: symbolic) => {
+		const av = a.evaluate(bindings);
+		const bv = b.evaluate(bindings);
+		if (av !== bv)
+			console.log("uh");
+		return av == bv;
+	}
+	const eqn = parse(symbolicOperators, '(b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)');
+	const simp = applyRulesEgraph(eqn, generalRules, {maxRounds: 100,validate});
+	console.log(eqn.evaluate(bindings));
+	console.log(simp.evaluate(bindings));
+	console.log(String(simp));
+});
+
 test('symbolic', () => {
 	const equation = 'sin(pi / 4) + log(10) sqrt(2)';
 	const resn = parse(numberOperators, equation);
@@ -121,12 +114,12 @@ test('symbolic', () => {
 	);
 
 	const e2 = sum.div(sum2);
-	const d2 = e2.derivative("x").factor();
+	const d2 = factored(e2.derivative("x"));
 	expect(d2).toEqual(z.div(sum2.pow(2)));
 
 	const j = symbolic.i.scale(3).add(2);
 	const j2 = j.mul(j).expand();
-	expect(j2.toString()).toEqual('12 * 𝑖 - 5');
+	expect(j2.toString()).toEqual('12𝑖 - 5');
 
 	const e3 = x.pow(2).add(y.pow(2)).add(z.pow(2));
 
@@ -148,7 +141,7 @@ test('symbolic transforms', () => {
 
 	const test = parse(symbolicOperators, '(cos(a) * cos(b) + sin(a) * sin(b)) * (cos(a) * sin(b) + cos(b) * sin(a))');
 	const test2 = test.expand();
-	const test3 = test2.factor();
+	const test3 = factored(test2);
 	const bs = generalRules.find(r => r.name === 'factor-common')?.match(test2);
 		
 
@@ -182,8 +175,9 @@ test('symbolic transforms', () => {
 	if (!approxEqualEval(sinsum2, sinsum, ['x', 'y'], [[0, 0], [0.3, 0.7], [1.2, -0.5]]))
 		throw new Error('egraph extraction is not equivalent to original expression');
 
-	const sinhalf = applyRules(symbolic.sin(sum.scale(0.5)), trigRules);
-	expect(sinhalf).toEqual((symbolic.sin(x).mul(symbolic.sin(y)).sub(symbolic.cos(x).mul(symbolic.cos(y))).add(1)).pow(0.5).scale(Math.sqrt(0.5)));
+	const sinhalf = symbolic.sin(sum.scale(0.5));
+	const sinhalf1 = applyRules(sinhalf, trigRules);
+	expect(sinhalf1).toEqual((symbolic.sin(x).mul(symbolic.sin(y)).sub(symbolic.cos(x).mul(symbolic.cos(y))).add(1)).pow(0.5).scale(Math.sqrt(0.5)));
 
 });
 
@@ -291,7 +285,7 @@ test('collect groups terms by variable power (no expand)', () => {
 	// x^2 * y + 2 * x * y + 3
 	const expr = x.pow(2).mul(y).add(x.mul(y).mul(2)).add(3);
 	const groups = expr.collect('x');
-	const pg = new polynomialT(groups).evaluate(x).expand();
+	const pg = Polynomial(groups).evaluate(x).expand();
 
 	// groups is a sparse array: index = power, value = coefficient (symbolic)
 	expect(pg).toEqual(expr);
@@ -304,7 +298,7 @@ test('collect after expand (x+1)^2 * y', () => {
 	const expr = x.add(1).pow(2).mul(y);
 	const expanded = expr.expand({});
 	const groups = expanded.collect('x');
-	const pg = new polynomialT(groups).evaluate(x).expand();
+	const pg = Polynomial(groups).evaluate(x).expand();
 
 	expect(pg).toEqual(expanded);
 });
@@ -375,7 +369,7 @@ test('vector perp()', () => {
 	const v1 = normalise(v);
 	console.log(v1.x.toString({radicalPower: true, superPower: true}));
 	const d0 = v.dot(v);
-	const d1 = v1.dot(v1).factor();
+	const d1 = factored(v1.dot(v1));
 
 
 	const m2x2 = mat({
@@ -445,7 +439,7 @@ test('vector perp()', () => {
 test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 
 	const rules	= trigRules.concat(invTrigRules).concat(generalRules);
-	const opts: EGraphOptions	= { maxRounds: 1, maxExpansions: 0 };
+	const opts: EGraphOptions	= { maxRounds: 6, maxExpansions: 16, debugNode: 'replace' };
 
 	const names = 'abcdefghijklmnopqrstuvwxyz'.slice(0, 25).split('');
 	const syms 	= Object.fromEntries(names.map(n => [n, symbolic.variable(n)]));
@@ -478,7 +472,7 @@ test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 			for (let i = 0; i < values.length; ++i) {
 				const entry = values[i].evaluate(vars);
 				const expected = i === j ? 1 : 0;
-				if (!approx(entry, expected))
+				if (!approx(entry, expected, 1e-8))
 					throw new Error(`inverse mismatch at (${i},${j}): ${String(entry)}`);
 			}
 		}
@@ -495,10 +489,12 @@ test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 
 	const i2 = m2.inverse();
 	const p2 = m2.matmul(i2);
-	const p2b = matVisit(p2, node => applyRulesEgraph(node, rules, opts));
-
-	console.log('2x2 inv check:', String(p2));
+	console.log('2x2 inv check:'); console.log(String(p2));
 	checkApprox(p2, setVars(n2));
+
+	const p2b = matVisit(p2, node => applyRulesEgraph(node, rules, opts));
+	console.log('simplified 2x2 inv:\n'); console.log(String(p2b));
+
 
 	// 3x3
 	const n3 = float3x3(

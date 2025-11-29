@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+// (RNG inlined into `randomB` below)
 
 export function isInstance<T>(x: any, i: new (...args: any[]) => T): x is T {
 	return x instanceof i;
@@ -8,56 +8,83 @@ export interface Operators<T> {
 	from(n: number): T;
 	func(name: string, args: T[]): T | undefined;
 	variable(name: string): T | undefined;
+
 	dup(a: T): T;
 	neg(a: T): T;
-	pow(a: T, b: T): T;
-	mul(a: T, b: T): T;
-	div(a: T, b: T): T;
+//	scale(b: S):		C;
 	add(a: T, b: T): T;
 	sub(a: T, b: T): T;
-	eq(a: T, b: T): boolean;
-	lt(a: T, b: T): boolean;
+	mul(a: T, b: T): T;
+	div(a: T, b: T): T;
+
+//	npow(a: T, n: number): T;
+//	rpow(a: T, n: number, d: number): T;
+//	ipow(a: T, n: number): T;
+	pow(a: T, b: T): T;
+	eq(a: T, b: T): any;
+	lt(a: T, b: T): any;
+
 }
 
-export abstract class OperatorsBase<T extends ops<T>> implements Operators<T> {
-	abstract from(n: number): T;
-	abstract func(name: string, args: T[]): T | undefined;
-	abstract variable(name: string): T | undefined;
-	abstract pow(a: T, b: T): T;
-	dup(a: T): T		{ return a.dup(); }
-	neg(a: T): T		{ return a.neg(); }
-	mul(a: T, b: T): T	{ return a.mul(b); }
-	div(a: T, b: T): T	{ return a.div(b); }
-	add(a: T, b: T): T	{ return a.add(b); }
-	sub(a: T, b: T): T	{ return a.sub(b); }
-	eq(_a: T, _b: T): boolean { throw new Error("Method not implemented."); }
-	lt(_a: T, _b: T): boolean { throw new Error("Method not implemented."); }
+export function OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T) {
+	const con		= _con as any;
+	const proto		= con.prototype as Record<string, any>;
+	
+	const r: Partial<Operators<T>> = {
+		func: (name: string, args: T[]) => {
+			const staticFn = con[name];
+			if (typeof staticFn === 'function')
+				return staticFn.apply(con, args as any);
+
+			const protoFn = proto[name];
+			if (typeof protoFn === 'function')
+				return protoFn.apply(args[0], (args as any).slice(1));
+
+			return undefined;
+		}
+	};
+
+	// guaranteed by the ops constraint
+	r.dup = (a: T) => a.dup();
+	r.neg = (a: T) => a.neg();
+	r.mul = (a: T, b: T) => a.mul(b);
+	r.div = (a: T, b: T) => a.div(b);
+	r.add = (a: T, b: T) => a.add(b);
+	r.sub = (a: T, b: T) => a.sub(b);
+
+	// static or prototype 'from'
+	if (typeof con.from === 'function')
+		r.from = (n: number) => con.from(n);
+	else if (typeof proto.from === 'function')
+		r.from = (n: number) => proto.from(n);
+
+	// include prototype-backed binary ops only when present
+	if ('eq' in proto)
+		r.eq = (a: T, b: T) => (a as any).eq(b);
+	if ('lt' in proto)
+		r.lt = (a: T, b: T) => (a as any).lt(b);
+	if ('pow' in proto)
+		r.pow = (a: T, b: T) => (a as any).pow(b);
+
+	return r as unknown as Pick<Operators<T>, (keyof Operators<T> & keyof T) | 'func'>;
 }
 
 export interface ops<C extends ops<C, S>, S=number> {
 	dup():				C;
 	neg(): 				C;
 	scale(b: S):		C;
-	mul(b: C):			C;
-	div(b: C):			C;
 	add(b: C): 			C;
 	sub(b: C): 			C;
+	mul(b: C):			C;
+	div(b: C):			C;
 	mag():				number | scalarExt<any>;
 }
-
-const ops = {
-	neg<T extends ops<T>>(a: T): T			{ return a.neg(); },
-	scale<T extends ops<T, S>, S>(a: T, b: S): T	{ return a.scale(b); },
-	mul<T extends ops<T>>(a: T, b: T): T	{ return a.mul(b); },
-	div<T extends ops<T>>(a: T, b: T): T	{ return a.div(b); },
-	add<T extends ops<T>>(a: T, b: T): T	{ return a.add(b); },
-	sub<T extends ops<T>>(a: T, b: T): T	{ return a.sub(b); },
-};
 
 export interface scalar<C extends scalar<C, S>, S=number> extends ops<C, S> {
 	from(n: number | bigint):	C;
 	abs():				C;
 	sign():				number;
+	eq(b: C):			boolean;
 	lt(b: C):			boolean;
 	valueOf():			number | bigint;
 }
@@ -111,6 +138,10 @@ export function isInteger(n: number): integer {
 
 export function isAlmostInteger(x: number, epsilon = Number.EPSILON) {
 	return Math.abs(x - Math.round(x)) < epsilon;
+}
+
+export function approx(x: number, y: number, epsilon = Number.EPSILON) {
+	return Math.abs(x - y) < epsilon;
 }
 
 export const numberOperators = {
@@ -247,6 +278,7 @@ export class scalarN implements scalarExt<scalarN> {
 	recip():			scalarN		{ return new scalarN(1 / this.value); }
 	divmod(b: scalarN):	number		{ const q = Math.floor(this.value / b.value); this.value -= q * b.value; return q; }
 	lt(b: scalarN):		boolean		{ return this.value < b.value; }
+	eq(b: scalarN):		boolean		{ return this.value === b.value; }
 	from(n: number | bigint)		{ return new scalarN(Number(n)); }
 
 	sqrt(): 			scalarN		{ return new scalarN(Math.sqrt(this.value)); }
@@ -366,10 +398,25 @@ export function modPowB(base: bigint, exp: bigint, mod: bigint): bigint {
 }
 
 export function randomB(bits: number): bigint {
-	const buf = randomBytes(Math.ceil(bits / 8));
+	// Local xorshift32 PRNG (inlined here, no external calls).
+	// Seed derived from current time (non-crypto, deterministic enough for this use).
+	let seed = (((Date.now() & 0xffffffff) ^ 0x9e3779b9) >>> 0) || 1;
+
+	const rng32 = () => {
+		let x = seed >>> 0;
+		x ^= (x << 13) >>> 0;
+		x ^= x >>> 17;
+		x ^= (x << 5) >>> 0;
+		return seed = x >>> 0;
+	};
+
 	let r = 0n;
-	for (const i of buf)
-		r = (r << 8n) | BigInt(i);
+	for (let i = bits >> 5; i--; )
+		r = (r << 32n) | BigInt(rng32());
+
+	const rem = bits & 31;
+	if (rem)
+		r = (r << BigInt(rem)) | BigInt(rng32() & ((1 << rem) - 1));
 	return r;
 }
 
@@ -393,6 +440,7 @@ export class scalarB implements scalarExt<scalarB> {
 	recip():			scalarB		{ return new scalarB(1n / this.value); }
 	divmod(b: scalarB):	number		{ const q = this.value / b.value; this.value -= q * b.value; return Number(q); }
 	lt(b: scalarB):		boolean		{ return this.value < b.value; }
+	eq(b: scalarB):		boolean		{ return this.value === b.value; }
 	from(n: number | bigint)		{ return new scalarB(BigInt(n)); }
 
 	valueOf():			number		{ return Number(this.value); }
@@ -523,6 +571,8 @@ export function rootB(x: bigint, b: number): bigint {
 //-----------------------------------------------------------------------------
 // Generics
 //-----------------------------------------------------------------------------
+
+
 
 export type has<K extends keyof scalarExt<any>> = ops<any> & Pick<scalarExt<any>, K>;
 export function has<K extends keyof scalarExt<any>>(f: K) {

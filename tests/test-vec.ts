@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { expect, test, assert, approx } from './test';
+import { expect, test, assert } from './test';
+import { approx } from '../dist/core';
 import {
 	vec,
 	float2, float3, float4,

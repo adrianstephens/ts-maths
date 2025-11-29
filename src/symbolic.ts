@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import { Operators, compare, isAlmostInteger, OperatorsBase, gcd, commonDenominator } from './core';
+import { Operators, compare, isAlmostInteger, OperatorsBase, gcd, commonDenominator, denominator } from './core';
 import { toSuperscript, radicalChars } from './string';
 
 // invariants:
@@ -314,6 +314,19 @@ export class symbolic extends symbolicBase {
 //-----------------------------------------------------------------------------
 // constant
 //-----------------------------------------------------------------------------
+function constPow(value: number, pow: number): [number, boolean] {
+	let i = false;
+	if (value < 0) {
+		const d = denominator(pow, 1000);
+		if (d && (d & 1) === 0)
+			i = true;
+		value = -value;
+		if (pow & 1)
+			return [-(value ** pow), i];
+	}
+
+	return [value ** pow, i];
+}
 
 class symbolicConstant extends symbolic {
 	static create(i: number): symbolic	{ return this.interner.intern(`c:${i}`, id => new symbolicConstant(id, i)); }
@@ -324,9 +337,11 @@ class symbolicConstant extends symbolic {
 	neg():		symbolic		{ return symbolicConstant.create(-this.value); }
 	recip():	symbolic		{ return symbolicConstant.create(1 / this.value); }
 	npow(b: number): symbolic	{
-		if (this.value < 0 && !Number.isInteger(b))
-			return mulFactors(1, factor(this, b));
-		return symbolicConstant.create(this.value ** b);
+		const [value, needi] = constPow(this.value, b);
+		return needi ? i.scale(value) : symbolicConstant.create(value);
+		//if (this.value < 0 && !Number.isInteger(b))
+		//	return mulFactors(1, factor(this, b));
+		//return symbolicConstant.create(this.value ** b);
 	}
 
 	scale(b: number): symbolic	{ return symbolicConstant.create(this.value * b); }
@@ -667,15 +682,16 @@ export function factorAsSymbolic(f: factor): symbolic {
 
 export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 	const factors: factor[] = [];
+
 	function add(item: symbolic, pow: number) {
 		if (pow === 0)
 			return;
 
 		if (isConst(item)) {
-			if (item.value < 0 && !Number.isInteger(pow))
+			const [value, needi] = constPow(item.value, pow);
+			if (needi)
 				factors.push(factor(i, pow));
-
-			num *= Math.abs(item.value) ** pow;
+			num *= value;
 
 		} else if (item instanceof symbolicMul) {
 			num *= item.num ** pow;
@@ -684,6 +700,16 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 
 		} else if (item instanceof symbolicAdd) {
 			const first = item.terms[0];
+			if (item.terms.length === 1 && item.num === 0) {
+				const [value, needi] = constPow(first.coef, pow);
+				if (needi)
+					factors.push(factor(i, pow));
+				num *= value;
+				add(first.item, pow);
+			} else {
+				factors.push(factor(item, pow));
+			}
+			/*
 			if (first.coef < 0 && Number.isInteger(pow)) {
 				if (pow % 2 === 1)
 					num = -num;
@@ -700,7 +726,7 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 			} else {
 				factors.push(factor(item, pow));
 			}
-
+			*/
 		} else {
 			factors.push(factor(item, pow));
 		}
@@ -743,31 +769,35 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 		const first = nonzero[0].item;
 		if (num === 1)
 			return first;
+		/*
 		if (first instanceof symbolicAdd) {
 			if (first.terms.length === 1)
 				return symbolicAdd.create([term(first.terms[0].item, first.terms[0].coef * num)], first.num * num);
 			// Multi-term symbolicAdd with num !== 1:
 			// For negative num, negate the symbolicAdd and use abs(num) to keep symbolicMul.num > 0
 			// e.g., -0.5(A+B+C) → 0.5(-A-B-C)
-			if (num < 0)
-				return symbolicMul.create([factor(first.neg(), 1)], -num);
-			else
-				return symbolicMul.create(nonzero, num);
-		} else {
-			return symbolicAdd.create([term(first, num)]);
+			//if (num < 0)
+			//	return symbolicMul.create([factor(first.neg(), 1)], -num);
+			//else
+//				return symbolicMul.create(nonzero, num);
+//		} else {
+//			return symbolicAdd.create([term(first, num)]);
 		}
+*/
 	}
 
+	return symbolicMul.create(nonzero, num);
+
 	// Canonical form: symbolicMul.num must always be positive, so if num is negative, wrap in addition with negative coefficient
-	return num < 0
-		? symbolicAdd.create([term(symbolicMul.create(nonzero), num)])
-		: symbolicMul.create(nonzero, num);
+	//return num < 0
+	//	? symbolicAdd.create([term(symbolicMul.create(nonzero), num)])
+	//	: symbolicMul.create(nonzero, num);
 }
 
 export class symbolicMul extends symbolic {
 	static validate(factors: readonly factor[], num: number)  {
-		if (num <= 0)
-			throw new Error('unexpected non-positive numeric factor in mul');
+		//if (num <= 0)
+		//	throw new Error('unexpected non-positive numeric factor in mul');
 		let prevId = '';
 		for (const t of factors) {
 			if (t.pow === 0)
@@ -800,8 +830,14 @@ export class symbolicMul extends symbolic {
 		if (b === 1)
 			return this;
 
+		const [value, needi] = constPow(this.num, b);
+		return mulFactors(value, ...(needi ? [factor(i)] : []), ...this.factors.map(i => factor(i.item, i.pow * b)));
+		/*
+		if (this.num < 0 && !Number.isInteger(b))
+			return mulFactors(1, factor(this.from(this.num), b), ...this.factors.map(i => factor(i.item, i.pow * b)));
 		// this.num is always positive due to invariant, so no need for abs
 		return mulFactors(this.num ** b, ...this.factors.map(i => factor(i.item, i.pow * b)));
+		*/
 	}
 	scale(b: number): symbolic	{
 		return	b === 0	? zero
@@ -1393,7 +1429,7 @@ class symbolicPartition extends symbolic {
 
 function specialConstant(name: string, toString = name, value?: number) {
 	const C = class extends symbolic {
-		constructor()		{ super(name); }
+		constructor()		{ super(name); symbolic.set(this, this); }
 		evaluate(_env?: Record<string, number>): number { return value ?? NaN; }
 		evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) { return value !== undefined ? ops.from(value) : undefined; }
 		_toString(): string	{ return toString; }
@@ -1442,7 +1478,7 @@ function unaryFunction(name: string,
 			return this.interner.intern(`${name}:${i.id}`, id => new C(id, i));
 		}
 		match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
-			return node instanceof C && this.arg.match(node.arg, bindings, opts) ? bindings : null;
+			return node instanceof C && this.arg.match(node.arg, bindings, {...opts, exact: true}) ? bindings : null;
 		}
 		visit(visitor: Visitor, parent?: symbolic): symbolic {
 			return visit(this,
@@ -1480,7 +1516,8 @@ function binaryFunction(name: string,
 			return this.interner.intern(`${name}:${i.id}:${j.id}`, id => new C(id, i, j));
 		}
 		match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
-			return node instanceof C && this.arg1.match(node.arg1, bindings, opts) && this.arg2.match(node.arg2, bindings, opts) ? bindings : null;
+			const opts2 = {...opts, exact: true};
+			return node instanceof C && this.arg1.match(node.arg1, bindings, opts2) && this.arg2.match(node.arg2, bindings, opts2) ? bindings : null;
 		}
 		visit(visitor: Visitor, parent?: symbolic): symbolic {
 			return visit(this,
@@ -1597,7 +1634,7 @@ symbolic.set(symbolic.asinh(zero), zero);
 symbolic.set(symbolic.acosh(one), zero);
 symbolic.set(symbolic.atanh(zero), zero);
 
-
+/*
 class SymbolicOperators extends OperatorsBase<symbolic> {
 	from(n: number): symbolic		{ return symbolic.from(n); }
 	func(name: string, args: symbolic[]) {
@@ -1615,7 +1652,32 @@ class SymbolicOperators extends OperatorsBase<symbolic> {
 		return a.pow(b);
 	}
 };
-export const symbolicOperators = new SymbolicOperators();
+*/
+
+export const symbolicOperators: Operators<symbolic> = {
+	...OperatorsBase(symbolic),
+	from(n: number): symbolic		{ return symbolic.from(n); },
+	func(name: string, args: symbolic[]) {
+		const fn = (symbolic as unknown as Record<string, (...args: symbolic[]) => symbolic>)[name];
+		if (typeof fn === 'function')
+			return fn ? fn(...args) : undefined;
+	},
+	variable(name: string) {
+		const v = (symbolic as unknown as Record<string, symbolic>)[name];
+		if (v instanceof symbolic)
+			return v;
+		return symbolic.variable(name);
+	},
+	pow(a: symbolic, b: symbolic): symbolic {
+		return a.pow(b);
+	},
+	eq(a: symbolic, b: symbolic): symbolicBoolean {
+		return a.compare('=', b);
+	},
+	lt(a: symbolic, b: symbolic): symbolicBoolean {
+		return a.compare('<', b);
+	}
+};
 
 const types = {
 	const:	symbolicConstant,

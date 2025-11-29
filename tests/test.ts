@@ -41,9 +41,6 @@ export function assert(condition: boolean, msg?: string) {
 		throw new Error(msg || 'assertion failed');
 }
 
-export function approx(a: number, b: number, tol = 1e-8) {
-    return Math.abs(a - b) <= tol;
-}
 
 export function approxArray(a: number[], b: number[], tol = 1e-9) {
     if (a.length !== b.length)

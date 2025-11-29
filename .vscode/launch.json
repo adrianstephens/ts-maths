@@ -21,59 +21,6 @@
 			"preLaunchTask": "npm: watch"
 		},
 		{
-			"type": "node",
-			"request": "launch",
-			"name": "Test vectors",
-			"runtimeExecutable": "ts-node",
-			"cwd": "${workspaceFolder}",
-			"args": ["tests/test-vec.ts"],
-			"sourceMaps": true,
-			"preLaunchTask": "npm: watch"
-		},
-		{
-			"type": "node",
-			"request": "launch",
-			"name": "Test polynomials",
-			"runtimeExecutable": "ts-node",
-			"cwd": "${workspaceFolder}",
-			"args": ["tests/test-poly.ts"],
-			"sourceMaps": true,
-			"outFiles": [
-				"${workspaceFolder}/dist/*.js",
-				"${workspaceFolder}/tests/*.js",
-				"${workspaceFolder}/../big/dist/*.js",
-				"${workspaceFolder}/../big/dist/**/*.js",
-			],
-			"console": "integratedTerminal",
-			"preLaunchTask": "npm: watch"
-		},
-		{
-			"type": "node",
-			"request": "launch",
-			"name": "Test symbolic",
-			"runtimeExecutable": "ts-node",
-			"cwd": "${workspaceFolder}",
-			"args": ["tests/test-sym.ts"],
-			"sourceMaps": true,
-			"outFiles": [
-				"${workspaceFolder}/dist/*.js",
-				"${workspaceFolder}/tests/*.js",
-				"${workspaceFolder}/../big/dist/*.js",
-				"${workspaceFolder}/../big/dist/**/*.js",
-			],
-			"preLaunchTask": "npm: watch",
-		},
-		{
-			"type": "node",
-			"request": "launch",
-			"name": "Test current",
-			"runtimeExecutable": "ts-node",
-			"cwd": "${workspaceFolder}",
-			"args": ["${file}"],
-			"sourceMaps": true,
-			"preLaunchTask": "npm: watch"
-		},
-		{
 			"type": "node-terminal",
 			"name": "Debug Transform",
 			"request": "launch",

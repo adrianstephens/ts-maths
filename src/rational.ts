@@ -110,7 +110,8 @@ export class rational implements scalar<rational> {
 	mod(b: rational):	rational { return this.div(b).frac().mul(b); }
 
 	divmod(b: rational): number	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
-	lt(b: rational):	boolean { return this.num * b.den < b.num * this.den; }
+	lt(b: rational):	boolean { return this.compare(b) < 0; }
+	eq(b: rational):	boolean { return this.compare(b) === 0; }
 	compare(b: rational): number { return this.num * b.den - b.num * this.den; }
 
 	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num} / ${this.den}`; }
@@ -121,7 +122,7 @@ export class rational implements scalar<rational> {
 // bigint rationals
 //-----------------------------------------------------------------------------
 
-export class rationalB {
+export class rationalB implements scalar<rationalB> {
 	static from(n: number|bigint|scalar1<any>, maxDen?: bigint): rationalB {
 		if (typeof n === 'bigint')
 			return new rationalB(n, 1n);
@@ -185,8 +186,9 @@ export class rationalB {
 	mod(b: rationalB):	rationalB	{ return this.div(b).frac().mul(b); }
 
 	divmod(b: rationalB):	bigint	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
-	lt(b: rationalB):		boolean	{ return this.num * b.den < b.num * this.den; }
 	compare(b: rationalB):	number	{ return signB(this.num * b.den - b.num * this.den); }
+	lt(b: rationalB):		boolean	{ return this.compare(b) < 0; }
+	eq(b: rationalB):		boolean	{ return this.compare(b) === 0; }
 
 	toString()			{ return this.den === 1n ? `${this.num}` : `${this.num} / ${this.den}`; }
 	valueOf():	number	{ return divB(this.num, this.den); }

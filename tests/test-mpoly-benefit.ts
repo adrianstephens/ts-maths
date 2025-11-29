@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { symbolic } from '../dist/symbolic';
-import { polynomialT, polyGCDT, resultantT } from '../dist/polynomial';
+import { Polynomial as polynomial, polyGCDT, resultantT } from '../dist/polynomial';
 
 // Test 1: resultant should be identically zero when the two polynomials share a common factor (x - t)
 (() => {
@@ -13,8 +13,8 @@ import { polynomialT, polyGCDT, resultantT } from '../dist/polynomial';
     const pGroups = pExpr.expand().collect('x');
     const qGroups = qExpr.expand().collect('x');
 
-    const P = new polynomialT<symbolic>(pGroups.map(g => g ?? symbolic.from(0)));
-    const Q = new polynomialT<symbolic>(qGroups.map(g => g ?? symbolic.from(0)));
+    const P = polynomial<symbolic>(pGroups.map(g => g ?? symbolic.from(0)));
+    const Q = polynomial<symbolic>(qGroups.map(g => g ?? symbolic.from(0)));
 
     const R = resultantT(P, Q);
 
@@ -43,14 +43,14 @@ import { polynomialT, polyGCDT, resultantT } from '../dist/polynomial';
     const pExpr = x.sub(t).mul(x.sub(1));
     const qExpr = x.sub(t).mul(x.sub(2));
 
-    const P = new polynomialT<symbolic>(pExpr.expand().collect('x').map(g => g ?? symbolic.from(0)));
-    const Q = new polynomialT<symbolic>(qExpr.expand().collect('x').map(g => g ?? symbolic.from(0)));
+    const P = polynomial<symbolic>(pExpr.expand().collect('x').map(g => g ?? symbolic.from(0)));
+    const Q = polynomial<symbolic>(qExpr.expand().collect('x').map(g => g ?? symbolic.from(0)));
 
     const G = polyGCDT(P, Q);
 
     // expected gcd is (x - t) -> build expected polynomial
     const expectedExpr = x.sub(t);
-    const Expected = new polynomialT<symbolic>(expectedExpr.expand().collect('x').map(g => g ?? symbolic.from(0)));
+    const Expected = polynomial<symbolic>(expectedExpr.expand().collect('x').map(g => g ?? symbolic.from(0)));
 
     // structural check via string representation (safe fallback if no deep eq)
     const gs = G.toString();

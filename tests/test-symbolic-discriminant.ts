@@ -1,13 +1,13 @@
 import * as assert from 'assert';
 import { symbolic } from '../src/symbolic';
-import { polynomialT, discriminantT } from '../src/polynomial';
+import { Polynomial as polynomial, discriminantT } from '../src/polynomial';
 
 // Quadratic polynomial: a*x^2 + b*x + c
 const a = symbolic.variable('a');
 const b = symbolic.variable('b');
 const c = symbolic.variable('c');
 
-const p = new polynomialT<symbolic>([c, b, a]);
+const p = polynomial<symbolic>([c, b, a]);
 const D = discriminantT(p);
 
 // expected: b^2 - 4 a c
@@ -48,7 +48,7 @@ const cubicCoeffs = [] as symbolic[];
 for (const g of groups)
     cubicCoeffs.push(g ?? symbolic.from(0));
 
-const cubicPoly = new polynomialT<symbolic>(cubicCoeffs);
+const cubicPoly = polynomial<symbolic>(cubicCoeffs);
 const Dc = discriminantT(cubicPoly);
 
 console.log('Cubic discriminant (from (x-r)^2*(x-s)) pretty:', Dc.toString());
@@ -64,7 +64,7 @@ for (const env of sampleC) {
 
 // Parametric family: x^2 + 2*t*x + t^2 = (x + t)^2 -> discriminant identically zero
 const t = symbolic.variable('t');
-const quadFamily = new polynomialT<symbolic>([t.pow(2), t.scale(2), symbolic.from(1)]);
+const quadFamily = polynomial<symbolic>([t.pow(2), t.scale(2), symbolic.from(1)]);
 const Df = discriminantT(quadFamily);
 console.log('Parametric family discriminant:', Df.toString());
 // numeric check

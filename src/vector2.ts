@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 import { scalar } from './core';
 import complex from './complex';
-import { polynomialN } from './polynomial';
+import { PolynomialN } from './polynomial';
 import { vscalar, vec, vops } from './vector';
 
 //-----------------------------------------------------------------------------
@@ -336,7 +336,7 @@ export function LUSolveBareissTransposeMultiT<T extends vscalar<T>>(A: T[][], X:
 // matrix helpers
 //-----------------------------------------------------------------------------
 
-export function characteristic(A: floatN[]): polynomialN {
+export function characteristic(A: floatN[]): PolynomialN<number> {
 	const n = A.length;
 
 	function trace() {
@@ -360,7 +360,7 @@ export function characteristic(A: floatN[]): polynomialN {
 	}
 	coeffs.push(-trace() / n);
 	coeffs.reverse();
-	return new polynomialN(coeffs);
+	return PolynomialN(coeffs);
 }
 
 // Basic QR-based eigensolver (returns array of complex eigenvalues).
@@ -435,7 +435,7 @@ export function eigenvalues(A: floatN[]): complex[] {
 			continue;
 		}
 		// take 2x2 block - delegate to polynomial solver for correctness
-		const roots = new polynomialN([a * d - b * c, -(a + d)]).allRoots();
+		const roots = PolynomialN([a * d - b * c, -(a + d)]).allRoots();
 		eigs.push(...roots);
 		m -= 2;
 	}

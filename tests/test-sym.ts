@@ -1,15 +1,23 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { test, expect } from './test';
+import { test, expect, assert } from './test';
 import { Operators, OperatorsBase, numberOperators, approx, scalar } from '../dist/core';
-import { parseNumber, outputNumber, toSuperscript, parse } from '../dist/string';
+import { parseNumber, outputNumber, toSuperscript, radicalChars, fractionChars, parse } from '../dist/string';
 import { symbolic, symbolicOperators } from '../dist/symbolic';
 import { applyRules, trigRules, invTrigRules, generalRules, scoreFactory, factored } from '../dist/symbolicRules';
-import { applyRulesEgraph, EGraphOptions } from '../dist/egraph';
+import { applyRulesEgraph, EGraphOptions, startSimplify, simplify } from '../dist/egraph';
 import { Polynomial } from '../dist/polynomial';
 import { vscalar, vectorT, normalise, mat, E2, E3, E4, E5 , vector, float2, float3, float4, float2x2, float3x3, float4x4} from '../dist/vector';
 import big from '../../big/dist/index';
+import complex, { complexOps } from '../dist/complex';
 
-symbolic.setDefaultStringifyOptions({ccode: true, radicalPower: true, superPower: true});
+//symbolic.setDefaultStringifyOptions({ccode: true, radicalPower: true, superPower: true});
+symbolic.setDefaultStringifyOptions({
+	superPower: true,
+	radicalPower: true,
+	mulChar: '⋅',
+	printConst: n=>outputNumber(n, {fractions: {chars: fractionChars, superSub: true}, radicals: radicalChars})}
+);
+
 
 const bigOperators: Operators<big> = {
 	...OperatorsBase(big),
@@ -64,6 +72,64 @@ function countNodes(n: symbolic) {
 	return cnt;
 }
 
+test('transitive merge', () => {
+	const p1 = parse(symbolicOperators, 'a1 + b');
+	const p2 = parse(symbolicOperators, 'a2 + b');
+
+	const sim = startSimplify();
+	sim.addSymbolic(p1);
+	sim.addSymbolic(p2);
+	sim.rewrite(parse(symbolicOperators, 'a2'), parse(symbolicOperators, 'a1'));
+
+	const p1e = sim.eclassOfNode(p1);
+	const p2e = sim.eclassOfNode(p2);
+	assert(p1e === p2e);
+
+	const xbest = sim.extractBest(p1, scoreFactory());
+	console.log(String(xbest));
+	const ybest = sim.extractBest(p2, scoreFactory());
+	console.log(String(ybest));
+});
+
+test('canonical reuse on insert after merge', () => {
+	const p1 = parse(symbolicOperators, 'a1 + b');
+	const p2 = parse(symbolicOperators, 'a2 + b');
+
+	const sim = startSimplify();
+	// add p1 first
+	sim.addSymbolic(p1);
+	// create a2 and immediately merge a2 -> a1 before adding p2
+	sim.rewrite(parse(symbolicOperators, 'a2'), parse(symbolicOperators, 'a1'));
+	// now add p2 (which references a2 that has been merged into a1)
+	sim.addSymbolic(p2);
+
+	const e1 = sim.eclassOfNode(p1);
+	const e2 = sim.eclassOfNode(p2);
+	assert(e1 === e2, 'Expected parent classes to be the same after inserting p2 post-merge');
+});
+
+test('chain merge canonicalMap stability', () => {
+	const p1 = parse(symbolicOperators, 'a1 + b');
+	const p2 = parse(symbolicOperators, 'a2 + b');
+	const p3 = parse(symbolicOperators, 'a3 + b');
+
+	const sim = startSimplify();
+	sim.addSymbolic(p1);
+	sim.addSymbolic(p2);
+	sim.addSymbolic(p3);
+
+	// merge a2 -> a1, then a3 -> a2 (transitively a3 -> a1)
+	sim.rewrite(parse(symbolicOperators, 'a2'), parse(symbolicOperators, 'a1'));
+	sim.rewrite(parse(symbolicOperators, 'a3'), parse(symbolicOperators, 'a2'));
+
+	const e1 = sim.eclassOfNode(p1);
+	const e2 = sim.eclassOfNode(p2);
+	const e3 = sim.eclassOfNode(p3);
+
+	assert(e1 === e2, 'p1 and p2 should be merged');
+	assert(e1 === e3, 'p1 and p3 should be merged transitively');
+});
+
 test('bug', () => {
 	const bindings = { a: 1, b: 2, c: 3, d: 4 }
 	const validate = (a: symbolic, b: symbolic) => {
@@ -73,11 +139,21 @@ test('bug', () => {
 			console.log("uh");
 		return av == bv;
 	}
+	const opts = {maxRounds: 8, verbose: false, maxExpansions: 16, validate};
+
+	const x = parse(symbolicOperators, '(-a*d + b*c)/(a*d - b*c)');
+	const y = parse(symbolicOperators, '(-a*d + b*c)+(a*d - b*c)');
+	const z = parse(symbolicOperators, '((-a * d + b * c) / (a * d - b * c) + 1) * b / a');
+
+	const eqn0 = parse(symbolicOperators, '(b * c / (a * d - b * c) / a + 1 / a) * a - b * c / (a * d - b * c)');
+	const simp0 = applyRulesEgraph(eqn0, generalRules, opts);
+
+	const eqn1 = parse(symbolicOperators, '(b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)');
+	const b = generalRules.find(i => i.name === 'sub-over-denom')?.match(eqn1);
+
 	const eqn = parse(symbolicOperators, '(b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)');
-	const simp = applyRulesEgraph(eqn, generalRules, {maxRounds: 100,validate});
-	console.log(eqn.evaluate(bindings));
-	console.log(simp.evaluate(bindings));
-	console.log(String(simp));
+	const simp = applyRulesEgraph(eqn, generalRules, opts);
+	assert(simp === symbolic.zero);
 });
 
 test('symbolic', () => {
@@ -150,7 +226,7 @@ test('symbolic transforms', () => {
 
 	// Apply egraph with available rules (symbolic exposes a list of rules)
 	const rules = trigRules.concat(invTrigRules).concat(generalRules);
-	const out = applyRulesEgraph(expr, rules);//, { verbose: true, debugNode: 'replace'});
+	const out = applyRulesEgraph(expr, rules, {maxRounds: 8, maxExpansions: 16});//, { verbose: true, debugNode: 'replace'});
 
 	console.log('Original  :', String(expr));
 	console.log('Extracted :', String(out));
@@ -431,7 +507,7 @@ test('vector perp()', () => {
 	};
 
 
-	const out = applyRulesEgraph(dd, rules, {maxRounds: 2});
+	const out = applyRulesEgraph(dd, rules, {verbose: true, maxRounds: 6, maxExpansions: 0});
 	console.log(String(out));
 
 });
@@ -439,7 +515,7 @@ test('vector perp()', () => {
 test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 
 	const rules	= trigRules.concat(invTrigRules).concat(generalRules);
-	const opts: EGraphOptions	= { maxRounds: 6, maxExpansions: 16, debugNode: 'replace' };
+	const opts: EGraphOptions	= { maxRounds: 8, maxExpansions: 16};//, debugNode: 'replace' };
 
 	const names = 'abcdefghijklmnopqrstuvwxyz'.slice(0, 25).split('');
 	const syms 	= Object.fromEntries(names.map(n => [n, symbolic.variable(n)]));
@@ -479,24 +555,35 @@ test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 	}
 
 	// 2x2
+	console.log('\n2x2');
 	const n2 = float2x2(
 		float2(2, 5),
 		float2(3, 7)
 	);
 	const m2 = makeMat(E2, E2);
 	const d2 = m2.det();
-	console.log('2x2 det:', String(d2));
+	console.log(String(m2));
+	console.log('det:', String(d2));
+	const d2b = applyRulesEgraph(d2, rules, opts)
+	console.log('det:', String(d2b));
 
 	const i2 = m2.inverse();
 	const p2 = m2.matmul(i2);
 	console.log('2x2 inv check:'); console.log(String(p2));
 	checkApprox(p2, setVars(n2));
 
+	//const simp = startSimplify(opts);
+	//const p2b = matVisit(p2, node => simplify(simp, node, rules, opts));
 	const p2b = matVisit(p2, node => applyRulesEgraph(node, rules, opts));
-	console.log('simplified 2x2 inv:\n'); console.log(String(p2b));
+	console.log('simplified 2x2 inv:'); console.log(String(p2b));
 
+	assert(
+		p2b.x.x === symbolic.one && p2b.x.y === symbolic.zero
+	&&	p2b.y.x === symbolic.zero && p2b.y.y === symbolic.one
+	);
 
 	// 3x3
+	console.log('\n3x3');
 	const n3 = float3x3(
 		float3(2, 7, 17),
 		float3(3, 11, 19),
@@ -505,14 +592,18 @@ test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 
 	const m3 = makeMat(E3, E3);
 	const d3 = m3.det();
-	console.log('3x3 det:', String(d3));
+	console.log(String(m3));
+	console.log('det:', String(d3));
+	const d3b = applyRulesEgraph(d3, rules, opts)
+	console.log('det:', String(d3b));
 	const i3 = m3.inverse();
 	const p3 = m3.matmul(i3);
-//	const p3b = matVisit(p3, node => applyRulesEgraph(node, rules, opts));
+//	const p3b = matVisit(p3, node => simplify(simp, node, rules, opts));
 	
 	checkApprox(p3, setVars(n3));
 	
 	// 4x4
+	console.log('\n4x4');
 	const n4 = float4x4(
 		float4(2, 7, 17, 23),
 		float4(3, 11, 19, 29),
@@ -522,14 +613,18 @@ test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 
 	const m4 = makeMat(E4, E4);
 	const d4 = m4.det();
-	console.log('4x4 det:', String(d4));
+	console.log(String(m4));
+	console.log('det:', String(d4));
+//	const d4b = applyRulesEgraph(d4, rules, opts)
+//	console.log('det:', String(d4b));
 	const i4 = m4.inverse();
 	const p4 = m4.matmul(i4);
 //	const p4b = matVisit(p4, node => applyRulesEgraph(node, rules, opts));
 	
 	checkApprox(p4, setVars(n4));
 	
-	// 5x5 (use E5)
+	// 5x5
+	console.log('\n5x5');
 	const n5 = mat({
 		x: vector(E5, 1,0,0,0,0),
 		y: vector(E5, 2,2,0,0,0),
@@ -547,4 +642,51 @@ test('symbolic inverse 2x2, 3x3 and 5x5', () => {
 //	const p5b = matVisit(p5, node => applyRulesEgraph(node, rules, opts));
 	checkApprox(p5, setVars(n5));
 
+});
+
+
+test('symbolic polynomials', () => {
+	let poly = Polynomial<symbolic>([symbolic.from(1)]);
+	const bindings = {
+		A: complex(1),
+		B: complex(2),
+		C: complex(3),
+		D: complex(4),
+		E: complex(5),
+		F: complex(6),
+		G: complex(7),
+		H: complex(8),
+	};
+ 
+	function validate(a: symbolic, b: symbolic) {
+		const va = a.evaluateT(complexOps, bindings);
+		const vb = b.evaluateT(complexOps, bindings);
+		if (va && vb && (va.approx(vb, 1e-10) || va.approx(vb.neg(), 1e-10)))
+			return true;
+		const va2 = a.evaluateT(complexOps, bindings);
+		const vb2 = b.evaluateT(complexOps, bindings);
+		return false;
+	}
+
+	for (let j = 1; j < 4; ++j) {
+		poly = poly.mul(Polynomial<symbolic>([symbolic.variable('ABCDEFGH'[j  - 1]).neg(), symbolic.from(1)]));
+		console.log(`degree ${j} polynomial: ${poly.toString()}`);
+		const roots = poly.realRoots();
+		console.log(roots.map(String).join('\n'));
+		console.log('simplifying:');
+		for (const r of roots) {
+			const timeoutMs = 20000;
+			const start = Date.now();
+			const callback = () => {
+				if (Date.now() - start > timeoutMs) {
+					console.warn(`egraph-diagnostic: timeout of ${timeoutMs}ms`);
+					return false;
+				}
+				return true;
+			};
+
+			const r2 = applyRulesEgraph(r, generalRules, {verbose: false, debugNode: 'replace', callback, validate});
+			console.log(String(r2));
+		}
+	}
 });

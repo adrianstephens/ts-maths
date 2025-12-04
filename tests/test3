@@ -1,0 +1,391 @@
+applyRulesEgraph (b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)
+egraph-diagnostic: adding node a
+egraph-diagnostic: adding node d
+egraph-diagnostic: adding node a * d
+egraph-diagnostic: adding node b
+egraph-diagnostic: adding node c
+egraph-diagnostic: adding node b * c
+egraph-diagnostic: adding node a * d - b * c
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a
+egraph-diagnostic: adding node 1 / a
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: adding node (b * c / (a * d - b * c) / a + 1 / a) * b
+egraph-diagnostic: adding node b * d / (a * d - b * c)
+egraph-diagnostic: adding node (b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)
+egraph-diagnostic: round 1
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1)
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: rule collect-like-terms on b * c / (a * d - b * c) / a + 1 / a produced (b * c / (a * d - b * c) + 1) / a:   id=m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1) [NEW]
+egraph-diagnostic: adding node b * c / (a * d - b * c)
+egraph-diagnostic: adding node b * c / (a * d - b * c) + 1
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: merging EClass ec:9 with EClass ec:15
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: merging EClass ec:10 with EClass ec:17
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a + b / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) / a + 1 / a) * b produced b * b * c / (a * d - b * c) / a + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a
+egraph-diagnostic: adding node b / a
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a + b / a
+egraph-diagnostic: merging EClass ec:10 with EClass ec:21
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:12 with EClass ec:22
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:23
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d),m(v:a-1)),v:b)
+egraph-diagnostic: new term: (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: rule collect-like-terms on (b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c) produced (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d),m(v:a-1)),v:b) [NEW]
+egraph-diagnostic: adding node d / (a * d - b * c)
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a
+egraph-diagnostic: adding node (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:26
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule collect-like-terms: 2 unique ids
+  Rule mul-distribute: 1 unique ids
+egraph-diagnostic: round 2
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),m(v:a-1))
+egraph-diagnostic: new term: b * c / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) + 1) / a produced b * c / (a * d - b * c) / a + 1 / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),m(v:a-1)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a + b / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) + 1) * b / a produced b * b * c / (a * d - b * c) / a + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b)
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: rule collect-like-terms on b * b * c / (a * d - b * c) / a + b / a produced (b * c / (a * d - b * c) + 1) * b / a:   id=m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)),v:b)
+egraph-diagnostic: new term: ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b
+egraph-diagnostic: rule collect-like-terms on (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c) produced ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b:   id=m(a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)),v:b) [NEW]
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)
+egraph-diagnostic: adding node ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:28
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b))
+egraph-diagnostic: new term: (b * c / a - d) * b / (a * d - b * c) + b / a
+egraph-diagnostic: rule collect-like-terms on b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a produced (b * c / a - d) * b / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: adding node b * c / a
+egraph-diagnostic: adding node b * c / a - d
+egraph-diagnostic: adding node (b * c / a - d) * b / (a * d - b * c)
+egraph-diagnostic: adding node (b * c / a - d) * b / (a * d - b * c) + b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:32
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1))
+egraph-diagnostic: new term: (b * c / a - d) / (a * d - b * c) + 1 / a
+egraph-diagnostic: rule collect-like-terms on b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a produced (b * c / a - d) / (a * d - b * c) + 1 / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)) [NEW]
+egraph-diagnostic: adding node (b * c / a - d) / (a * d - b * c)
+egraph-diagnostic: adding node (b * c / a - d) / (a * d - b * c) + 1 / a
+egraph-diagnostic: merging EClass ec:25 with EClass ec:34
+egraph-diagnostic: adding node ((b * c / a - d) / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:35
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b produced b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 3 unique ids
+  Rule collect-like-terms: 4 unique ids
+egraph-diagnostic: round 3
+egraph-diagnostic: rule sub-over-denom generated new id: m(a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c)),v:a-1),-v:d),a(m(v:a,v:d),-m(v:b,v:c))-1)
+egraph-diagnostic: new term: ((b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d) / (a * d - b * c)
+egraph-diagnostic: rule sub-over-denom on (b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c) produced ((b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d) / (a * d - b * c):   id=m(a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c)),v:a-1),-v:d),a(m(v:a,v:d),-m(v:b,v:c))-1) [NEW]
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) * (a * d - b * c) / a
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d
+egraph-diagnostic: adding node ((b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d) / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:27 with EClass ec:38
+egraph-diagnostic: adding node ((b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d) * b / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:12 with EClass ec:39
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d))
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b produced (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c):   id=a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) * b / (a * d - b * c) produced b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d)) [NEW]
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:31 with EClass ec:40
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b)
+egraph-diagnostic: new term: ((b * c / a - d) / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: rule collect-like-terms on (b * c / a - d) * b / (a * d - b * c) + b / a produced ((b * c / a - d) / (a * d - b * c) + 1 / a) * b:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d))
+egraph-diagnostic: new term: b * c / (a * d - b * c) / a - d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) / (a * d - b * c) produced b * c / (a * d - b * c) / a - d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)) [NEW]
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a - d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:33 with EClass ec:41
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b))
+egraph-diagnostic: new term: (b * c / a - d) * b / (a * d - b * c) + b / a
+egraph-diagnostic: rule mul-distribute on ((b * c / a - d) / (a * d - b * c) + 1 / a) * b produced (b * c / a - d) * b / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule sub-over-denom: 1 unique ids
+  Rule mul-distribute: 4 unique ids
+  Rule collect-like-terms: 1 unique ids
+egraph-diagnostic: round 4
+egraph-diagnostic: rule mul-distribute generated new id: m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d),m(v:a-1,v:b,v:c),-v:d))
+egraph-diagnostic: new term: -(b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a - d)
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) + 1) * (a * d - b * c) / a produced -(b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a - d):   id=m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d),m(v:a-1,v:b,v:c),-v:d)) [NEW]
+egraph-diagnostic: adding node b * b * c * c / (a * d - b * c) / a
+egraph-diagnostic: adding node b * c * d / (a * d - b * c)
+egraph-diagnostic: adding node b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a - d
+egraph-diagnostic: adding node -(b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a - d)
+egraph-diagnostic: merging EClass ec:36 with EClass ec:46
+egraph-diagnostic: adding node b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a
+egraph-diagnostic: adding node -(b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a)
+egraph-diagnostic: merging EClass ec:37 with EClass ec:49
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d))
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on ((b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d) / (a * d - b * c) produced (b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c):   id=a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d))
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on ((b * c / (a * d - b * c) + 1) * (a * d - b * c) / a - d) * b / (a * d - b * c) produced (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c):   id=a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b)
+egraph-diagnostic: new term: (b * c / a - d) * b / (a * d - b * c)
+egraph-diagnostic: rule collect-like-terms on b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) produced (b * c / a - d) * b / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b) [NEW]
+egraph-diagnostic: rule sub-over-denom generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d))
+egraph-diagnostic: new term: (b * c / a - d) / (a * d - b * c)
+egraph-diagnostic: rule sub-over-denom on b * c / (a * d - b * c) / a - d / (a * d - b * c) produced (b * c / a - d) / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d))
+egraph-diagnostic: new term: (b * c / a - d) / (a * d - b * c)
+egraph-diagnostic: rule collect-like-terms on b * c / (a * d - b * c) / a - d / (a * d - b * c) produced (b * c / a - d) / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 3 unique ids
+  Rule collect-like-terms: 2 unique ids
+  Rule sub-over-denom: 1 unique ids
+egraph-diagnostic: round 5
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c),-v:d)
+egraph-diagnostic: new term: (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a - d
+egraph-diagnostic: rule collect-like-terms on b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a - d produced (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a - d:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c),-v:d) [NEW]
+egraph-diagnostic: adding node c * c * b / a
+egraph-diagnostic: adding node c * d
+egraph-diagnostic: adding node c * c * b / a - c * d
+egraph-diagnostic: adding node (c * c * b / a - c * d) * b / (a * d - b * c)
+egraph-diagnostic: adding node (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a - d
+egraph-diagnostic: merging EClass ec:45 with EClass ec:55
+egraph-diagnostic: adding node -((c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a - d)
+egraph-diagnostic: merging EClass ec:36 with EClass ec:57
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c))
+egraph-diagnostic: new term: (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a
+egraph-diagnostic: rule collect-like-terms on b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a produced (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c)) [NEW]
+egraph-diagnostic: adding node (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a
+egraph-diagnostic: merging EClass ec:48 with EClass ec:58
+egraph-diagnostic: adding node -((c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a)
+egraph-diagnostic: merging EClass ec:37 with EClass ec:59
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule collect-like-terms: 2 unique ids
+egraph-diagnostic: round 6
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a-1,v:b,v:c),-v:d),v:c)
+egraph-diagnostic: new term: (b * c / a - d) * c
+egraph-diagnostic: rule collect-like-terms on c * c * b / a - c * d produced (b * c / a - d) * c:   id=m(a(m(v:a-1,v:b,v:c),-v:d),v:c) [NEW]
+egraph-diagnostic: adding node (b * c / a - d) * c
+egraph-diagnostic: merging EClass ec:53 with EClass ec:60
+egraph-diagnostic: adding node (b * c / a - d) * b * c / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:54 with EClass ec:62
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d))
+egraph-diagnostic: new term: b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (c * c * b / a - c * d) * b / (a * d - b * c) produced b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d)) [NEW]
+egraph-diagnostic: adding node b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:54 with EClass ec:65
+egraph-diagnostic: adding node (b * c / a - d) * b * c / (a * d - b * c) + b * c / a - d
+egraph-diagnostic: merging EClass ec:45 with EClass ec:66
+egraph-diagnostic: adding node (b * c / a - d) * b * c / (a * d - b * c) + b * c / a
+egraph-diagnostic: merging EClass ec:48 with EClass ec:67
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d))),m(v:a-1,v:c)),v:b),-v:d)
+egraph-diagnostic: new term: ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b - d
+egraph-diagnostic: rule collect-like-terms on (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a - d produced ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b - d:   id=a(m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d))),m(v:a-1,v:c)),v:b),-v:d) [NEW]
+egraph-diagnostic: adding node (c * c * b / a - c * d) / (a * d - b * c)
+egraph-diagnostic: adding node c / a
+egraph-diagnostic: adding node (c * c * b / a - c * d) / (a * d - b * c) + c / a
+egraph-diagnostic: adding node ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b
+egraph-diagnostic: adding node ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b - d
+egraph-diagnostic: merging EClass ec:45 with EClass ec:72
+egraph-diagnostic: adding node -((b * c / a - d) * b * c / (a * d - b * c) + b * c / a - d)
+egraph-diagnostic: merging EClass ec:36 with EClass ec:73
+egraph-diagnostic: adding node -(((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b - d)
+egraph-diagnostic: merging EClass ec:36 with EClass ec:74
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d))),m(v:a-1,v:c)),v:b)
+egraph-diagnostic: new term: ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b
+egraph-diagnostic: rule collect-like-terms on (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a produced ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d))),m(v:a-1,v:c)),v:b) [NEW]
+egraph-diagnostic: merging EClass ec:48 with EClass ec:71
+egraph-diagnostic: adding node -((b * c / a - d) * b * c / (a * d - b * c) + b * c / a)
+egraph-diagnostic: merging EClass ec:37 with EClass ec:75
+egraph-diagnostic: adding node -((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b
+egraph-diagnostic: merging EClass ec:37 with EClass ec:76
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule collect-like-terms: 3 unique ids
+  Rule mul-distribute: 1 unique ids
+egraph-diagnostic: round 7
+egraph-diagnostic: rule mul-distribute generated new id: a(m(v:a-1,v:b,v:c2),-m(v:c,v:d))
+egraph-diagnostic: new term: c * c * b / a - c * d
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) * c produced c * c * b / a - c * d:   id=a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d))
+egraph-diagnostic: new term: b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) * b * c / (a * d - b * c) produced b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b)
+egraph-diagnostic: new term: (c * c * b / a - c * d) * b / (a * d - b * c)
+egraph-diagnostic: rule collect-like-terms on b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) produced (c * c * b / a - c * d) * b / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b,v:c),-v:d)
+egraph-diagnostic: new term: ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c - d
+egraph-diagnostic: rule collect-like-terms on (b * c / a - d) * b * c / (a * d - b * c) + b * c / a - d produced ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c - d:   id=a(m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b,v:c),-v:d) [NEW]
+egraph-diagnostic: adding node ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c
+egraph-diagnostic: adding node ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c - d
+egraph-diagnostic: merging EClass ec:45 with EClass ec:78
+egraph-diagnostic: adding node -(((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c - d)
+egraph-diagnostic: merging EClass ec:36 with EClass ec:79
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b,v:c)
+egraph-diagnostic: new term: ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c
+egraph-diagnostic: rule collect-like-terms on (b * c / a - d) * b * c / (a * d - b * c) + b * c / a produced ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b,v:c) [NEW]
+egraph-diagnostic: merging EClass ec:48 with EClass ec:77
+egraph-diagnostic: adding node -((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c
+egraph-diagnostic: merging EClass ec:37 with EClass ec:80
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:c,v:d))
+egraph-diagnostic: new term: c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (c * c * b / a - c * d) / (a * d - b * c) produced c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:c,v:d)) [NEW]
+egraph-diagnostic: adding node c * c * b / (a * d - b * c) / a
+egraph-diagnostic: adding node c * d / (a * d - b * c)
+egraph-diagnostic: adding node c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:68 with EClass ec:83
+egraph-diagnostic: adding node c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) + c / a
+egraph-diagnostic: merging EClass ec:70 with EClass ec:85
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c))
+egraph-diagnostic: new term: (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a
+egraph-diagnostic: rule mul-distribute on ((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b produced (c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c)))
+egraph-diagnostic: new term: -((c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a)
+egraph-diagnostic: rule mul-distribute on -((c * c * b / a - c * d) / (a * d - b * c) + c / a) * b produced -((c * c * b / a - c * d) * b / (a * d - b * c) + b * c / a):   id=m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c2),-m(v:c,v:d)),v:b),m(v:a-1,v:b,v:c))) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 5 unique ids
+  Rule collect-like-terms: 3 unique ids
+egraph-diagnostic: round 8
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c))
+egraph-diagnostic: new term: (b * c / a - d) * b * c / (a * d - b * c) + b * c / a
+egraph-diagnostic: rule mul-distribute on ((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c produced (b * c / a - d) * b * c / (a * d - b * c) + b * c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c)))
+egraph-diagnostic: new term: -((b * c / a - d) * b * c / (a * d - b * c) + b * c / a)
+egraph-diagnostic: rule mul-distribute on -((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c produced -((b * c / a - d) * b * c / (a * d - b * c) + b * c / a):   id=m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c))) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:c)
+egraph-diagnostic: new term: (b * c / a - d) * c / (a * d - b * c)
+egraph-diagnostic: rule collect-like-terms on c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) produced (b * c / a - d) * c / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:c) [NEW]
+egraph-diagnostic: adding node (b * c / a - d) * c / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:68 with EClass ec:86
+egraph-diagnostic: adding node (b * c / a - d) * c / (a * d - b * c) + c / a
+egraph-diagnostic: merging EClass ec:70 with EClass ec:87
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:c),m(v:a-1,v:c))
+egraph-diagnostic: new term: (b * c / a - d) * c / (a * d - b * c) + c / a
+egraph-diagnostic: rule collect-like-terms on c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) + c / a produced (b * c / a - d) * c / (a * d - b * c) + c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:c),m(v:a-1,v:c)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 2 unique ids
+  Rule collect-like-terms: 2 unique ids
+egraph-diagnostic: round 9
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:c,v:d))
+egraph-diagnostic: new term: c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) * c / (a * d - b * c) produced c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:c,v:d)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:c)
+egraph-diagnostic: new term: ((b * c / a - d) / (a * d - b * c) + 1 / a) * c
+egraph-diagnostic: rule collect-like-terms on (b * c / a - d) * c / (a * d - b * c) + c / a produced ((b * c / a - d) / (a * d - b * c) + 1 / a) * c:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:c) [NEW]
+egraph-diagnostic: adding node ((b * c / a - d) / (a * d - b * c) + 1 / a) * c
+egraph-diagnostic: merging EClass ec:70 with EClass ec:88
+egraph-diagnostic: adding node (c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) + c / a) * b
+egraph-diagnostic: merging EClass ec:48 with EClass ec:89
+egraph-diagnostic: adding node ((b * c / a - d) * c / (a * d - b * c) + c / a) * b
+egraph-diagnostic: merging EClass ec:48 with EClass ec:90
+egraph-diagnostic: adding node -(c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) + c / a) * b
+egraph-diagnostic: merging EClass ec:37 with EClass ec:91
+egraph-diagnostic: adding node -((b * c / a - d) * c / (a * d - b * c) + c / a) * b
+egraph-diagnostic: merging EClass ec:37 with EClass ec:92
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 1 unique ids
+  Rule collect-like-terms: 1 unique ids
+egraph-diagnostic: round 10
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:c),m(v:a-1,v:c))
+egraph-diagnostic: new term: (b * c / a - d) * c / (a * d - b * c) + c / a
+egraph-diagnostic: rule mul-distribute on ((b * c / a - d) / (a * d - b * c) + 1 / a) * c produced (b * c / a - d) * c / (a * d - b * c) + c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:c),m(v:a-1,v:c)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d),m(v:a-1,v:b,v:c))
+egraph-diagnostic: new term: b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a
+egraph-diagnostic: rule mul-distribute on (c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) + c / a) * b produced b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d),m(v:a-1,v:b,v:c)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c))
+egraph-diagnostic: new term: (b * c / a - d) * b * c / (a * d - b * c) + b * c / a
+egraph-diagnostic: rule mul-distribute on ((b * c / a - d) * c / (a * d - b * c) + c / a) * b produced (b * c / a - d) * b * c / (a * d - b * c) + b * c / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d),m(v:a-1,v:b,v:c)))
+egraph-diagnostic: new term: -(b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a)
+egraph-diagnostic: rule mul-distribute on -(c * c * b / (a * d - b * c) / a - c * d / (a * d - b * c) + c / a) * b produced -(b * b * c * c / (a * d - b * c) / a - b * c * d / (a * d - b * c) + b * c / a):   id=m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c2),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c,v:d),m(v:a-1,v:b,v:c))) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c)))
+egraph-diagnostic: new term: -((b * c / a - d) * b * c / (a * d - b * c) + b * c / a)
+egraph-diagnostic: rule mul-distribute on -((b * c / a - d) * c / (a * d - b * c) + c / a) * b produced -((b * c / a - d) * b * c / (a * d - b * c) + b * c / a):   id=m(-1,a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b,v:c),m(v:a-1,v:b,v:c))) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 5 unique ids
+egraph-diagnostic: reps= (39) ['ec:0', 'ec:1', 'ec:2', 'ec:3', 'ec:4', 'ec:5', 'ec:6', 'ec:7', 'ec:8', 'ec:9', 'ec:10', 'ec:11', 'ec:12', 'ec:13', 'ec:14', 'ec:19', 'ec:20', 'ec:24', 'ec:25', 'ec:27', 'ec:29', 'ec:30', 'ec:31', 'ec:33', 'ec:36', 'ec:37', 'ec:43', 'ec:44', 'ec:45', 'ec:48', 'ec:51', 'ec:52', 'ec:53', 'ec:54', 'ec:68', 'ec:69', 'ec:70', 'ec:81', 'ec:82']
+{rep: 'ec:0', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:1', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:2', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:3', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:4', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:5', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:6', bestCost: 5.8, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:7', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:8', bestCost: 0.7, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:9', bestCost: 12.9, bestNode: symbolicMul, nodes: Array(2)}
+{rep: 'ec:10', bestCost: 14.2, bestNode: symbolicMul, nodes: Array(3)}
+{rep: 'ec:11', bestCost: 9.2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:12', bestCost: 20.400000000000002, bestNode: symbolicAdd, nodes: Array(8)}
+{rep: 'ec:13', bestCost: 9.2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:14', bestCost: 10.400000000000002, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:19', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:20', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:24', bestCost: 7.8999999999999995, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:25', bestCost: 17.4, bestNode: symbolicAdd, nodes: Array(2)}
+{rep: 'ec:27', bestCost: 24.400000000000002, bestNode: symbolicAdd, nodes: Array(2)}
+{rep: 'ec:29', bestCost: 3.3, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:30', bestCost: 5.7, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:31', bestCost: 15, bestNode: symbolicMul, nodes: Array(2)}
+{rep: 'ec:33', bestCost: 13.700000000000001, bestNode: symbolicMul, nodes: Array(2)}
+{rep: 'ec:36', bestCost: 20.1, bestNode: symbolicMul, nodes: Array(6)}
+{rep: 'ec:37', bestCost: 21.999999999999996, bestNode: symbolicMul, nodes: Array(8)}
+{rep: 'ec:43', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:44', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:45', bestCost: 25.299999999999997, bestNode: symbolicAdd, nodes: Array(5)}
+{rep: 'ec:48', bestCost: 21.999999999999996, bestNode: symbolicMul, nodes: Array(7)}
+{rep: 'ec:51', bestCost: 3.3, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:52', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:53', bestCost: 7.300000000000001, bestNode: symbolicAdd, nodes: Array(2)}
+{rep: 'ec:54', bestCost: 16.3, bestNode: symbolicMul, nodes: Array(3)}
+{rep: 'ec:68', bestCost: 15, bestNode: symbolicMul, nodes: Array(3)}
+{rep: 'ec:69', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:70', bestCost: 20.400000000000002, bestNode: symbolicAdd, nodes: Array(4)}
+{rep: 'ec:81', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:82', bestCost: 9.2, bestNode: symbolicMul, nodes: Array(1)}
+egraph-diagnostic: final best choices:
+  rep=ec:0 cost=0.6 node=a
+  rep=ec:1 cost=0.6 node=d
+  rep=ec:2 cost=2 node=a * d
+  rep=ec:3 cost=0.6 node=b
+  rep=ec:4 cost=0.6 node=c
+  rep=ec:5 cost=2 node=b * c
+  rep=ec:6 cost=5.8 node=a * d - b * c
+  rep=ec:7 cost=10.5 node=b * c / (a * d - b * c) / a
+  rep=ec:8 cost=0.7 node=1 / a
+  rep=ec:9 cost=12.9 node=(b * c / (a * d - b * c) + 1) / a
+  rep=ec:10 cost=14.2 node=(b * c / (a * d - b * c) + 1) * b / a
+  rep=ec:11 cost=9.2 node=b * d / (a * d - b * c)
+  rep=ec:12 cost=20.400000000000002 node=(b * c / a - d) * b / (a * d - b * c) + b / a
+  rep=ec:13 cost=9.2 node=b * c / (a * d - b * c)
+  rep=ec:14 cost=10.400000000000002 node=b * c / (a * d - b * c) + 1
+  rep=ec:19 cost=10.5 node=b * b * c / (a * d - b * c) / a
+  rep=ec:20 cost=2 node=b / a
+  rep=ec:24 cost=7.8999999999999995 node=d / (a * d - b * c)
+  rep=ec:25 cost=17.4 node=(b * c / a - d) / (a * d - b * c) + 1 / a
+  rep=ec:27 cost=24.400000000000002 node=(b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)
+  rep=ec:29 cost=3.3 node=b * c / a
+  rep=ec:30 cost=5.7 node=b * c / a - d
+  rep=ec:31 cost=15 node=(b * c / a - d) * b / (a * d - b * c)
+  rep=ec:33 cost=13.700000000000001 node=(b * c / a - d) / (a * d - b * c)
+  rep=ec:36 cost=20.1 node=(b * c / (a * d - b * c) + 1) * (a * d - b * c) / a
+  rep=ec:37 cost=21.999999999999996 node=-((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c
+  rep=ec:43 cost=10.5 node=b * b * c * c / (a * d - b * c) / a
+  rep=ec:44 cost=10.5 node=b * c * d / (a * d - b * c)
+  rep=ec:45 cost=25.299999999999997 node=(b * c / a - d) * b * c / (a * d - b * c) + b * c / a - d
+  rep=ec:48 cost=21.999999999999996 node=((b * c / a - d) / (a * d - b * c) + 1 / a) * b * c
+  rep=ec:51 cost=3.3 node=c * c * b / a
+  rep=ec:52 cost=2 node=c * d
+  rep=ec:53 cost=7.300000000000001 node=c * c * b / a - c * d
+  rep=ec:54 cost=16.3 node=(b * c / a - d) * b * c / (a * d - b * c)
+  rep=ec:68 cost=15 node=(b * c / a - d) * c / (a * d - b * c)
+  rep=ec:69 cost=2 node=c / a
+  rep=ec:70 cost=20.400000000000002 node=(b * c / a - d) * c / (a * d - b * c) + c / a
+  rep=ec:81 cost=10.5 node=c * c * b / (a * d - b * c) / a
+  rep=ec:82 cost=9.2 node=c * d / (a * d - b * c)
+0
+0

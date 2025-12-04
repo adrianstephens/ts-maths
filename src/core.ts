@@ -1,8 +1,25 @@
-// (RNG inlined into `randomB` below)
 
+export type hasProperty<K extends string, S> = { [P in K]: S };
+
+export function isNumber(x: any): x is number {
+	return typeof x === 'number';
+}
+export function isBigInt(x: any): x is bigint {
+	return typeof x === 'bigint';
+}
 export function isInstance<T>(x: any, i: new (...args: any[]) => T): x is T {
 	return x instanceof i;
 }
+export function hasStatic(x: any, f: string) {
+	const c = x.constructor;
+	if (f in c)
+		return c[f] as (...args: any[]) => any;
+	return undefined;
+}
+export function arrayOf<U>(arr: any[], g: (x: any) => x is U): arr is U[] {
+	return arr.length ? g(arr[0]) : false;
+}
+
 
 export interface Operators<T> {
 	from(n: number): T;
@@ -145,7 +162,6 @@ export function approx(x: number, y: number, epsilon = Number.EPSILON) {
 }
 
 export const numberOperators = {
-	dup(n: number): number		{ return n; },
 	from(n: number): number		{ return n; },
 	func(name: string, args: number[]) {
 		const fn = (Math as unknown as Record<string, (...args: number[]) => number>)[name];
@@ -160,6 +176,7 @@ export const numberOperators = {
 			default:			return undefined;
 		}
 	},
+	dup(n: number): number				{ return n; },
 	neg(a: number): number				{ return -a; },
 	pow(a: number, b: number): number	{ return Math.pow(a, b); },
 	mul(a: number, b: number): number	{ return a * b; },
@@ -355,6 +372,21 @@ export class extent {
 // bigint
 //-----------------------------------------------------------------------------
 
+export const bigintOperators: Operators<bigint> = {
+	func(_name: string, _args: bigint[]) { return undefined; },
+	variable(_name: string)				{ return undefined; },
+	dup(a: bigint): bigint				{ return a; },
+	pow(a: bigint, b: bigint): bigint	{ return a ** b; },
+	from(n: number | bigint): bigint	{ return BigInt(n); },
+	neg(a: bigint): bigint				{ return -a; },
+	mul(a: bigint, b: bigint): bigint	{ return a * b; },
+	div(a: bigint, b: bigint): bigint	{ return a / b; },
+	add(a: bigint, b: bigint): bigint	{ return a + b; },
+	sub(a: bigint, b: bigint): bigint	{ return a - b; },
+	eq(a: bigint, b: bigint): boolean	{ return a === b; },
+	lt(a: bigint, b: bigint): boolean	{ return a < b; }
+};
+
 export function signB(a: bigint): number {
 	return a === 0n ? 0 : a < 0n ? -1 : 1;
 }
@@ -397,9 +429,20 @@ export function modPowB(base: bigint, exp: bigint, mod: bigint): bigint {
 	return result;
 }
 
+export function rpowB(x: bigint, n: number, d:number) {
+	if ((d & 1) === 0 && x < 0n)
+		throw new Error('scalarB.rpow: negative numbers not allowed with even denominator');
+	return rootB(x ** BigInt(n), d);
+}
+
+export function powB(x: bigint, n: number) {
+	const d = denominator(n,100);
+	if (d === 0)
+		throw new Error('scalarB.npow: exponent not representable as rational');
+	return rpowB(x, n * d, d);
+}
+
 export function randomB(bits: number): bigint {
-	// Local xorshift32 PRNG (inlined here, no external calls).
-	// Seed derived from current time (non-crypto, deterministic enough for this use).
 	let seed = (((Date.now() & 0xffffffff) ^ 0x9e3779b9) >>> 0) || 1;
 
 	const rng32 = () => {
@@ -426,9 +469,9 @@ export class scalarB implements scalarExt<scalarB> {
 	neg(): 				scalarB		{ return new scalarB(-this.value); }
 	sqrt():				scalarB		{ return new scalarB(rootB(this.value, 2)); }
 	scale(b: number):	scalarB		{ return new scalarB(this.value * BigInt(b)); }
-	npow(n: number):	scalarB		{ return new scalarB(this.value ** BigInt(n)); }
-	rpow(n: number, d:number):	scalarB		{ return new scalarB(this.value ** BigInt(n / d)); }
-	//pow(n: number):		scalarB 	{ return new scalarB(this.value ** BigInt(n)); }
+	ipow(n: number):	scalarB		{ return new scalarB(this.value ** BigInt(n)); }
+	rpow(n: number, d:number):	scalarB		{ return new scalarB(rpowB(this.value, n, d)); }
+	npow(n: number):	scalarB		{ return new scalarB(powB(this.value, n)); }
 	mul(b: scalarB):	scalarB		{ return new scalarB(this.value * b.value); }
 	div(b: scalarB):	scalarB		{ return new scalarB(this.value / b.value); }
 	add(b: scalarB):	scalarB		{ return new scalarB(this.value + b.value); }
@@ -540,6 +583,8 @@ export function divB(a: bigint, b: bigint): number {
 
 // Progressive n-th root for bigints
 export function rootB(x: bigint, b: number): bigint {
+	if (b === 1)
+		return x;
 	if (x === 0n || b < 1)
 		return 0n;
 	if ((b & 1) === 0 && x < 0n)
@@ -572,18 +617,10 @@ export function rootB(x: bigint, b: number): bigint {
 // Generics
 //-----------------------------------------------------------------------------
 
-
-
+export type has0<K extends keyof scalarExt<any>> = Pick<scalarExt<any>, K>;
 export type has<K extends keyof scalarExt<any>> = ops<any> & Pick<scalarExt<any>, K>;
 export function has<K extends keyof scalarExt<any>>(f: K) {
 	return (x: ops<any>): x is ops<any> & Pick<scalarExt<any>, K> => f in x;
-}
-
-export function hasStatic(x: any, f: string) {
-	const c = x.constructor;
-	if (f in c)
-		return c[f] as (...args: any[]) => any;
-	return undefined;
 }
 
 export function isScalar(x: ops<any>): x is scalar<any> {
@@ -614,14 +651,7 @@ export function compareT<T extends has<'lt'>>(a: T, b: T): number {
 	return a.lt(b) ? -1 : b.lt(a) ? 1 : 0;
 }
 
-export interface gcd {
-	divmod(b: this):	number | bigint | this;
-	sign():				number;
-	abs():				this;
-	scale(n: number):	this;
-}
-
-export function gcdT<T extends gcd>(...values: T[]): T {
+export function gcdT<T extends Pick<scalarExt<any>, 'sign'|'abs'> & hasProperty<'divmod', (b: T)=>any>>(...values: T[]): T {
 	let a: T | undefined;
 	for (let b of values) {
 		b = b.abs();
@@ -637,33 +667,38 @@ export function gcdT<T extends gcd>(...values: T[]): T {
 	return a!;
 }
 
-export function lcmT<T extends gcd>(...x: T[]) {
+export function lcmT<T extends Pick<scalarExt<any>, 'divmod'|'sign'|'abs'|'scale'>>(...x: T[]) {
 	return x.slice(1).reduce((a, b) => b.scale(Number(a.divmod(gcdT(a, b)))), x[0]);
 }
 
-type rationalApprox = has<'from'> & has<'divmod'> & has<'recip'> & has<'lt'>;
-/*
-export function rationalApproxT<T extends rationalApprox>(x: T, maxDen: T, eps?: T): [T, T] {
-	const zero	= x.from(0);
-	const one	= x.from(1);
-	let b	= x.dup();
-	let a	= b.divmod(one);
-	if (b.sign() < 0) {
-		--a;
-		b = b.add(one);
-	}
-	let h1	= x.from(a), h2 = one;
-	let k1	= one, k2 = zero;
+export type canDenominator = Pick<scalarExt<any>, 'from'|'divmod'|'recip'|'lt'>;
 
-	while (b.sign() !== 0 && k1.lt(maxDen) && (eps === undefined || eps.lt(b.abs()))) {
-		b = b.recip();
-		const f = Number(b.divmod(one));
-		[h2, h1, k2, k1] = [h1, h1.scale(f).add(h2), k1, k1.scale(f).add(k2)];
-	}
-	return [h1, k1];
+export function denominatorT<T extends canDenominator>(x: T, maxDen: bigint, eps?: T): bigint {
+	const one	= x.from(1);
+	x.divmod(one);
+	if (eps && x.lt(eps))
+		return 1n;
+
+	let k1 = 1n, k2 = 0n;
+	do {
+		x = x.recip();
+		const f = BigInt(x.divmod(one));
+		[k2, k1] = [k1, f * k1 + k2];
+	} while ((!eps || eps.lt(x)) && k1 < maxDen);
+	return k1;
 }
-*/
-export function rationalApproxB<T extends rationalApprox>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
+
+export function commonDenominatorT<T extends canDenominator & has0<'scale'>>(numbers: T[], maxDen = 1000n, eps?: T) {
+	let scale = 1n;
+	for (const n of numbers) {
+		scale *= denominatorT(n.scale(Number(scale)), maxDen, eps);
+		if (scale > maxDen)
+			return 0;
+	}
+	return scale;
+}
+
+export function rationalApproxT<T extends scalar<T> & canDenominator>(x: T, maxDen: bigint, eps?: T): [bigint, bigint] {
 	const one	= x.from(1);
 	let b	= x.dup();
 	let h1	= BigInt(b.divmod(one)), h2 = 1n;
@@ -674,7 +709,7 @@ export function rationalApproxB<T extends rationalApprox>(x: T, maxDen: bigint, 
 		b = b.add(one);
 	}
 
-	while (b.sign() !== 0 && k1 < maxDen && (eps === undefined || eps.lt(b.abs()))) {
+	while (b.sign() !== 0 && k1 < maxDen && (!eps || eps.lt(b.abs()))) {
 		b = b.recip();
 		const f = BigInt(b.divmod(one));
 		[h2, h1, k2, k1] = [h1, h1 * f + h2, k1, k1 * f + k2];
@@ -682,7 +717,8 @@ export function rationalApproxB<T extends rationalApprox>(x: T, maxDen: bigint, 
 	return [h1, k1];
 }
 
-export class extentT<T extends scalar<T>> {
+
+export class extentT<T extends has<'lt'>> {
 	static fromCentreExtent<T extends scalar<T>>(centre: T, size: T) {
 		const half = size.scale(0.5);
 		return new extentT(centre.sub(half), centre.add(half));

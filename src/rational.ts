@@ -1,4 +1,4 @@
-import { scalar, gcd, absB, signB, gcdB, divB, minB, lazySlice, has, rationalApprox, rationalApproxB } from "./core";
+import { scalar, gcd, absB, signB, gcdB, divB, minB, lazySlice, has, rationalApprox, rationalApproxT } from "./core";
 
 type scalar1<T extends scalar<T>> = scalar<T> & has<'divmod'> & has<'recip'>;
 
@@ -134,7 +134,7 @@ export class rationalB implements scalar<rationalB> {
 			const [h, k] = rationalApprox(n, 1e20);
 			return new rationalB(BigInt(h), BigInt(k));
 		}
-		const [h, k] = rationalApproxB(n, maxDen ?? 1n << 64n, n.from(1e-8));
+		const [h, k] = rationalApproxT(n, maxDen ?? 1n << 64n, n.from(1e-8));
 		return new rationalB(BigInt(h), BigInt(k));
 	}
 

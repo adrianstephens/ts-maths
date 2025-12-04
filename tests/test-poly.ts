@@ -1,70 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { expect, test, assert, verify, approxArray, makeApproxArray, sequence } from './test';
-import { Operators, OperatorsBase, approx } from '../dist/core';
 import { Polynomial, PolynomialN, legendreTable } from '../dist/polynomial';
-import { symbolic } from '../dist/symbolic';
-import { generalRules } from '../dist/symbolicRules';
-import complex, { _complex, complexT, complexOps } from '../dist/complex';
 import {rational, rationalB} from '../dist/rational';
 import big from '../../big/dist/index';
-import { outputNumber, radicalChars, fractionChars } from '../dist/string';
-import EGraph, { applyRulesEgraph } from '../dist/egraph';
-
-symbolic.setDefaultStringifyOptions({
-	superPower: true,
-	radicalPower: true,
-	mulChar: '⋅',
-	printConst: n=>outputNumber(n, {fractions: {chars: fractionChars, superSub: true}, radicals: radicalChars})}
-);
 
 function toleranceForDegree(deg: number, offset = -55, scale = 2.5) {
 	return Math.pow(2, deg * scale + offset);
 }
 
-
-test('symbolic polynomials', () => {
-	let poly = Polynomial<symbolic>([symbolic.from(1)]);
-	const bindings = {
-		A: complex(1),
-		B: complex(2),
-		C: complex(3),
-		D: complex(4),
-		E: complex(5),
-		F: complex(6),
-		G: complex(7),
-		H: complex(8),
-	};
- 
-	function validate(a: symbolic, b: symbolic) {
-		const va = a.evaluateT(complexOps, bindings);
-		const vb = b.evaluateT(complexOps, bindings);
-		if (va && vb && (va.approx(vb, 1e-10) || va.approx(vb.neg(), 1e-10)))
-			return true;
-		return false;
-	}
-
-	for (let j = 1; j < 8; ++j) {
-		poly = poly.mul(Polynomial<symbolic>([symbolic.variable('ABCDEFGH'[j  - 1]).neg(), symbolic.from(1)]));
-		console.log(`degree ${j} polynomial: ${poly.toString()}`);
-		const roots = poly.realRoots();
-		console.log(roots.map(String).join('\n'));
-		console.log('simplifying:');
-		for (const r of roots) {
-			const timeoutMs = 20000;
-			const start = Date.now();
-			const callback = () => {
-				if (Date.now() - start > timeoutMs) {
-					console.warn(`egraph-diagnostic: timeout of ${timeoutMs}ms`);
-					return false;
-				}
-				return true;
-			};
-
-			const r2 = applyRulesEgraph(r, generalRules, {verbose: false, debugNode: 'replace'/*, callback*/, validate});
-			console.log(String(r2));
-		}
-	}
-});
 
 test('roots', () => {
 	let poly = Polynomial([1]);

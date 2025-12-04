@@ -87,6 +87,7 @@ export type ExpandOptions = {
 	depth?:		number;
 	maxPow?:	number;
 	uses?:		Set<string>;	// only expand if these variables are present
+	maxParts?:		number;    // cap number of expansion parts to avoid combinatorial explosion
 };
 
 const StringifyOptionsDefault = {
@@ -329,7 +330,7 @@ function constPow(value: number, pow: number): [number, boolean] {
 }
 
 class symbolicConstant extends symbolic {
-	static create(i: number): symbolic	{ return this.interner.intern(`c:${i}`, id => new symbolicConstant(id, i)); }
+	static create(i: number)	{ return this.interner.intern(`c:${i}`, id => new symbolicConstant(id, i)); }
 
 	constructor(id: string, public value: number) {
 		super(id);
@@ -383,7 +384,7 @@ function asSymbolic2(i: param2): symbolic {
 //-----------------------------------------------------------------------------
 
 class symbolicVariable extends symbolic {
-	static create(name: string)	{ return this.interner.intern(`v:${name}`, id => new symbolicVariable(id, name)) as symbolic; }
+	static create(name: string)	{ return this.interner.intern(`v:${name}`, id => new symbolicVariable(id, name)); }
 
 	constructor(id: string, public name: string) {
 		super(id);
@@ -497,9 +498,11 @@ export function addTerms(num: number, ...a: readonly Readonly<term>[]): symbolic
 	if (num)
 		coeffs.push(Math.abs(num));
 
-	const den	= commonDenominator(coeffs, 1000, 1e-8);
-	const g		= den ? gcd(...coeffs.map(n => Math.round(n * den))) / den : 1;
-	
+	const	den	= commonDenominator(coeffs, 1000, 1e-8);
+	let		g	= den ? gcd(...coeffs.map(n => Math.round(n * den))) / den : 1;
+	if (nonzero[0].coef < 0)
+		g = -g;
+
 	if (g !== 1)
 		return mulFactors(g, factor(symbolicAdd.create(nonzero.map(t => term(t.item, t.coef / g)), num / g)));
 
@@ -549,16 +552,26 @@ export class symbolicAdd extends symbolic {
 			: 	b instanceof symbolicAdd ? addTerms(this.num + b.num, ...this.terms, ...b.terms)
 			:	addTerms(this.num, ...this.terms, term(b, 1));
 	}
+	sub(b: param): symbolic	{ 
+		return	typeof b === 'number' ? symbolicAdd.create(this.terms, this.num - b)
+			:	isConst(b) ? symbolicAdd.create(this.terms, this.num - b.value)
+			:	b instanceof symbolicAdd ? addTerms(this.num - b.num, ...this.terms, ...b.terms.map(i => term(i.item, -i.coef)))
+			:	addTerms(this.num, ...this.terms, term(b, -1));
+	}
 
 	match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
 		if (node instanceof symbolicAdd) {
 			if (opts?.exact && this.num != node.num)
 				return null;
 
-			const opts2 	= { ...opts, exact: true};
-			const nterms	= node.terms.slice();
+			//const	bindings0 = {...bindings};
+			const	opts2 	= { ...opts, exact: true};
+			// eslint-disable-next-line prefer-const
+			let		nterms	= node.terms.slice();
+			let		found	= -1;
+
 			for (const pterm of this.terms) {
-				let found = -1;
+				found = -1;
 				for (const nterm of nterms) {
 					if (pterm.coef === nterm.coef && pterm.item.match(nterm.item, bindings, opts2)) {
 						found = nterms.indexOf(nterm);
@@ -566,9 +579,41 @@ export class symbolicAdd extends symbolic {
 					}
 				}
 				if (found === -1)
-					return null;
-
+					break;
 				nterms.splice(found, 1);
+			}
+
+			if (found === -1) {
+				return null;
+/*				let factor	= 0;
+				for (let start = 0; start < this.terms.length; ++start) {
+					const pterms = this.terms.slice(start).concat(this.terms.slice(0, start));
+					factor	= 0;
+					nterms	= node.terms.slice();
+					bindings = {...bindings0};
+					for (const pterm of pterms) {
+						found = -1;
+						for (const nterm of nterms) {
+							if (factor === 0 || pterm.coef * factor === nterm.coef) {
+								if (pterm.item.match(nterm.item, bindings, opts2)) {
+									if (factor === 0)
+										factor = nterm.coef / pterm.coef;
+									found = nterms.indexOf(nterm);
+									break;
+								}
+							}
+						}
+						if (found === -1)
+							break;
+						nterms.splice(found, 1);
+					}
+					if (found !== -1)
+						break;
+				}
+				if (found === -1)
+					return null;
+				bindings['_mulrest'] = symbolic.from(factor);
+*/
 			}
 			if (opts?.exact && nterms.length)
 				return null;
@@ -689,12 +734,15 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 
 		if (isConst(item)) {
 			const [value, needi] = constPow(item.value, pow);
-			if (needi)
-				factors.push(factor(i, pow));
 			num *= value;
+			if (needi)
+				factors.push(factor(i));
 
 		} else if (item instanceof symbolicMul) {
-			num *= item.num ** pow;
+			const [value, needi] = constPow(item.num, pow);
+			num *= value;
+			if (needi)
+				factors.push(factor(i));
 			for (const j of item.factors)
 				add(j.item, j.pow * pow);
 
@@ -703,9 +751,13 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 			if (item.terms.length === 1 && item.num === 0) {
 				const [value, needi] = constPow(first.coef, pow);
 				if (needi)
-					factors.push(factor(i, pow));
+					factors.push(factor(i));
 				num *= value;
 				add(first.item, pow);
+			} else if (first.coef < 0 && Number.isInteger(pow)) {
+				if ((Math.abs(pow) % 2) === 1)
+					num = -num;
+				add(item.neg(), pow);
 			} else {
 				factors.push(factor(item, pow));
 			}
@@ -796,6 +848,8 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 
 export class symbolicMul extends symbolic {
 	static validate(factors: readonly factor[], num: number)  {
+		if (isNaN(num))
+			throw new Error('unexpected NaN numeric factor');
 		//if (num <= 0)
 		//	throw new Error('unexpected non-positive numeric factor in mul');
 		let prevId = '';
@@ -806,6 +860,10 @@ export class symbolicMul extends symbolic {
 				throw new Error('factors not in canonical order or duplicate factor');
 			if (t.item instanceof symbolicMul)
 				throw new Error('unexpected multiplicative factor in factor item');
+			//if (t.item instanceof symbolicAdd) {
+			//	if (t.item.terms[0].coef < 0)
+			//		throw new Error('unexpected negative first term');
+			//}
 			prevId = t.item.id;
 		}
 	}
@@ -819,7 +877,8 @@ export class symbolicMul extends symbolic {
 	}
 	
 	neg(): symbolic {
-		return symbolicAdd.create([term(symbolicMul.create(this.factors, 1), -this.num)], 0);
+		return symbolicMul.create(this.factors, -this.num);
+		//return symbolicAdd.create([term(symbolicMul.create(this.factors, 1), -this.num)], 0);
 	}
 	recip(): symbolic {
 		return symbolicMul.create(this.factors.map(i => factor(i.item, -i.pow)), 1 / this.num);
@@ -880,6 +939,13 @@ export class symbolicMul extends symbolic {
 				bindings['_mulrest'] = mulFactors(this.num / node.num, ...nfactors);
 
 			return bindings;
+		} else if (this.num === -1 && this.factors.length === 1 && this.factors[0].pow === 1 && this.factors[0].item.is('add')) {
+			// Special case: match negation
+			//console.log('try negation');
+			if (this.factors[0].item.match(node, bindings, opts)) {
+				bindings['_mulrest'] = one.neg();
+				return bindings;
+			}
 		}
 		// Try base class behavior (match through numeric factors)
 		return super.match(node, bindings, opts);
@@ -895,6 +961,8 @@ export class symbolicMul extends symbolic {
 	}
 	expand(opts?: ExpandOptions): symbolic {
 		let factors = this.factors;
+
+		// expansion: recursively expand child nodes per opts
 		if ((opts?.depth ?? 2) > 1) {
 			const opts2	= opts?.depth ? { ...opts, depth: opts.depth - 1 } : opts;
 			factors		= factors.map(f => factor(f.item.expand(opts2), f.pow));
@@ -922,6 +990,15 @@ export class symbolicMul extends symbolic {
 			} else {
 				others.push(f);
 			}
+		}
+
+		if (opts?.maxParts) {
+			let totalParts = Math.max(others.length, 1);
+			for (const a of additive)
+				totalParts += totalParts * (a.terms.length + (a.num ? 1 : 0));
+
+			if (totalParts > opts?.maxParts)
+				return this; // Skip expansion to avoid combinatorial explosion
 		}
 
 		let parts: symbolic[] = [mulFactors(this.num, ...others)];
@@ -1431,7 +1508,7 @@ function specialConstant(name: string, toString = name, value?: number) {
 	const C = class extends symbolic {
 		constructor()		{ super(name); symbolic.set(this, this); }
 		evaluate(_env?: Record<string, number>): number { return value ?? NaN; }
-		evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) { return value !== undefined ? ops.from(value) : undefined; }
+		evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) { return ops.variable(name); }
 		_toString(): string	{ return toString; }
 	};
 	return C;
@@ -1634,42 +1711,13 @@ symbolic.set(symbolic.asinh(zero), zero);
 symbolic.set(symbolic.acosh(one), zero);
 symbolic.set(symbolic.atanh(zero), zero);
 
-/*
-class SymbolicOperators extends OperatorsBase<symbolic> {
-	from(n: number): symbolic		{ return symbolic.from(n); }
-	func(name: string, args: symbolic[]) {
-		const fn = (symbolic as unknown as Record<string, (...args: symbolic[]) => symbolic>)[name];
-		if (typeof fn === 'function')
-			return fn ? fn(...args) : undefined;
-	}
-	variable(name: string) {
-		const v = (symbolic as unknown as Record<string, symbolic>)[name];
-		if (v instanceof symbolic)
-			return v;
-		return symbolic.variable(name);
-	}
-	pow(a: symbolic, b: symbolic): symbolic {
-		return a.pow(b);
-	}
-};
-*/
-
 export const symbolicOperators: Operators<symbolic> = {
 	...OperatorsBase(symbolic),
-	from(n: number): symbolic		{ return symbolic.from(n); },
-	func(name: string, args: symbolic[]) {
-		const fn = (symbolic as unknown as Record<string, (...args: symbolic[]) => symbolic>)[name];
-		if (typeof fn === 'function')
-			return fn ? fn(...args) : undefined;
-	},
 	variable(name: string) {
 		const v = (symbolic as unknown as Record<string, symbolic>)[name];
 		if (v instanceof symbolic)
 			return v;
 		return symbolic.variable(name);
-	},
-	pow(a: symbolic, b: symbolic): symbolic {
-		return a.pow(b);
 	},
 	eq(a: symbolic, b: symbolic): symbolicBoolean {
 		return a.compare('=', b);

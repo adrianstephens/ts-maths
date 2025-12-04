@@ -1,0 +1,372 @@
+applyRulesEgraph (b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)
+egraph-diagnostic: adding node a
+egraph-diagnostic: adding node d
+egraph-diagnostic: adding node a * d
+egraph-diagnostic: adding node b
+egraph-diagnostic: adding node c
+egraph-diagnostic: adding node b * c
+egraph-diagnostic: adding node a * d - b * c
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a
+egraph-diagnostic: adding node 1 / a
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: adding node (b * c / (a * d - b * c) / a + 1 / a) * b
+egraph-diagnostic: adding node b * d / (a * d - b * c)
+egraph-diagnostic: adding node (b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)
+egraph-diagnostic: round 1
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1)
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: rule collect-like-terms on b * c / (a * d - b * c) / a + 1 / a produced (b * c / (a * d - b * c) + 1) / a:   id=m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1) [NEW]
+egraph-diagnostic: adding node b * c / (a * d - b * c)
+egraph-diagnostic: adding node b * c / (a * d - b * c) + 1
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: merging EClass ec:9 with EClass ec:15
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: merging EClass ec:10 with EClass ec:17
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a + b / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) / a + 1 / a) * b produced b * b * c / (a * d - b * c) / a + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a
+egraph-diagnostic: adding node b / a
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a + b / a
+egraph-diagnostic: merging EClass ec:10 with EClass ec:21
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:12 with EClass ec:22
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:23
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d),m(v:a-1)),v:b)
+egraph-diagnostic: new term: (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: rule collect-like-terms on (b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c) produced (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d),m(v:a-1)),v:b) [NEW]
+egraph-diagnostic: adding node d / (a * d - b * c)
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a
+egraph-diagnostic: adding node (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:26
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule collect-like-terms: 2 unique ids
+  Rule mul-distribute: 1 unique ids
+egraph-diagnostic: round 2
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),m(v:a-1))
+egraph-diagnostic: new term: b * c / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) + 1) / a produced b * c / (a * d - b * c) / a + 1 / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),m(v:a-1)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a + b / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) + 1) * b / a produced b * b * c / (a * d - b * c) / a + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b)
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: rule collect-like-terms on b * b * c / (a * d - b * c) / a + b / a produced (b * c / (a * d - b * c) + 1) * b / a:   id=m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)),v:b)
+egraph-diagnostic: new term: ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b
+egraph-diagnostic: rule collect-like-terms on (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c) produced ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b:   id=m(a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)),v:b) [NEW]
+egraph-diagnostic: adding node (b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)
+egraph-diagnostic: adding node ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:28
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b))
+egraph-diagnostic: new term: (b * c / a - d) * b / (a * d - b * c) + b / a
+egraph-diagnostic: rule collect-like-terms on b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a produced (b * c / a - d) * b / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: adding node b * c / a
+egraph-diagnostic: adding node b * c / a - d
+egraph-diagnostic: adding node (b * c / a - d) * b / (a * d - b * c)
+egraph-diagnostic: adding node (b * c / a - d) * b / (a * d - b * c) + b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:32
+egraph-diagnostic: rule collect-like-terms generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1))
+egraph-diagnostic: new term: (b * c / a - d) / (a * d - b * c) + 1 / a
+egraph-diagnostic: rule collect-like-terms on b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a produced (b * c / a - d) / (a * d - b * c) + 1 / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)) [NEW]
+egraph-diagnostic: adding node (b * c / a - d) / (a * d - b * c)
+egraph-diagnostic: adding node (b * c / a - d) / (a * d - b * c) + 1 / a
+egraph-diagnostic: merging EClass ec:25 with EClass ec:34
+egraph-diagnostic: adding node ((b * c / a - d) / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:35
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a
+egraph-diagnostic: rule mul-distribute on (b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a) * b produced b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 3 unique ids
+  Rule collect-like-terms: 4 unique ids
+egraph-diagnostic: round 3
+egraph-diagnostic: rule sub-over-denom generated new id: m(a(1,-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a,v:d),m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1)
+egraph-diagnostic: new term: (-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=sub-over-denom rep=(-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: original node=(b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule sub-over-denom on (b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c) produced (-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) / a:   id=m(a(1,-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a,v:d),m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1) [NEW]
+egraph-diagnostic: adding node a * d / (a * d - b * c)
+egraph-diagnostic: adding node -a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1
+egraph-diagnostic: adding node (-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) / a
+egraph-diagnostic: merging EClass ec:27 with EClass ec:38
+egraph-diagnostic: adding node (-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:39
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d))
+egraph-diagnostic: new term: (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on ((b * c / (a * d - b * c) + 1) / a - d / (a * d - b * c)) * b produced (b * c / (a * d - b * c) + 1) * b / a - b * d / (a * d - b * c):   id=a(m(a(1,m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)),v:a-1,v:b),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) * b / (a * d - b * c) produced b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d)) [NEW]
+egraph-diagnostic: adding node b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:31 with EClass ec:40
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b)
+egraph-diagnostic: new term: ((b * c / a - d) / (a * d - b * c) + 1 / a) * b
+egraph-diagnostic: rule collect-like-terms on (b * c / a - d) * b / (a * d - b * c) + b / a produced ((b * c / a - d) / (a * d - b * c) + 1 / a) * b:   id=m(a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)),m(v:a-1)),v:b) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d))
+egraph-diagnostic: new term: b * c / (a * d - b * c) / a - d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (b * c / a - d) / (a * d - b * c) produced b * c / (a * d - b * c) / a - d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)) [NEW]
+egraph-diagnostic: adding node b * c / (a * d - b * c) / a - d / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:33 with EClass ec:41
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b))
+egraph-diagnostic: new term: (b * c / a - d) * b / (a * d - b * c) + b / a
+egraph-diagnostic: rule mul-distribute on ((b * c / a - d) / (a * d - b * c) + 1 / a) * b produced (b * c / a - d) * b / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule sub-over-denom: 1 unique ids
+  Rule mul-distribute: 4 unique ids
+  Rule collect-like-terms: 1 unique ids
+egraph-diagnostic: round 4
+egraph-diagnostic: rule collect-like-terms generated new id: a(1,m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1))
+egraph-diagnostic: new term: (-a * d + b * c) / (a * d - b * c) + 1
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=collect-like-terms rep=(-a * d + b * c) / (a * d - b * c) + 1
+egraph-diagnostic: original node=-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule collect-like-terms on -a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1 produced (-a * d + b * c) / (a * d - b * c) + 1:   id=a(1,m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1)) [NEW]
+egraph-diagnostic: adding node -a * d + b * c
+egraph-diagnostic: adding node (-a * d + b * c) / (a * d - b * c)
+egraph-diagnostic: adding node (-a * d + b * c) / (a * d - b * c) + 1
+egraph-diagnostic: merging EClass ec:37 with EClass ec:45
+egraph-diagnostic: adding node ((-a * d + b * c) / (a * d - b * c) + 1) / a
+egraph-diagnostic: merging EClass ec:27 with EClass ec:47
+egraph-diagnostic: adding node ((-a * d + b * c) / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:48
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d),m(v:a-1))
+egraph-diagnostic: new term: b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a
+egraph-diagnostic: rule mul-distribute on (-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) / a produced b * c / (a * d - b * c) / a - d / (a * d - b * c) + 1 / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d),m(v:a-1)) [NEW]
+egraph-diagnostic: merging EClass ec:27 with EClass ec:25
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d),m(v:a-1,v:b))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a
+egraph-diagnostic: rule mul-distribute on (-a * d / (a * d - b * c) + b * c / (a * d - b * c) + 1) * b / a produced b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) + b / a:   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b)
+egraph-diagnostic: new term: (b * c / a - d) * b / (a * d - b * c)
+egraph-diagnostic: rule collect-like-terms on b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c) produced (b * c / a - d) * b / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d),v:b) [NEW]
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d))
+egraph-diagnostic: new term: (b * c / a - d) / (a * d - b * c)
+egraph-diagnostic: rule collect-like-terms on b * c / (a * d - b * c) / a - d / (a * d - b * c) produced (b * c / a - d) / (a * d - b * c):   id=m(a(m(v:a,v:d),-m(v:b,v:c))-1,a(m(v:a-1,v:b,v:c),-v:d)) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule collect-like-terms: 3 unique ids
+  Rule mul-distribute: 2 unique ids
+egraph-diagnostic: round 5
+egraph-diagnostic: rule mul-distribute generated new id: a(-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a,v:d),m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c))
+egraph-diagnostic: new term: -a * d / (a * d - b * c) + b * c / (a * d - b * c)
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=mul-distribute rep=-a * d / (a * d - b * c) + b * c / (a * d - b * c)
+egraph-diagnostic: original node=(-a * d + b * c) / (a * d - b * c)
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule mul-distribute on (-a * d + b * c) / (a * d - b * c) produced -a * d / (a * d - b * c) + b * c / (a * d - b * c):   id=a(-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a,v:d),m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:c)) [NEW]
+egraph-diagnostic: adding node -a * d / (a * d - b * c) + b * c / (a * d - b * c)
+egraph-diagnostic: merging EClass ec:44 with EClass ec:49
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1),m(v:a-1))
+egraph-diagnostic: new term: (-a * d + b * c) / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=mul-distribute rep=(-a * d + b * c) / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: original node=((-a * d + b * c) / (a * d - b * c) + 1) / a
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule mul-distribute on ((-a * d + b * c) / (a * d - b * c) + 1) / a produced (-a * d + b * c) / (a * d - b * c) / a + 1 / a:   id=a(m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1),m(v:a-1)) [NEW]
+egraph-diagnostic: adding node (-a * d + b * c) / (a * d - b * c) / a
+egraph-diagnostic: adding node (-a * d + b * c) / (a * d - b * c) / a + 1 / a
+egraph-diagnostic: merging EClass ec:27 with EClass ec:52
+egraph-diagnostic: adding node ((-a * d + b * c) / (a * d - b * c) / a + 1 / a) * b
+egraph-diagnostic: merging EClass ec:12 with EClass ec:53
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b),m(v:a-1,v:b))
+egraph-diagnostic: new term: (-a * d + b * c) * b / (a * d - b * c) / a + b / a
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=mul-distribute rep=(-a * d + b * c) * b / (a * d - b * c) / a + b / a
+egraph-diagnostic: original node=((-a * d + b * c) / (a * d - b * c) + 1) * b / a
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule mul-distribute on ((-a * d + b * c) / (a * d - b * c) + 1) * b / a produced (-a * d + b * c) * b / (a * d - b * c) / a + b / a:   id=a(m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: adding node (-a * d + b * c) * b / (a * d - b * c) / a
+egraph-diagnostic: adding node (-a * d + b * c) * b / (a * d - b * c) / a + b / a
+egraph-diagnostic: merging EClass ec:12 with EClass ec:55
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule mul-distribute: 3 unique ids
+egraph-diagnostic: round 6
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1)
+egraph-diagnostic: new term: (-a * d + b * c) / (a * d - b * c)
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=collect-like-terms rep=(-a * d + b * c) / (a * d - b * c)
+egraph-diagnostic: original node=-a * d / (a * d - b * c) + b * c / (a * d - b * c)
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule collect-like-terms on -a * d / (a * d - b * c) + b * c / (a * d - b * c) produced (-a * d + b * c) / (a * d - b * c):   id=m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d))
+egraph-diagnostic: new term: b * c / (a * d - b * c) / a - d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (-a * d + b * c) / (a * d - b * c) / a produced b * c / (a * d - b * c) / a - d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:d)) [NEW]
+egraph-diagnostic: merging EClass ec:51 with EClass ec:33
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(1,m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1)),v:a-1)
+egraph-diagnostic: new term: ((-a * d + b * c) / (a * d - b * c) + 1) / a
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=collect-like-terms rep=((-a * d + b * c) / (a * d - b * c) + 1) / a
+egraph-diagnostic: original node=(-a * d + b * c) / (a * d - b * c) / a + 1 / a
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule collect-like-terms on (-a * d + b * c) / (a * d - b * c) / a + 1 / a produced ((-a * d + b * c) / (a * d - b * c) + 1) / a:   id=m(a(1,m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1)),v:a-1) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b),m(v:a-1,v:b))
+egraph-diagnostic: new term: (-a * d + b * c) * b / (a * d - b * c) / a + b / a
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=mul-distribute rep=(-a * d + b * c) * b / (a * d - b * c) / a + b / a
+egraph-diagnostic: original node=((-a * d + b * c) / (a * d - b * c) / a + 1 / a) * b
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule mul-distribute on ((-a * d + b * c) / (a * d - b * c) / a + 1 / a) * b produced (-a * d + b * c) * b / (a * d - b * c) / a + b / a:   id=a(m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b),m(v:a-1,v:b)) [NEW]
+egraph-diagnostic: rule mul-distribute generated new id: a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d))
+egraph-diagnostic: new term: b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c)
+egraph-diagnostic: rule mul-distribute on (-a * d + b * c) * b / (a * d - b * c) / a produced b * b * c / (a * d - b * c) / a - b * d / (a * d - b * c):   id=a(m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:a-1,v:b2,v:c),-m(a(m(v:a,v:d),-m(v:b,v:c))-1,v:b,v:d)) [NEW]
+egraph-diagnostic: merging EClass ec:54 with EClass ec:31
+egraph-diagnostic: rule collect-like-terms generated new id: m(a(1,m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1)),v:a-1,v:b)
+egraph-diagnostic: new term: ((-a * d + b * c) / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: *** Suspicious replacement detected
+egraph-diagnostic: rule=collect-like-terms rep=((-a * d + b * c) / (a * d - b * c) + 1) * b / a
+egraph-diagnostic: original node=(-a * d + b * c) * b / (a * d - b * c) / a + b / a
+Error
+    at EGraph.applyRules (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:286:23)
+    at applyRulesEgraph (/Volumes/DevSSD/dev/packages/maths/src/egraph.ts:421:15)
+    at /Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:85:31
+    at test (/Volumes/DevSSD/dev/packages/maths/tests/test.ts:30:2)
+    at Object.<anonymous> (/Volumes/DevSSD/dev/packages/maths/tests/test-sym.ts:67:5)
+    at Module._compile (node:internal/modules/cjs/loader:1572:14)
+    at Module.m._compile (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1618:23)
+    at node:internal/modules/cjs/loader:1709:10
+    at Object.require.extensions.<computed> [as .ts] (/Users/adrianstephens/.nvm/versions/node/v23.1.0/lib/node_modules/ts-node/src/index.ts:1621:12)
+    at Module.load (node:internal/modules/cjs/loader:1315:32)
+egraph-diagnostic: rule collect-like-terms on (-a * d + b * c) * b / (a * d - b * c) / a + b / a produced ((-a * d + b * c) / (a * d - b * c) + 1) * b / a:   id=m(a(1,m(a(-m(v:a,v:d),m(v:b,v:c)),a(m(v:a,v:d),-m(v:b,v:c))-1)),v:a-1,v:b) [NEW]
+egraph-diagnostic: summary of new ids generated per rule:
+  Rule collect-like-terms: 3 unique ids
+  Rule mul-distribute: 3 unique ids
+egraph-diagnostic: reps= (27) ['ec:0', 'ec:1', 'ec:2', 'ec:3', 'ec:4', 'ec:5', 'ec:6', 'ec:7', 'ec:8', 'ec:9', 'ec:10', 'ec:11', 'ec:12', 'ec:13', 'ec:14', 'ec:19', 'ec:20', 'ec:24', 'ec:27', 'ec:29', 'ec:30', 'ec:31', 'ec:33', 'ec:36', 'ec:37', 'ec:43', 'ec:44']
+{rep: 'ec:0', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:1', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:2', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:3', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:4', bestCost: 0.6, bestNode: symbolicVariable, nodes: Array(1)}
+{rep: 'ec:5', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:6', bestCost: 5.8, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:7', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:8', bestCost: 0.7, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:9', bestCost: 12.9, bestNode: symbolicMul, nodes: Array(2)}
+{rep: 'ec:10', bestCost: 14.2, bestNode: symbolicMul, nodes: Array(3)}
+{rep: 'ec:11', bestCost: 9.2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:12', bestCost: 19.799999999999997, bestNode: symbolicMul, nodes: Array(11)}
+{rep: 'ec:13', bestCost: 9.2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:14', bestCost: 10.400000000000002, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:19', bestCost: 10.5, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:20', bestCost: 2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:24', bestCost: 7.8999999999999995, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:27', bestCost: 17.4, bestNode: symbolicAdd, nodes: Array(6)}
+{rep: 'ec:29', bestCost: 3.3, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:30', bestCost: 5.7, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:31', bestCost: 15, bestNode: symbolicMul, nodes: Array(3)}
+{rep: 'ec:33', bestCost: 13.700000000000001, bestNode: symbolicMul, nodes: Array(3)}
+{rep: 'ec:36', bestCost: 9.2, bestNode: symbolicMul, nodes: Array(1)}
+{rep: 'ec:37', bestCost: 15.5, bestNode: symbolicAdd, nodes: Array(2)}
+{rep: 'ec:43', bestCost: 5.8, bestNode: symbolicAdd, nodes: Array(1)}
+{rep: 'ec:44', bestCost: 13.800000000000002, bestNode: symbolicMul, nodes: Array(2)}
+egraph-diagnostic: final best choices:
+  rep=ec:0 cost=0.6 node=a
+  rep=ec:1 cost=0.6 node=d
+  rep=ec:2 cost=2 node=a * d
+  rep=ec:3 cost=0.6 node=b
+  rep=ec:4 cost=0.6 node=c
+  rep=ec:5 cost=2 node=b * c
+  rep=ec:6 cost=5.8 node=a * d - b * c
+  rep=ec:7 cost=10.5 node=b * c / (a * d - b * c) / a
+  rep=ec:8 cost=0.7 node=1 / a
+  rep=ec:9 cost=12.9 node=(b * c / (a * d - b * c) + 1) / a
+  rep=ec:10 cost=14.2 node=(b * c / (a * d - b * c) + 1) * b / a
+  rep=ec:11 cost=9.2 node=b * d / (a * d - b * c)
+  rep=ec:12 cost=19.799999999999997 node=((-a * d + b * c) / (a * d - b * c) + 1) * b / a
+  rep=ec:13 cost=9.2 node=b * c / (a * d - b * c)
+  rep=ec:14 cost=10.400000000000002 node=b * c / (a * d - b * c) + 1
+  rep=ec:19 cost=10.5 node=b * b * c / (a * d - b * c) / a
+  rep=ec:20 cost=2 node=b / a
+  rep=ec:24 cost=7.8999999999999995 node=d / (a * d - b * c)
+  rep=ec:27 cost=17.4 node=(b * c / a - d) / (a * d - b * c) + 1 / a
+  rep=ec:29 cost=3.3 node=b * c / a
+  rep=ec:30 cost=5.7 node=b * c / a - d
+  rep=ec:31 cost=15 node=(b * c / a - d) * b / (a * d - b * c)
+  rep=ec:33 cost=13.700000000000001 node=(b * c / a - d) / (a * d - b * c)
+  rep=ec:36 cost=9.2 node=a * d / (a * d - b * c)
+  rep=ec:37 cost=15.5 node=(-a * d + b * c) / (a * d - b * c) + 1
+  rep=ec:43 cost=5.8 node=-a * d + b * c
+  rep=ec:44 cost=13.800000000000002 node=(-a * d + b * c) / (a * d - b * c)

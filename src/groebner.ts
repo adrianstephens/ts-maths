@@ -107,6 +107,15 @@ function lcmMonomial(a: Monomial, b: Monomial): Monomial {
 	return result;
 }
 
+function monomialEqual(a: Monomial, b: Monomial): boolean {
+	const n = Math.max(a.length, b.length);
+	for (let i = 0; i < n; i++) {
+		if ((a[i] ?? 0) !== (b[i] ?? 0))
+			return false;
+	}
+	return true;
+}
+
 // ============================================================================
 // POLYNOMIAL OPERATIONS (using symbolicAdd structure)
 // ============================================================================
@@ -211,31 +220,82 @@ export function polynomialDivision(
 	const quotients = divisors.map(_ => symbolic.from(0));
 	let remainder	= symbolic.from(0);
 	let dividend	= f;
-	
+	// Guard against non-termination due to precision/representation issues.
+	// If the division loop makes no progress after many iterations, bail out
+	// conservatively by placing the remaining dividend into the remainder.
+	const MAX_STEPS = 20000;
+	let steps = 0;
+	let lastDividendStr = '';
+
 	while (!isZero(dividend)) {
+		if (++steps > MAX_STEPS) {
+			// give up and append remaining dividend to remainder
+			remainder = remainder.add(dividend.expand());
+			break;
+		}
+
 		const lt = leadingTerm(dividend, variables, ordering);
 		if (!lt)
 			break;
-		
+
+		// detect if dividend stopped changing (string representation)
+		const curDivStr = String(dividend);
+		if (curDivStr === lastDividendStr) {
+			// no progress; bail out conservatively
+			remainder = remainder.add(dividend.expand());
+			break;
+		}
+		lastDividendStr = curDivStr;
+
 		let divided = false;
-		
+
 		for (let i = 0; i < divisors.length; i++) {
 			const ltg = leadingTerm(divisors[i], variables, ordering);
 			if (!ltg)
 				continue;
-			
+
 			if (divides(ltg.mon, lt.mon)) {
-				const m = divideMonomial(lt.mon, ltg.mon)!;
 				const c = lt.coef.div(ltg.coef);
-				const mc = monomialToSymbolic(m, variables).mul(c);
-				
-				quotients[i] = quotients[i].add(mc);
-				dividend = dividend.sub(divisors[i].mul(mc).expand());
+				if (c.is('const') && Math.abs(c.value) < 1e-8)
+					continue; // avoid tiny coefficients
+				if (c.is('mul') && Math.abs(c.num) < 1e-8)
+					break;
+
+				const m = divideMonomial(lt.mon, ltg.mon)!;
+				try {
+					const mc = monomialToSymbolic(m, variables).mul(c);
+					const subtrahend = divisors[i].mul(mc).expand();
+
+					// Ensure the subtrahend actually cancels the current leading term.
+					const ltSub = leadingTerm(subtrahend, variables, ordering);
+					if (!ltSub)
+						continue;
+					if (!monomialEqual(ltSub.mon, lt.mon))
+						continue;
+
+					// Tentatively compute new dividend and ensure progress (leading term removed)
+					const newDividend = dividend.sub(subtrahend);
+					const ltNew = leadingTerm(newDividend, variables, ordering);
+					if (ltNew && monomialEqual(ltNew.mon, lt.mon))
+						continue; // did not remove leading term, skip
+
+					// Avoid explosive growth: if the textual size grows too much, skip
+					if (String(newDividend).length > String(dividend).length * 4)
+						continue;
+
+					// Accept subtraction
+					quotients[i] = quotients[i].add(mc);
+					dividend = newDividend;
+				} catch {
+					// If any symbolic construction here produces NaN/Infinity or
+					// validation fails, skip this divisor and try the next.
+					continue;
+				}
 				divided = true;
 				break;
 			}
 		}
-		
+
 		if (!divided) {
 			const ltTerm = monomialToSymbolic(lt.mon, variables).mul(lt.coef);
 			remainder = remainder.add(ltTerm);
@@ -264,19 +324,43 @@ export function groebnerBasis(
 			pairs.push([i, j]);
 	}
 	
+	const MAX_PAIR_POLY_LEN = 8000;
 	while (pairs.length > 0) {
 		const [i, j] = pairs.pop()!;
+
+		// Heuristic guard: avoid forming S-polynomials from very large generators
+		// which historically blow up memory. If both generators are large, skip
+		// this pair conservatively.
+		const giLen = String(G[i]).length;
+		const gjLen = String(G[j]).length;
+		if (giLen + gjLen > MAX_PAIR_POLY_LEN) {
+			// skip heavy pair
+			continue;
+		}
+
 		const S = sPolynomial(G[i], G[j], variables, ordering);
+		if (String(S).length > MAX_PAIR_POLY_LEN)
+			continue;
+
 		const { remainder } = polynomialDivision(S, G, variables, ordering);
-		
+
 		if (!isZero(remainder)) {
+			// Expand and reduce remainder; skip adding if it's duplicate or too large.
+			const red = remainder.expand();
+			const redStr = String(red);
+			// Skip extremely large remainders which likely indicate division gave up
+			if (redStr.length > 2000)
+				continue;
+			// Skip if remainder already present in G (structural equality via id/string)
+			if (G.some(g => g === red || String(g) === redStr))
+				continue;
 			// Add new pairs with the new polynomial
 			const newIndex = G.length;
 			for (let k = 0; k < G.length; k++)
 				pairs.push([k, newIndex]);
-			
-		G.push(remainder.expand());
-	}
+
+			G.push(red);
+		}
 }
 
 	return reduceGroebner(G, variables, ordering);

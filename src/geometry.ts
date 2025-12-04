@@ -1,5 +1,4 @@
 import {vops, float2, normalise, approx_equal, mid, lerp} from './vector';
-//import {legendreTable, polynomial, polynomialT} from './polynomial';
 import {legendreTable, Polynomial} from './polynomial';
 
 function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number, t: number, maxIter = 20, tol = 1e-6) {

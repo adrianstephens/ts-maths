@@ -2,7 +2,7 @@
 
 import { OperatorsBase, Operators, scalarExt, approx, sincos } from "./core";
 
-export class _complex {
+class _complex {
 	constructor(public r: number, public i: number) {}
 
 	from(b: number)			{ return complex(b, 0); }
@@ -22,7 +22,12 @@ export class _complex {
 	div(b: complex): complex	{ return this.mul(b.conj()).scale(1 / b.magSq()); }
 	npow(b: number): complex	{ return complex.fromPolar(Math.pow(this.mag(), b), this.arg() * b); }
 	pow(b: complex): complex	{
-		const ln_r	= Math.log(this.mag());
+		if (b.i === 0)
+			return this.npow(b.r);
+		const r		= this.mag();
+		if (r === 0)
+			return complex(0, 0);
+		const ln_r	= Math.log(r);
 		const theta	= this.arg();
 		return complex.fromPolar(Math.exp(ln_r * b.r - theta * b.i), ln_r * b.i + theta * b.r);
 	}
@@ -41,6 +46,12 @@ export class _complex {
 
 export type complex = _complex;
 
+function fromPolar2(theta: number, r1: number, r2: number)	{
+	const {c, s} = sincos(theta);
+	return complex(c * r1, s * r2);
+}
+
+
 export const complex = Object.assign(
 	function (r: number, i = 0) {
 		return new _complex(r, i);
@@ -51,14 +62,36 @@ export const complex = Object.assign(
 	sqrt(a: complex|number)	{
 		return typeof a === 'number' ? (a < 0 ? complex(0, Math.sqrt(-a)) : complex(Math.sqrt(a), 0)) : a.sqrt();
 	},
-	ln(a: complex)		{ return complex(Math.log(a.abs()), a.arg()); },
-	exp(a: complex)		{ const {c, s} = sincos(a.i); const e = Math.exp(a.r); return complex(c * e, s * e); },
-	sin(a: complex)		{ const {c, s} = sincos(a.r); const e = Math.exp(a.i), re = 1 / e; return complex(s * (e + re) * 0.5,  c * (e - re) * 0.5); },
-	cos(a: complex)		{ const {c, s} = sincos(a.r); const e = Math.exp(a.i), re = 1 / e; return complex(c * (e + re) * 0.5, -s * (e - re) * 0.5); },
-	tan(a: complex)		{ const {c, s} = sincos(a.r); const e = Math.exp(a.i), re = 1 / e; return complex(s * (e + re),  c * (e - re)).div(complex(c * (e + re), -s * (e - re))); },
-	sinh(a: complex)	{ const {c, s} = sincos(a.i); const e = Math.exp(a.r), re = 1 / e; return complex((e - re) * c * 0.5, (e + re) * s * 0.5); },
-	cosh(a: complex)	{ const {c, s} = sincos(a.i); const e = Math.exp(a.r), re = 1 / e; return complex((e + re) * c * 0.5, (e + re) * s * 0.5); },
-	tanh(a: complex)	{ const {c, s} = sincos(a.i); const e = Math.exp(a.r), re = 1 / e; return complex(s * (e + re),  c * (e - re)).div(complex(c * (e + re), -s * (e - re))); },
+	ln(a: complex)		{ return complex(Math.log(a.mag()), a.arg()); },
+	exp(a: complex)		{ return this.fromPolar(Math.exp(a.r), a.i); },
+	//sin(a: complex)		{ const {c, s} = sincos(a.r); const e = Math.exp(a.i), re = 1 / e; return complex(s * (e + re) * 0.5,  c * (e - re) * 0.5); },
+	//cos(a: complex)		{ const {c, s} = sincos(a.r); const e = Math.exp(a.i), re = 1 / e; return complex(c * (e + re) * 0.5, -s * (e - re) * 0.5); },
+	//tan(a: complex)		{ const {c, s} = sincos(a.r); const e = Math.exp(a.i), re = 1 / e; return complex(s * (e + re),  c * (e - re)).div(complex(c * (e + re), -s * (e - re))); },
+	//sinh(a: complex)	{ const {c, s} = sincos(a.i); const e = Math.exp(a.r), re = 1 / e; return complex((e - re) * c * 0.5, (e + re) * s * 0.5); },
+	//cosh(a: complex)	{ const {c, s} = sincos(a.i); const e = Math.exp(a.r), re = 1 / e; return complex((e + re) * c * 0.5, (e + re) * s * 0.5); },
+	//tanh(a: complex)	{ const {c, s} = sincos(a.i); const e = Math.exp(a.r), re = 1 / e; return complex(s * (e + re),  c * (e - re)).div(complex(c * (e + re), -s * (e - re))); },
+	sin(a: complex) {
+		const e = Math.exp(a.i), re = 1 / e;
+		return fromPolar2(a.r + Math.PI / 2, -(e + re) * 0.5, (e - re) * 0.5);
+	},
+	cos(a: complex) {
+		const e = Math.exp(a.i), re = 1 / e;
+		return fromPolar2(a.r, (e + re) * 0.5, (re - e) * 0.5);
+	},
+	tan(a: complex) {
+		return complex.sin(a).div(complex.cos(a));
+	},
+	sinh(a: complex) {
+		const e = Math.exp(a.r), re = 1 / e;
+		return fromPolar2(a.i, (e - re) * 0.5, (e + re) * 0.5);
+	},
+	cosh(a: complex) {
+		const e = Math.exp(a.r), re = 1 / e;
+		return fromPolar2(a.i, (e + re) * 0.5, (e - re) * 0.5);
+	},
+	tanh(a: complex) {
+		return complex.sinh(a).div(complex.cosh(a));
+	},
 
 	conjugatePair(c: complex) { return [c, c.conj()]; },
 });
@@ -85,7 +118,7 @@ export class complexT<T extends scalarExt<T>> {
 	div(b: complexT<T>) { return this.mul(b.conj()).rscale(b.magSq()); }
 
 	sqrt()	{
-		const m = this.abs();
+		const m = this.mag();
 		return new complexT(m.add(this.r).scale(0.5).sqrt(), m.sub(this.r).scale(0.5).sqrt());
 	}
 
@@ -99,6 +132,7 @@ export const complexOps: Operators<complex> = {
 	...OperatorsBase(_complex),
 	variable(name: string): complex | undefined {
 		switch (name) {
+			case 'i':			return complex(0, 1);
 			case 'pi':			return complex(Math.PI);
 			case 'e':			return complex(Math.E);
 			case 'infinity':	return complex(Infinity);

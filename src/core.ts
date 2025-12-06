@@ -7,9 +7,16 @@ export function isNumber(x: any): x is number {
 export function isBigInt(x: any): x is bigint {
 	return typeof x === 'bigint';
 }
-export function isInstance<T>(x: any, i: new (...args: any[]) => T): x is T {
-	return x instanceof i;
+
+export function isInstance<T>(x: any, i: (new (...args: any[]) => T) | ((...args: any[]) => T)): x is T {
+	if (x instanceof i)
+		return true;
+	return x.prototype === i.prototype;
 }
+
+//export function isInstance<T>(x: any, i: new (...args: any[]) => T): x is T {
+//	return x instanceof i;
+//}
 export function hasStatic(x: any, f: string) {
 	const c = x.constructor;
 	if (f in c)
@@ -36,7 +43,7 @@ export interface Operators<T> {
 
 //	npow(a: T, n: number): T;
 //	rpow(a: T, n: number, d: number): T;
-//	ipow(a: T, n: number): T;
+	ipow(a: T, n: number): T;
 	pow(a: T, b: T): T;
 	eq(a: T, b: T): any;
 	lt(a: T, b: T): any;
@@ -64,9 +71,9 @@ export function OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T)
 	// guaranteed by the ops constraint
 	r.dup = (a: T) => a.dup();
 	r.neg = (a: T) => a.neg();
-	r.mul = (a: T, b: T) => a.mul(b);
-	r.div = (a: T, b: T) => a.div(b);
-	r.add = (a: T, b: T) => a.add(b);
+	r.mul = (a: T, b: T) =>	a.mul(b);
+	r.div = (a: T, b: T) =>	a.div(b);
+	r.add = (a: T, b: T) =>	a.add(b);
 	r.sub = (a: T, b: T) => a.sub(b);
 
 	// static or prototype 'from'
@@ -81,9 +88,13 @@ export function OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T)
 	if ('lt' in proto)
 		r.lt = (a: T, b: T) => (a as any).lt(b);
 	if ('pow' in proto)
-		r.pow = (a: T, b: T) => (a as any).pow(b);
+		r.pow = (a: T, b: T) =>	(a as any).pow(b);
 
-	return r as unknown as Pick<Operators<T>, (keyof Operators<T> & keyof T) | 'func'>;
+	r.ipow = 'ipow' in proto
+		? (a: T, b: number) => (a as any).ipow(b)
+		: (a: T, b: number) => ipowT(a, b);
+
+	return r as unknown as Pick<Operators<T>, (keyof Operators<T> & keyof T) | 'func' | 'ipow'>;
 }
 
 export interface ops<C extends ops<C, S>, S=number> {
@@ -161,7 +172,7 @@ export function approx(x: number, y: number, epsilon = Number.EPSILON) {
 	return Math.abs(x - y) < epsilon;
 }
 
-export const numberOperators = {
+export const numberOperators : Operators<number> = {
 	from(n: number): number		{ return n; },
 	func(name: string, args: number[]) {
 		const fn = (Math as unknown as Record<string, (...args: number[]) => number>)[name];
@@ -179,6 +190,7 @@ export const numberOperators = {
 	dup(n: number): number				{ return n; },
 	neg(a: number): number				{ return -a; },
 	pow(a: number, b: number): number	{ return Math.pow(a, b); },
+	ipow(a: number, b: number): number	{ return a ** b; },
 	mul(a: number, b: number): number	{ return a * b; },
 	div(a: number, b: number): number	{ return a / b; },
 	add(a: number, b: number): number	{ return a + b; },
@@ -268,12 +280,12 @@ export function rationalApprox(x: number, maxDen: number, eps = Number.EPSILON):
 }
 
 export function modPow(base: number, exp: number, mod: number): number {
-	base %= mod;
 	let result = 1;
-	while (exp > 0) {
-		if ((exp & 1) === 1)
+	while (exp) {
+		base %= mod;
+		if (exp & 1)
 			result = (result * base) % mod;
-		base = (base * base) % mod;
+		base *= base;
 		exp >>= 1;
 	}
 	return result;
@@ -376,6 +388,7 @@ export const bigintOperators: Operators<bigint> = {
 	func(_name: string, _args: bigint[]) { return undefined; },
 	variable(_name: string)				{ return undefined; },
 	dup(a: bigint): bigint				{ return a; },
+	ipow(a: bigint, b: number): bigint	{ return a ** BigInt(b); },
 	pow(a: bigint, b: bigint): bigint	{ return a ** b; },
 	from(n: number | bigint): bigint	{ return BigInt(n); },
 	neg(a: bigint): bigint				{ return -a; },
@@ -418,12 +431,12 @@ export function lcmB(...x: bigint[]) {
 }
 
 export function modPowB(base: bigint, exp: bigint, mod: bigint): bigint {
-	base %= mod;
 	let result = 1n;
-	while (exp > 0n) {
-		if ((exp & 1n) === 1n)
+	while (exp) {
+		base %= mod;
+		if (exp & 1n)
 			result = (result * base) % mod;
-		base = (base * base) % mod;
+		base *= base;
 		exp >>= 1n;
 	}
 	return result;
@@ -634,20 +647,20 @@ export function copySignT<T extends scalar<T>>(a: T, b: T) {
 	return b.sign() < 0 ? a.abs().neg() : a.abs();
 }
 
-export function maxT<T extends has<'lt'>>(a: T, b: T) {
+export function maxT<T extends has0<'lt'>>(a: T, b: T) {
 	return a.lt(b) ? b : a;
 }
-export function minT<T extends has<'lt'>>(a: T, b: T) {
+export function minT<T extends has0<'lt'>>(a: T, b: T) {
 	return a.lt(b) ? a : b;
 }
-export function maxT2<T extends has<'lt'>>(...b: T[]) {
+export function maxT2<T extends has0<'lt'>>(...b: T[]) {
 	return b.slice(1).reduce((max, x) => max.lt(x) ? x : max, b[0]);
 }
-export function minT2<T extends has<'lt'>>(...b: T[]) {
+export function minT2<T extends has0<'lt'>>(...b: T[]) {
 	return b.slice(1).reduce((min, x) => min.lt(x) ? min : x, b[0]);
 }
 
-export function compareT<T extends has<'lt'>>(a: T, b: T): number {
+export function compareT<T extends has0<'lt'>>(a: T, b: T): number {
 	return a.lt(b) ? -1 : b.lt(a) ? 1 : 0;
 }
 
@@ -717,6 +730,33 @@ export function rationalApproxT<T extends scalar<T> & canDenominator>(x: T, maxD
 	return [h1, k1];
 }
 
+export function ipowT<T extends ops<T>>(base: T, exp: number): T {
+	if (has('npow')(base))
+		return base.npow(exp);
+
+	let result : T | undefined;
+	while (exp) {
+		if (exp & 1)
+			result = result ? result.mul(base) : base;
+		base = base.mul(base);
+		exp >>= 1;
+	}
+	return result!;
+}
+
+export function modPowT<T extends has<'divmod'>>(base: T, exp: number, mod: T): T {
+	let result : T | undefined;
+	while (exp) {
+		base.divmod(mod);
+		if (exp & 1) {
+			result = result ? result.mul(base) : base;
+			result!.divmod(mod);
+		}
+		base = base.mul(base);
+		exp >>= 1;
+	}
+	return result!;
+}
 
 export class extentT<T extends has<'lt'>> {
 	static fromCentreExtent<T extends scalar<T>>(centre: T, size: T) {

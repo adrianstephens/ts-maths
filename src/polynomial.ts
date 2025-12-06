@@ -16,7 +16,7 @@ import {
 import { toSuperscript } from './string';
 import { factorisation, factorisationB } from './prime';
 import complex, { complexT } from './complex';
-import { rational, rationalB } from './rational';
+import rational, { rationalB } from './rational';
 import { LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';
 
 const sqrt3	= Math.sqrt(3);
@@ -2418,7 +2418,7 @@ function* rationalDivisors(numFactors: number[], denFactors: number[], limit?: r
 		if (limit && num * limit.den > den * limit.num)
 			return;
 		if (i === numEntries.length) {
-			yield new rational(num, den);
+			yield rational(num, den);
 			return;
 		}
 		const [p, exp] = numEntries[i++];
@@ -2433,7 +2433,7 @@ function* rationalDivisors(numFactors: number[], denFactors: number[], limit?: r
 	function* backtrackDen(i: number, den: number): Generator<rational> {
 		if (i === denEntries.length) {
 			if (numEntries.length === 0)
-				yield new rational(1, den);
+				yield rational(1, den);
 			else
 				yield *backtrackNum(0, 1, den);
 			return;
@@ -2521,7 +2521,7 @@ function rationalRootsN(p: polynomial): rational[] {
 		return roots0.map(r => rational.from(r));
 	}
 
-	const roots: rational[] = roots0.map(r => new rational(r));
+	const roots: rational[] = roots0.map(r => rational(r));
 
 	const a0 = Math.abs(p.c[0]);
 	const an = Math.abs(p.leadCoeff());

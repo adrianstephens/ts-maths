@@ -1,4 +1,5 @@
 import { Operators, isAlmostInteger, rationalApprox } from './core';
+import rational, {algebraic, algebraicOps} from './rational';
 
 //-----------------------------------------------------------------------------
 // output
@@ -111,13 +112,13 @@ export function outputNumber(n: number, opts?: ConstOptions): string {
 const reRational	= /^((\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))/;
 const reNumber 		= /^(((\d+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))|((\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?))/;
 
-export function parseNumber(s: string): [number, number] {
+export function parseNumber(s: string): [number, algebraic] {
 	const c = s.charAt(0);
 
 	for (const [i, r] of Object.entries(radicalChars)) {
 		if (c === r) {
 			const [offset, num] = parseNumber(s.slice(r.length));
-			return [offset + r.length, num ** (1 / +i)];
+			return [offset + r.length, algebraicOps.pow(num, rational(1, +i))];
 		}
 	}
 
@@ -128,7 +129,7 @@ export function parseNumber(s: string): [number, number] {
 
 	const f = reRational.exec(s);
 	if (f)
-		return [f[0].length, +fromSuperscript(f[2]) / +fromSubscript(f[3])];
+		return [f[0].length, rational(+fromSuperscript(f[2]), +fromSubscript(f[3]))];
 
 
 	const map = revSuperscriptMap[c] ? revSuperscriptMap : revSubscriptMap[c] ? revSubscriptMap : null;
@@ -145,7 +146,7 @@ export function parseNumber(s: string): [number, number] {
 
 	const m = reNumber.exec(s);
 	if (m)
-		return [m[0].length, m[3] ? +m[3] / +fromSubscript(m[4]) : parseFloat(m[0])];
+		return [m[0].length, m[3] ? rational(+m[3], +fromSubscript(m[4])) : parseFloat(m[0])];
 
 	return [0,0];
 }
@@ -248,7 +249,7 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 		const [offset, num] = parseNumber(remainder());
 		if (offset > 0) {
 			move(offset);
-			return ops.from(num);
+			return ops.from(Number(num));
 		}
 
 		// parenthesized

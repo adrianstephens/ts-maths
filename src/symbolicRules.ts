@@ -1,6 +1,7 @@
 /* eslint-disable no-restricted-syntax */
-import { approx } from './core';
+import { approx, minT } from './core';
 import { symbolic, MatchOptions, Bindings, term, factor, mulFactors, addTerms, factorAsSymbolic } from './symbolic';
+import { Numeric} from './rational';
 // Use Groebner / polynomial helpers for deterministic elimination
 import { groebnerBasis, lexOrder } from './groebner';
 // polynomial/resultant helpers were used previously for a heavyweight fallback
@@ -92,17 +93,17 @@ interface factorCandidate {
 function getFactors(terms: readonly Readonly<term>[]): factorSet[] {
 	const factors: Record<string, factorSet> = {};
 
-	function addFactor(item: symbolic, pow: number, t: term) {
+	function addFactor(item: symbolic, pow: Numeric, t: term) {
 		const info = factors[item.id] ??= { item: item, pow: pow, terms: new Set<term>() };
 		info.terms.add(t);
-		info.pow = Math.min(info.pow, pow);
+		info.pow = minT(info.pow, pow);
 	}
 	for (const t of terms) {
 		if (t.item.is('mul')) {
 			for (const f of t.item.factors)
 				addFactor(f.item, f.pow, t);
 		} else {
-			addFactor(t.item, 1, t);
+			addFactor(t.item, new Numeric(1), t);
 		}
 	}
 	return Object.values(factors);
@@ -115,9 +116,9 @@ function makeCandidate1(terms: Set<term>, a: factor): factorCandidate {
 		remove: (t: term) => {
 			if (t.item.is('mul')) {
 				const newFactors = t.item.factors.map(f =>
-					f.item === a.item ? factor(f.item, f.pow - a.pow)
+					f.item === a.item ? factor(f.item, f.pow.sub(a.pow))
 					: f
-				).filter(f => f.pow !== 0);
+				).filter(f => !f.pow.is0());
 				return term(mulFactors(t.item.num, ...newFactors), t.coef);
 			}
 			return t.item === a.item ? term(one, t.coef) : t;
@@ -132,10 +133,10 @@ function makeCandidate2(terms: Set<term>, a: factor, b: factor): factorCandidate
 		remove: (t: term) => {
 			if (t.item.is('mul')) {
 				const newFactors = t.item.factors.map(f =>
-					f.item === a.item ? factor(f.item, f.pow - a.pow)
-				:   f.item === b.item ? factor(f.item, f.pow - b.pow)
+					f.item === a.item ? factor(f.item, f.pow.sub(a.pow))
+				:   f.item === b.item ? factor(f.item, f.pow.sub(b.pow))
 				:   f
-				).filter(f => f.pow !== 0);
+				).filter(f => !f.pow.is0());
 				return term(mulFactors(t.item.num, ...newFactors), t.coef);
 			}
 			return t;
@@ -171,7 +172,7 @@ function applyFactorCandidate(terms: Set<term>, f: factorCandidate) {
 	const terms2 = f.terms.intersection(terms);
 	for (const v of terms2)
 		terms.delete(v);
-	return addTerms(0, ...Array.from(terms2).map(t => f.remove(t))).mul(f.mul);
+	return addTerms(new Numeric(0), ...Array.from(terms2).map(t => f.remove(t))).mul(f.mul);
 }
 
 
@@ -210,7 +211,7 @@ function commonFactors(terms: readonly Readonly<term>[], scorer: (sym: symbolic)
 		for (const candidate of candidates) {
 			const terms = candidate.terms.intersection(remaining);
 			if (terms.size > 1)  {
-				const inner = addTerms(0, ...Array.from(terms).map(t => candidate.remove(t)));
+				const inner = addTerms(new Numeric(0), ...Array.from(terms).map(t => candidate.remove(t)));
 				const score = scoreCandidate(terms, inner);
 				if (!best || score > best.score)
 					best = { candidate, terms, inner, score };
@@ -308,7 +309,12 @@ export const generalRules: Rule[] = [
 	{
 		name: 'mul-distribute',
 		match(node: symbolic) {
-			if (node.is('mul') && (node.factors.length > 1 || (node.factors[0].pow > 1 && Number.isInteger(node.factors[0].pow)))) {
+			if (node.is('mul')) {
+				if (node.factors.length == 1) {
+					const npow = Number(node.factors[0].pow);
+					if (npow < 2 || !Number.isInteger(npow))
+						return null;
+				}
 				// Heuristic: avoid expanding very large expressions
 				if (String(node).length > 400)
 					return null;
@@ -431,6 +437,7 @@ export const generalRules: Rule[] = [
 	// Cubic-sum contracting identity for cube-roots:
 	// Match the expanded RHS and contract it to the compact cube form:
 	// U + V + 3*cbrt(UV)*(cbrt(U) + cbrt(V))  ->  (cbrt(U) + cbrt(V))^3
+	/*
 	{
 		name: 'cbrt-sum-cubic-identity-contract',
 		match(node: symbolic, _opts?: MatchOptions) {
@@ -517,6 +524,7 @@ export const generalRules: Rule[] = [
 			return replaceRest(bs, out);
 		}
 	},
+	*/
 ];
 
 /*
@@ -633,7 +641,7 @@ export const atan2Rules: Rule[] = [
 	PatternRule('atan2-to-atan',
 		symbolic.atan2(B, A),
 		bs => symbolic.atan(bs.B.div(bs.A)),
-		bs => !bs.A.is('const') || bs.A.value > 0  // only when x > 0
+		bs => !bs.A.is('const') || bs.A.value.sign() > 0  // only when x > 0
 	),
 
 	// atan2 symmetry
@@ -646,7 +654,7 @@ export const atan2Rules: Rule[] = [
 	PatternRule('atan2-scale-invariance',
 		symbolic.atan2(B.mul(C), A.mul(C)),
 		bs => symbolic.atan2(bs.B, bs.A),
-		bs => !bs.C.is('const') || bs.C.value > 0  // only for positive C
+		bs => !bs.C.is('const') || bs.C.value.sign() > 0  // only for positive C
 	),
 
 	// atan2 of zero

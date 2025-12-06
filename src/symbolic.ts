@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
-import { Operators, compare, isAlmostInteger, OperatorsBase, gcd, commonDenominator, denominator } from './core';
+import { Operators, compare, isAlmostInteger, OperatorsBase, gcd, commonDenominator, denominator, isNumber, lcm } from './core';
+import rational, { Numeric } from './rational';
 import { toSuperscript, radicalChars } from './string';
 
 // invariants:
@@ -126,6 +127,12 @@ function maybeParentheses(s: string, opts: StringifyOptions) {
 	return s;
 }
 
+function Num(n: number|Numeric) {
+	return isNumber(n) ? new Numeric(n) : n;
+}
+function asNumeric(b: param) : Numeric | null {
+	return !(b instanceof symbolic) ? Num(b) : isConst(b) ? b.value : null;
+}
 
 export class symbolicBase {
 	static interner = new Interner<symbolicBase>();
@@ -156,10 +163,10 @@ export class symbolicBase {
 		// Allow patterns to match through single numeric factors (e.g., pattern A+B matches 2(A+B))
 		if (!opts?.exact && node instanceof symbolic && node.is('mul')) {
 			const mul = node as symbolicMul;
-			if (mul.factors.length === 1 && mul.factors[0].pow === 1) {
+			if (mul.factors.length === 1 && mul.factors[0].pow.is1()) {
 				const inner = mul.factors[0].item;
 				const result = this.match(inner, bindings, opts);
-				if (result && mul.num !== 1)
+				if (result && !mul.num.is1())
 					bindings['_numfactor'] = symbolic.from(mul.num);
 				return result;
 			}
@@ -176,12 +183,19 @@ export class symbolicBase {
 //-----------------------------------------------------------------------------
 // symbolic
 //-----------------------------------------------------------------------------
-type param = number|symbolic;
+type param = number | Numeric | symbolic;
 type param2 = param | (() => param);
 
 export class symbolic extends symbolicBase {
-	static from(i: number): symbolic 		{ return Number.isFinite(i) ? symbolicConstant.create(i) : i === Infinity ? infinity : i === -Infinity ? infinity.neg() : nan; }
-	static variable(name: string)			{ return symbolicVariable.create(name); }
+	static from(i: number|Numeric): symbolic {
+		return  i instanceof Numeric
+			? symbolicConstant.create(i)
+			: Number.isFinite(i) ? symbolicConstant.create(new Numeric(i))
+			: i === Infinity ? infinity
+			: i === -Infinity ? infinity.neg()
+			: nan;
+	}
+	static variable(name: string): symbolic	{ return symbolicVariable.create(name); }
 	static bind(name: string): symbolic 	{ return symbolicMatcher.create(name); }
 
 	static get zero()		: symbolic		{ return zero; }
@@ -224,7 +238,7 @@ export class symbolic extends symbolicBase {
 		return combinePartitions(asSymbolic2(otherwise), ...args.map(([bool, value]) => partition(bool, asSymbolic2(value))));
 	}
 
-	from(n: number | bigint) { return symbolic.from(Number(n)); }
+	from(n: number) { return symbolic.from(n); }
 	dup():		symbolic	{ return this; }
 
 	// Covariant return type overrides
@@ -259,48 +273,51 @@ export class symbolic extends symbolicBase {
 
 	sqrt():		symbolic	{ return this.npow(1 / 2); }
 	abs():		symbolic	{ return symbolicAbs.create(this); }
-	neg():		symbolic	{ return symbolicAdd.create([term(this, -1)]); }
-	recip():	symbolic	{ return symbolicMul.create([factor(this, -1)]); }
+	neg():		symbolic	{ return symbolicAdd.create([term(this, Num(-1))]); }
+	recip():	symbolic	{ return symbolicMul.create([factor(this, Num(-1))]); }
 
-	npow(b: number): symbolic {
-		return b === 1 ? this : b === 0 ? one : mulFactors(1, factor(this, b));//symbolicMul.create([factor(this, b)]);
+	npow(b: number|Numeric): symbolic {
+		b = Num(b);
+		return b.is1() ? this : b.is0() ? one : mulFactors(Num(1), factor(this, b));//symbolicMul.create([factor(this, b)]);
 	}
 	ipow(b: number): symbolic				{ return this.npow(b); }
-	rpow(n: number, d: number): symbolic	{ return this.npow(n / d); }
+	rpow(n: number, d: number): symbolic	{ return this.npow(new Numeric(rational(n, d))); }
 
 	pow(b: param): symbolic {
-		return typeof b === 'number' ? this.npow(b)
+		return !(b instanceof symbolic) ? this.npow(b)
 			: isConst(b) ? this.npow(b.value)
 			: symbolicPow.create(this, b);
 	}
 
-	scale(b: number): symbolic	{
-		return b === 0 ? zero : b === 1 ? this : mulFactors(b, factor(this));
+	scale(b: number|Numeric): symbolic	{
+		b = Num(b);
+		return b.is0() ? zero : b.is1() ? this : mulFactors(b, factor(this));
 	}
+
 	add(b: param): symbolic	{
-		return typeof b === 'number' ? (b === 0 ? this : addTerms(b, term(this, 1)))
-			: isConst(b) ? (b.value === 0 ? this : addTerms(b.value, term(this, 1)))
-			: b instanceof symbolicAdd ? addTerms(b.num, term(this, 1), ...b.terms)
-			: addTerms(0, term(this, 1), term(b, 1));
+		const n = asNumeric(b);
+		return	n ? (n.is0() ? this : addTerms(n, term(this)))
+			:	b instanceof symbolicAdd ? addTerms(b.num, term(this), ...b.terms)
+			:	addTerms(Num(0), term(this), term(b as symbolic));
 	}
-	sub(b: param): symbolic	{ 
-		return typeof b === 'number' ? (b === 0 ? this : addTerms(-b, term(this, 1)))
-			: isConst(b) ? (b.value === 0 ? this : addTerms(-b.value, term(this, 1)))
-			: b instanceof symbolicAdd ? addTerms(-b.num, term(this, 1), ...b.terms.map(i => term(i.item, -i.coef)))
-			: addTerms(0, term(this, 1), term(b, -1));
+	sub(b: param): symbolic	{
+		const n = asNumeric(b);
+		return	n ? (n.is0() ? this : addTerms(n.neg(), term(this)))
+			:	b instanceof symbolicAdd ? addTerms(b.num.neg(), term(this), ...b.terms.map(i => term(i.item, i.coef.neg())))
+			:	addTerms(Num(0), term(this), term(b as symbolic, Num(-1)));
 	}
 	mul(b: param): symbolic	{
-		return typeof b === 'number' ? this.scale(b)
-			: isConst(b) ? this.scale(b.value)
+		const n = asNumeric(b);
+		return n ? this.scale(n)
 			: b instanceof symbolicMul ? mulFactors(b.num, ...b.factors, factor(this))
-			: mulFactors(1, factor(this), factor(b));
+			: mulFactors(Num(1), factor(this), factor(b as symbolic));
 	}
 
 	div(b: param): symbolic	{
-		return typeof b === 'number' ? (b === 0 ? infinity : this.scale(1 / b))
-			: isConst(b) ? (b.value === 0 ? infinity : this.scale(1 / b.value))
-			: b instanceof symbolicMul ? mulFactors(b.num, ...b.factors.map(i => factor(i.item, -i.pow)), factor(this))
-			: mulFactors(1, factor(this), factor(b.recip()));
+		const n = asNumeric(b);
+		return n ? (n.is0() ? infinity : this.scale(n.recip()))
+			: b instanceof symbolicMul ? mulFactors(b.num, ...b.factors.map(i => factor(i.item, i.pow.neg())), factor(this))
+			: mulFactors(Num(1), factor(this), factor((b as symbolic).recip()));
 	}
 	mod(b: param): symbolic		{ return symbolicMod.create(this, asSymbolic(b)); }
 	mag(): number				{ const v = this.evaluate(); return Number.isFinite(v) ? Math.abs(v) : NaN; }
@@ -315,65 +332,62 @@ export class symbolic extends symbolicBase {
 //-----------------------------------------------------------------------------
 // constant
 //-----------------------------------------------------------------------------
-function constPow(value: number, pow: number): [number, boolean] {
+function constPow(value: Numeric, pow: Numeric): [Numeric, boolean] {
 	let i = false;
-	if (value < 0) {
-		const d = denominator(pow, 1000);
+	const npow = Number(pow);
+	if (value.sign() < 0) {
+		const d = pow.denominator();
 		if (d && (d & 1) === 0)
 			i = true;
-		value = -value;
-		if (pow & 1)
-			return [-(value ** pow), i];
+		if (npow & 1)
+			return [value.abs().npow(npow).neg(), i];
 	}
 
-	return [value ** pow, i];
+	return [value.abs().npow(npow), i];
 }
 
 class symbolicConstant extends symbolic {
-	static create(i: number)	{ return this.interner.intern(`c:${i}`, id => new symbolicConstant(id, i)); }
+	//static create(i: number)	{ return this.interner.intern(`c:${i}`, id => new symbolicConstant(id, i)); }
 
-	constructor(id: string, public value: number) {
+	constructor(id: string, public value: Numeric) {
 		super(id);
 	}
-	neg():		symbolic		{ return symbolicConstant.create(-this.value); }
-	recip():	symbolic		{ return symbolicConstant.create(1 / this.value); }
-	npow(b: number): symbolic	{
+
+	static create(i: Numeric) { return this.interner.intern(`c:${i}`, id => new symbolicConstant(id, i)); }
+	neg():		symbolic		{ return symbolicConstant.create(this.value.neg()); }
+	recip():	symbolic		{ return symbolicConstant.create(this.value.recip()); }
+	npow(b: Numeric): symbolic	{
 		const [value, needi] = constPow(this.value, b);
 		return needi ? i.scale(value) : symbolicConstant.create(value);
-		//if (this.value < 0 && !Number.isInteger(b))
-		//	return mulFactors(1, factor(this, b));
-		//return symbolicConstant.create(this.value ** b);
 	}
 
-	scale(b: number): symbolic	{ return symbolicConstant.create(this.value * b); }
+	scale(b: Numeric): symbolic	{ return symbolicConstant.create(this.value.mul(b)); }
 	add(b: param): symbolic	{
-		return typeof b === 'number' ? symbolicConstant.create(this.value + b)
-			: this.value === 0 ? b
-			: isConst(b) ? symbolicConstant.create(this.value + b.value)
-			: b.add(this);
+		const n = asNumeric(b);
+		return n ? symbolicConstant.create(this.value.add(n)) : (b as symbolic).add(this);
 	}
 	mul(b: param): symbolic	{
-		return typeof b === 'number' ? symbolicConstant.create(this.value * b)
-			: this.value === 0 ? this
-			: this.value === 1 ? b
-			: isConst(b) ? symbolicConstant.create(this.value * b.value)
-			: b.mul(this);
+		const n = asNumeric(b);
+		return n ? symbolicConstant.create(this.value.mul(n))
+			: this.value.is0() ? this
+			: this.value.is1() ? b as symbolic
+			: (b as symbolic).mul(this);
 	}
 
-	evaluate(_env?: Record<string, number>):	number { return this.value; }
-	evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) 	:	T|undefined	{ return ops.from(this.value); }
-	_toString(opts: StringifyOptions):		string { return opts.printConst(this.value); }
+	evaluate(_env?: Record<string, number>):	number { return Number(this.value); }
+	evaluateT<T>(ops: Operators<T>, _env?: Record<string, T>) 	: 	T|undefined	{ return ops.from(Number(this.value)); }
+	_toString(opts: StringifyOptions):		string { return opts.printConst(Number(this.value)); }
 }
 
-const zero	= symbolicConstant.create(0);
-const one	= symbolicConstant.create(1);
+const zero	= symbolic.from(0);
+const one	= symbolic.from(1);
 
 function isConst(e: symbolic): e is symbolicConstant {
 	return e instanceof symbolicConstant;
 }
 
 function asSymbolic(i: param): symbolic {
-	return typeof i === 'number' ? symbolic.from(i) : i;
+	return i instanceof symbolic ? i : symbolic.from(i);
 }
 function asSymbolic2(i: param2): symbolic {
 	return asSymbolic(typeof i === 'function' ? i() : i);
@@ -424,40 +438,41 @@ export class symbolicMatcher extends symbolicVariable {
 
 export interface term {
 	item:	symbolic;
-	coef:	number;
+	coef:	Numeric;
 }
-export function term(item: symbolic, coef = 1): term {
+export function term(item: symbolic, coef: Numeric = Num(1)): term {
 	return { item, coef };
 }
 export function termAsSymbolic(t: term): symbolic {
-	return t.coef === 1 ? t.item : t.item.scale(t.coef);
+	return t.coef.is1() ? t.item : t.item.scale(t.coef);
 }
 
-export function addTerms(num: number, ...a: readonly Readonly<term>[]): symbolic {
-	function add(item: symbolic, coef: number) {
+
+export function addTerms(num: Numeric, ...a: readonly Readonly<term>[]): symbolic {
+	function add(item: symbolic, coef: Numeric) {
 		if (isConst(item)) {
-			num += coef * item.value;
+			num = num.add(coef.mul(item.value));
 
 		} else if (item instanceof symbolicAdd) {
-			num += item.num * coef;
+			num = num.add(item.num.mul(coef));
 			for (const j of item.terms)
-				add(j.item, j.coef * coef);
+				add(j.item, j.coef.mul(coef));
 
 		} else if (item instanceof symbolicMul) {
-			coef *= item.num;
-			if (coef !== 0) {
-				if (item.factors.length === 1 && item.factors[0].pow === 1) {
+			coef = item.num.mul(coef);
+			if (!coef.is0()) {
+				if (item.factors.length === 1 && item.factors[0].pow.is1()) {
 					const inner = item.factors[0].item;
 					if (inner instanceof symbolicAdd) {
-						num += inner.num * coef;
+						num = num.add(inner.num.mul(coef));
 						for (const j of inner.terms)
-							add(j.item, j.coef * coef);
+							add(j.item, j.coef.mul(coef));
 					} else {
 						add(inner, coef);
 					}
 				} else {
 					// pull numeric multiplier from mul into term coefficient
-					terms.push(term(item.num === 1 ? item : symbolicMul.create(item.factors), coef));
+					terms.push(term(item.num.is1() ? item : symbolicMul.create(item.factors), coef));
 				}
 			}
 
@@ -478,33 +493,36 @@ export function addTerms(num: number, ...a: readonly Readonly<term>[]): symbolic
 	for (const t of terms) {
 		const last = combined.at(-1);
 		if (last && last.item.id === t.item.id)
-			last.coef += t.coef;
+			last.coef = last.coef.add(t.coef);
 		else
 			combined.push(t);
 	}
 
 	// remove zero coefficients
-	const nonzero = combined.filter(t => t.coef !== 0);
+	const nonzero = combined.filter(t => !t.coef.is0());
 
 	if (nonzero.length === 0)
-		return symbolic.from(num);
+		return symbolic.from(Number(num));
 
-	if (nonzero.length === 1 && num === 0)
+	if (nonzero.length === 1 && num.is0())
 		return termAsSymbolic(nonzero[0]);
 
 
 	// factor out GCD from term coefficients and constant
-	const coeffs = nonzero.map(t => Math.abs(t.coef));
-	if (num)
-		coeffs.push(Math.abs(num));
+	const	coeffs = nonzero.map(t => t.coef.abs());
+	if (!num.is0())
+		coeffs.push(num.abs());
 
-	const	den	= commonDenominator(coeffs, 1000, 1e-8);
-	let		g	= den ? gcd(...coeffs.map(n => Math.round(n * den))) / den : 1;
-	if (nonzero[0].coef < 0)
+	const 	den = lcm(...coeffs.map(i => i.denominator()));
+//	const	den	= commonDenominator(coeffs, 1000, 1e-8);
+	let	g	= den ? gcd(...coeffs.map(n => Math.round(Number(n) * den))) / den : 1;
+	if (nonzero[0].coef.sign() < 0)
 		g = -g;
 
-	if (g !== 1)
-		return mulFactors(g, factor(symbolicAdd.create(nonzero.map(t => term(t.item, t.coef / g)), num / g)));
+	if (g !== 1) {
+		const gg = Num(g);
+		return mulFactors(gg, factor(symbolicAdd.create(nonzero.map(t => term(t.item, t.coef.div(gg))), num.div(gg))));
+	}
 
 	return symbolicAdd.create(nonzero, num);
 }
@@ -513,17 +531,17 @@ export class symbolicAdd extends symbolic {
 	static validate(terms: readonly Readonly<term>[])  {
 		let prevId = '';
 		for (const t of terms) {
-			if (t.coef === 0)
+			if (t.coef.is0())
 				throw new Error('unexpected zero coefficient in term');
 			if (t.item.id <= prevId)
 				throw new Error('terms not in canonical order or duplicate term');
 			if (t.item instanceof symbolicAdd) {
-				if (t.coef === 1 || terms.length === 1)
+				if (t.coef.is1() || terms.length === 1)
 					throw new Error('unexpected additive term in term item');
 			} else if (t.item instanceof symbolicMul) {
-				if (t.item.num !== 1)
+				if (!t.item.num.is1())
 					throw new Error('unexpected numeric factor in term item');
-				if (t.item.factors.length === 1 && t.item.factors[0].pow === 1)
+				if (t.item.factors.length === 1 && t.item.factors[0].pow.is1())
 					throw new Error('unexpected factor in term item');
 			}
 			prevId = t.item.id;
@@ -532,31 +550,31 @@ export class symbolicAdd extends symbolic {
 		// if (terms.length > 1 && gcd2(...terms.map(t => Math.abs(t.coef))) !== 1)
 		// 	throw new Error('term coefficients not in lowest terms');
 	}
-	static create(terms: readonly term[], num = 0) : symbolic	{
+	static create(terms: readonly term[], num: Numeric = Num(0)) : symbolic	{
 		this.validate(terms);
-		return this.interner.intern(`a(${num ? `${num},` : ''}${terms.map(i => `${i.coef === 1 ? '' : i.coef === -1 ? '-' : i.coef}${i.item.id}`).join(',')})`, id => new symbolicAdd(id, terms, num));
+		return this.interner.intern(`a(${num.is0() ? '' : `${num},`}${terms.map(i => `${i.coef.is1() ? '' : Number(i.coef) === -1 ? '-' : i.coef}${i.item.id}`).join(',')})`, id => new symbolicAdd(id, terms, num));
 	}
 
-	constructor(id: string, public terms: readonly Readonly<term>[], public num = 0) {
+    constructor(id: string, public terms: readonly Readonly<term>[], public num: Numeric) {
 		super(id);
 	}
 	neg(): symbolic {
-		if (this.num === 0 && this.terms.length === 1 && this.terms[0].coef === -1)
+		if (this.num.is0() && this.terms.length === 1 && Number(this.terms[0].coef) === -1)
 			return this.terms[0].item;
-		return addTerms(-this.num, ...this.terms.map(i => term(i.item, -i.coef)));
+		return addTerms(this.num.scale(-1), ...this.terms.map(i => term(i.item, i.coef.scale(-1))));
 	}
 
 	add(b: param): symbolic	{
-		return  typeof b === 'number' ? symbolicAdd.create(this.terms, this.num + b)
-			: 	isConst(b) ? symbolicAdd.create(this.terms, this.num + b.value)
-			: 	b instanceof symbolicAdd ? addTerms(this.num + b.num, ...this.terms, ...b.terms)
-			:	addTerms(this.num, ...this.terms, term(b, 1));
+		const n = asNumeric(b);
+		return  n ? symbolicAdd.create(this.terms, this.num.add(n))
+				: 	b instanceof symbolicAdd ? addTerms(this.num.add(b.num), ...this.terms, ...b.terms)
+				: 	addTerms(this.num, ...this.terms, term(b as symbolic));
 	}
 	sub(b: param): symbolic	{ 
-		return	typeof b === 'number' ? symbolicAdd.create(this.terms, this.num - b)
-			:	isConst(b) ? symbolicAdd.create(this.terms, this.num - b.value)
-			:	b instanceof symbolicAdd ? addTerms(this.num - b.num, ...this.terms, ...b.terms.map(i => term(i.item, -i.coef)))
-			:	addTerms(this.num, ...this.terms, term(b, -1));
+		const n = asNumeric(b);
+		return	n ? symbolicAdd.create(this.terms, this.num.sub(n))
+				: b instanceof symbolicAdd ? addTerms(this.num.sub(b.num), ...this.terms, ...b.terms.map(i => term(i.item, i.coef.neg())))
+				: addTerms(this.num, ...this.terms, term(b as symbolic, Num(-1)));
 	}
 
 	match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
@@ -573,7 +591,7 @@ export class symbolicAdd extends symbolic {
 			for (const pterm of this.terms) {
 				found = -1;
 				for (const nterm of nterms) {
-					if (pterm.coef === nterm.coef && pterm.item.match(nterm.item, bindings, opts2)) {
+					if (Number(pterm.coef) === Number(nterm.coef) && pterm.item.match(nterm.item, bindings, opts2)) {
 						found = nterms.indexOf(nterm);
 						break;
 					}
@@ -618,8 +636,8 @@ export class symbolicAdd extends symbolic {
 			if (opts?.exact && nterms.length)
 				return null;
 
-			if (this.num != node.num || nterms.length)
-				bindings['_addrest'] = addTerms(this.num - node.num, ...nterms);
+			if (Number(this.num) != Number(node.num) || nterms.length)
+				bindings['_addrest'] = addTerms(this.num.sub(node.num), ...nterms);
 
 			return bindings;
 		}
@@ -639,7 +657,7 @@ export class symbolicAdd extends symbolic {
 	}
 
 	collect(v: string|symbolic): symbolic[] {
-		const groups: symbolic[] = [symbolic.from(this.num)];
+		const groups: symbolic[] = [symbolic.from(Number(this.num))];
 		if (typeof v === 'string')
 			v = symbolic.variable(v);
 
@@ -650,14 +668,14 @@ export class symbolicAdd extends symbolic {
 				const remaining: factor[] = [];
 				for (const ff of i.factors as factor[]) {
 					if (ff.item === v)
-						pow += ff.pow;
+						pow += Number(ff.pow);
 					else
 						remaining.push(ff);
 				}
-				groups[pow] = (groups[pow] ??= zero).add(mulFactors(i.num * t.coef, ...remaining));
+				groups[pow] = (groups[pow] ??= zero).add(mulFactors(i.num.mul(t.coef), ...remaining));
 
 			} else if (i === v) {
-				groups[1] = (groups[1] ??= zero).add(symbolic.from(t.coef));
+				groups[1] = (groups[1] ??= zero).add(symbolic.from(Number(t.coef)));
 
 			} else {
 				groups[0] = groups[0].add(t.item.scale(t.coef));
@@ -671,42 +689,42 @@ export class symbolicAdd extends symbolic {
 	}
 
 	derivative(v: string) : symbolic {
-		return addTerms(0, ...this.terms.map(i => term(i.item.derivative(v), i.coef)));
+		return addTerms(Num(0), ...this.terms.map(i => term(i.item.derivative(v), i.coef)));
 	}
 	evaluate(env?: Record<string, number>) : number {
 		return this.terms.reduce((acc, curr) => {
-			if (acc !== acc)	// NaN check
+			if (acc !== acc) 	// NaN check
 				return acc;
-			return acc + (curr.item.evaluate(env) * curr.coef);
-		}, this.num);
+			return acc + Number(curr.coef.scale(curr.item.evaluate(env)));
+		}, Number(this.num));
 	}
 	evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) {
 		return this.terms.reduce((acc, curr) => {
 			if (!acc)
 				return acc;
 			const v = curr.item.evaluateT(ops, env);
-			return v ? ops.add(acc, ops.mul(v, ops.from(curr.coef))) : v;
-		}, ops.from(this.num) as T | undefined);
+			return v ? ops.add(acc, ops.mul(v, ops.from(Number(curr.coef)))) : v;
+		}, ops.from(Number(this.num)) as T | undefined);
 	}
 
 	_toString(opts: StringifyOptions) : string {
 		function termOrder(t: term): number {
-			return t.item instanceof symbolicMul ? t.item.factors.reduce((acc, curr) => acc + curr.pow, 0) : 0;
+			return t.item instanceof symbolicMul ? t.item.factors.reduce((acc, curr) => acc + Number(curr.pow), 0) : 0;
 		}
 
 		const terms = opts.sortTerms ? this.terms.slice().sort((a, b) => termOrder(b) - termOrder(a)) : this.terms;
 
 		if (opts.direct) {
-			return '(' + terms.map(t => printScaled(t.item._toString(opts), t.coef, opts)).join(opts.addChar)
-			+ (this.num ? opts.addChar + opts.printConst(this.num) : '')
+			return '(' + terms.map(t => printScaled(t.item._toString(opts), Number(t.coef), opts)).join(opts.addChar)
+			+ (this.num.is0() ? '' : opts.addChar + opts.printConst(Number(this.num)))
 			+ ')';
 		}
 
 		return terms.map((t, j) => {
-			return	(j === 0 ? (t.coef < 0 ? '-' : '') : (t.coef < 0 ? opts.subChar : opts.addChar))
-				+	printScaled(t.item._toString(opts), Math.abs(t.coef), opts);
+			return	(j === 0 ? (Number(t.coef) < 0 ? '-' : '') : (Number(t.coef) < 0 ? opts.subChar : opts.addChar))
+				+	printScaled(t.item._toString(opts), Math.abs(Number(t.coef)), opts);
 		}).join('')
-		+ (this.num !== 0 ? (this.num < 0 ? opts.subChar : opts.addChar) + opts.printConst(Math.abs(this.num)) : '');
+		+ (!this.num.is0() ? (Number(this.num) < 0 ? opts.subChar : opts.addChar) + opts.printConst(Math.abs(Number(this.num))) : '');
 	}
 }
 
@@ -716,69 +734,46 @@ export class symbolicAdd extends symbolic {
 
 export interface factor {
 	item:	symbolic;
-	pow:	number; 
+	pow:	Numeric; 
 }
-export function factor(item: symbolic, pow = 1): factor {
+export function factor(item: symbolic, pow: Numeric = Num(1)): factor {
 	return { item, pow };
 }
 export function factorAsSymbolic(f: factor): symbolic {
 	return f.item.npow(f.pow);
 }
 
-export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
+export function mulFactors(num: Numeric, ...f: Readonly<factor>[]): symbolic {
 	const factors: factor[] = [];
 
-	function add(item: symbolic, pow: number) {
-		if (pow === 0)
-			return;
-
+	function add(item: symbolic, pow: Numeric) {
 		if (isConst(item)) {
 			const [value, needi] = constPow(item.value, pow);
-			num *= value;
+			num = num.mul(value);
 			if (needi)
 				factors.push(factor(i));
 
 		} else if (item instanceof symbolicMul) {
-			const [value, needi] = constPow(item.num, pow);
-			num *= value;
-			if (needi)
-				factors.push(factor(i));
+			num = num.mul(item.num);
 			for (const j of item.factors)
-				add(j.item, j.pow * pow);
+				add(j.item, j.pow.mul(pow));
 
 		} else if (item instanceof symbolicAdd) {
 			const first = item.terms[0];
-			if (item.terms.length === 1 && item.num === 0) {
+			if (item.terms.length === 1 && item.num.is0()) {
 				const [value, needi] = constPow(first.coef, pow);
+				num = num.mul(value);
 				if (needi)
 					factors.push(factor(i));
-				num *= value;
 				add(first.item, pow);
-			} else if (first.coef < 0 && Number.isInteger(pow)) {
-				if ((Math.abs(pow) % 2) === 1)
-					num = -num;
+			} else if (first.coef.sign() < 0 && Number.isInteger(Number(pow))) {
+				if (Number(pow) & 1)
+					num = num.neg();
 				add(item.neg(), pow);
 			} else {
 				factors.push(factor(item, pow));
-			}
-			/*
-			if (first.coef < 0 && Number.isInteger(pow)) {
-				if (pow % 2 === 1)
-					num = -num;
-				add(item.neg(), pow);
-				//factors.push(factor(item, pow));
-				return;
 			}
 
-			if (item.terms.length === 1 && item.num === 0) {
-				num *= Math.abs(first.coef) ** pow;
-				//if (first.coef < 0 && pow % 2 === 1)
-				//	num = -num;
-				add(first.item, pow);
-			} else {
-				factors.push(factor(item, pow));
-			}
-			*/
 		} else {
 			factors.push(factor(item, pow));
 		}
@@ -787,7 +782,7 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 	for (const i of f)
 		add(i.item, i.pow);
 
-	if (num === 0)
+	if (num.is0())
 		return zero;
 
 	// canonical order
@@ -798,7 +793,7 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 	for (const f of factors) {
 		const last = combined.at(-1);
 		if (last && last.item.id === f.item.id)
-			last.pow += f.pow;
+			last.pow = last.pow.add(f.pow);
 		else
 			combined.push(f);
 	}
@@ -806,20 +801,20 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 	// remove zero coefficients and handle powers of i
 	const nonzero = combined.filter(t => {
 		if (t.item === i) {
-			const pow = ((t.pow % 4) + 4) % 4;
+			const pow = Number(t.pow) & 3;
 			if (pow & 2)
-				num = -num;
-			t.pow = pow % 2;
+				num = num.scale(-1);
+			t.pow = Num(pow % 2);
 		}
-		return t.pow !== 0;
+		return t.pow.sign() !== 0;
 	});
 
 	if (nonzero.length === 0)
-		return symbolic.from(num);
+		return symbolic.from(Number(num));
 
-	if (nonzero.length === 1 && nonzero[0].pow === 1) {
+	if (nonzero.length === 1 && nonzero[0].pow.is1()) {
 		const first = nonzero[0].item;
-		if (num === 1)
+		if (num.is1())
 			return first;
 		/*
 		if (first instanceof symbolicAdd) {
@@ -847,14 +842,23 @@ export function mulFactors(num: number, ...f: Readonly<factor>[]): symbolic {
 }
 
 export class symbolicMul extends symbolic {
-	static validate(factors: readonly factor[], num: number)  {
-		if (isNaN(num))
+	static validate(factors: readonly factor[], num: Numeric)  {
+		function numericIsFinite(n: any): boolean {
+			if (typeof n === 'number')
+				return Number.isFinite(n);
+			if (n && typeof n.valueOf === 'function') {
+				const v = Number(n.valueOf());
+				return Number.isFinite(v);
+			}
+			return false;
+		}
+		if (!numericIsFinite(num))
 			throw new Error('unexpected NaN numeric factor');
 		//if (num <= 0)
 		//	throw new Error('unexpected non-positive numeric factor in mul');
 		let prevId = '';
 		for (const t of factors) {
-			if (t.pow === 0)
+			if (t.pow.is0())
 				throw new Error('unexpected zero power in factor');
 			if (t.item.id <= prevId)
 				throw new Error('factors not in canonical order or duplicate factor');
@@ -867,30 +871,31 @@ export class symbolicMul extends symbolic {
 			prevId = t.item.id;
 		}
 	}
-	static create(factors: readonly factor[], num = 1)	{
+	static create(factors: readonly factor[], num: Numeric = Num(1)) 	{
 		this.validate(factors, num);
-		return this.interner.intern(`m(${num !== 1 ? `${num},` : ''}${factors.map(i => `${i.item.id}${i.pow !== 1 ? i.pow : ''}`).join(',')})`, id => new symbolicMul(id, factors, num));
+		return this.interner.intern(`m(${num.is1() ? '' : `${Number(num)},`}${factors.map(i => `${i.item.id}${!i.pow.is1() ? i.pow : ''}`).join(',')})`, id => new symbolicMul(id, factors, num));
 	}
 
-	constructor(id: string, public factors: readonly Readonly<factor>[], public num = 1) {
+	constructor(id: string, public factors: readonly Readonly<factor>[], public num: Numeric) {
 		super(id);
 	}
 	
 	neg(): symbolic {
-		return symbolicMul.create(this.factors, -this.num);
+		return symbolicMul.create(this.factors, this.num.scale(-1));
 		//return symbolicAdd.create([term(symbolicMul.create(this.factors, 1), -this.num)], 0);
 	}
 	recip(): symbolic {
-		return symbolicMul.create(this.factors.map(i => factor(i.item, -i.pow)), 1 / this.num);
+		return symbolicMul.create(this.factors.map(i => factor(i.item, i.pow.scale(-1))), new Numeric(1).div(this.num));
 	}
-	npow(b: number): symbolic {
-		if (b === 0)
+	npow(b: number|Numeric): symbolic {
+		b = Num(b);
+		if (b.is0())
 			return one;
-		if (b === 1)
+		if (b.is1())
 			return this;
 
 		const [value, needi] = constPow(this.num, b);
-		return mulFactors(value, ...(needi ? [factor(i)] : []), ...this.factors.map(i => factor(i.item, i.pow * b)));
+		return mulFactors(value, ...(needi ? [factor(i)] : []), ...this.factors.map(i => factor(i.item, i.pow.mul(b))));
 		/*
 		if (this.num < 0 && !Number.isInteger(b))
 			return mulFactors(1, factor(this.from(this.num), b), ...this.factors.map(i => factor(i.item, i.pow * b)));
@@ -898,22 +903,23 @@ export class symbolicMul extends symbolic {
 		return mulFactors(this.num ** b, ...this.factors.map(i => factor(i.item, i.pow * b)));
 		*/
 	}
-	scale(b: number): symbolic	{
-		return	b === 0	? zero
-			:	b === 1	? this
-			:	this.num * b === 1 && this.factors.length === 1 && this.factors[0].pow === 1 ? this.factors[0].item
-			:	mulFactors(this.num * b, ...this.factors);
+	scale(b: number|Numeric): symbolic	{
+		b = Num(b);
+		return	b.is0()	? zero
+				: b.is1()	? this
+				: Number(this.num.mul(b)) === 1 && this.factors.length === 1 && Number(this.factors[0].pow) === 1 ? this.factors[0].item
+				: mulFactors(this.num.mul(b), ...this.factors);
 	}
 
 	mul(b: param): symbolic	{
-		return typeof b === 'number' ? this.scale(b)
-			:	isConst(b) ? this.scale(b.value)
-			:	b instanceof symbolicMul ? mulFactors(this.num * b.num, ...this.factors, ...b.factors)
-			:	mulFactors(this.num, ...this.factors, factor(b));
+		const n = asNumeric(b);
+		return n ? this.scale(n)
+			: b instanceof symbolicMul ? mulFactors(this.num.mul(b.num), ...this.factors, ...b.factors)
+			: mulFactors(this.num, ...this.factors, factor(b as symbolic));
 	}
 	match(node: symbolic, bindings: Bindings, opts?: MatchOptions): Bindings | null {
 		if (node instanceof symbolicMul) {
-			if (opts?.exact && this.num != node.num)
+			if (opts?.exact && Number(this.num) != Number(node.num))
 				return null;
 
 			const opts2 	= { ...opts, exact: true};
@@ -935,11 +941,11 @@ export class symbolicMul extends symbolic {
 			if (opts?.exact && nfactors.length)
 				return null;
 
-			if (this.num != node.num || nfactors.length)
-				bindings['_mulrest'] = mulFactors(this.num / node.num, ...nfactors);
+			if (Number(this.num) != Number(node.num) || nfactors.length)
+				bindings['_mulrest'] = mulFactors(this.num.div(node.num), ...nfactors);
 
 			return bindings;
-		} else if (this.num === -1 && this.factors.length === 1 && this.factors[0].pow === 1 && this.factors[0].item.is('add')) {
+		} else if (Number(this.num) === -1 && this.factors.length === 1 && this.factors[0].pow.is1() && this.factors[0].item.is('add')) {
 			// Special case: match negation
 			//console.log('try negation');
 			if (this.factors[0].item.match(node, bindings, opts)) {
@@ -984,8 +990,9 @@ export class symbolicMul extends symbolic {
 		const others: factor[] = [];
 
 		for (const f of factors) {
-			if (f.item instanceof symbolicAdd && f.pow > 0 && (!opts?.maxPow || f.pow < opts.maxPow) && Number.isInteger(f.pow) && checkUse(f.item.terms)) {
-				for (let i = 0; i < f.pow; i++)
+			const npow = Number(f.pow);
+			if (f.item instanceof symbolicAdd && npow > 0 && (!opts?.maxPow || npow < opts.maxPow) && Number.isInteger(npow) && checkUse(f.item.terms)) {
+				for (let i = 0; i < npow; i++)
 					additive.push(f.item);
 			} else {
 				others.push(f);
@@ -995,7 +1002,7 @@ export class symbolicMul extends symbolic {
 		if (opts?.maxParts) {
 			let totalParts = Math.max(others.length, 1);
 			for (const a of additive)
-				totalParts += totalParts * (a.terms.length + (a.num ? 1 : 0));
+				totalParts += totalParts * (a.terms.length + (a.num.is0() ? 0 : 1));
 
 			if (totalParts > opts?.maxParts)
 				return this; // Skip expansion to avoid combinatorial explosion
@@ -1007,33 +1014,33 @@ export class symbolicMul extends symbolic {
 			for (const p of parts) {
 				for (const t of a.terms)
 					parts2.push(p.mul(t.item).scale(t.coef));
-				if (a.num !== 0)
+				if (!a.num.is0())
 					parts2.push(p.scale(a.num));
 			}
 			parts = parts2;
 		}
 
-		return addTerms(0, ...parts.map(p => term(p, 1)));
+		return addTerms(Num(0), ...parts.map(p => term(p)));
 	}
 
 	derivative(v: string) : symbolic {
-		return addTerms(0, ...this.factors.map(f => term(mulFactors(
-			f.pow * this.num,
-			factor(f.item, f.pow - 1),
+		return addTerms(Num(0), ...this.factors.map(f => term(mulFactors(
+			this.num.mul(f.pow),
+			factor(f.item, f.pow.sub(Num(1))),
 			factor(f.item.derivative(v)),
 			...this.factors.filter(g => g !== f)
 		))));
 	}
 	
-	evaluate(env?: Record<string, number>) : number {
+		evaluate(env?: Record<string, number>) : number {
 		return this.factors.reduce((acc, curr) => {
-			if (acc !== acc || acc === 0)	// NaN check
+			if (acc !== acc || acc === 0) 	// NaN check
 				return acc;
 			const v = curr.item.evaluate(env);
-			return	curr.pow === 1 ? acc * v
-				:	curr.pow === -1 ? acc / v
-				:	acc * v ** curr.pow;
-		}, this.num);
+			return	Number(curr.pow) === 1 ? Number(new Numeric(acc).mul(new Numeric(v)))
+				: 	Number(curr.pow) === -1 ? Number(new Numeric(acc).div(new Numeric(v)))
+				: 	Number(new Numeric(acc).mul(new Numeric(v ** Number(curr.pow))));
+		}, Number(this.num));
 	}
 	evaluateT<T>(ops: Operators<T>, env?: Record<string, T>) {
 		return this.factors.reduce((acc, curr) => {
@@ -1042,48 +1049,49 @@ export class symbolicMul extends symbolic {
 			const v = curr.item.evaluateT(ops, env);
 			if (!v)
 				return v;
-			return curr.pow === 1 ? ops.mul(acc, v)
-				:	curr.pow === -1 ? ops.div(acc, v)
-				:	ops.mul(acc, ops.pow(v, ops.from(curr.pow)));
-		}, ops.from(this.num) as T | undefined);
+			return Number(curr.pow) === 1 ? ops.mul(acc, v)
+				:	Number(curr.pow) === -1 ? ops.div(acc, v)
+				:	ops.mul(acc, ops.pow(v, ops.from(Number(curr.pow))));
+		}, ops.from(Number(this.num)) as T | undefined);
 	}
 
 	_toString(opts: StringifyOptions) : string {
-		const factors	= opts.sortFactors ? this.factors.slice().sort((a, b) => b.pow - a.pow) : this.factors;
+		const factors	= opts.sortFactors ? this.factors.slice().sort((a, b) => Number(b.pow) - Number(a.pow)) : this.factors;
 
-		function printTerm(item: symbolic, n: number) {
+		function printTerm(item: symbolic, n: Numeric) {
 			const s = maybeParentheses(item._toString(opts), opts);
 
-			if (n === 1)
+			if (n.is1())
 				return s;
 
+			const nn = Number(n);
 			if (opts.ccode) {
-				if (n === 0.5)
+				if (nn === 0.5)
 					return `sqrt(${s})`;
-				if (Number.isInteger(n) && n < 3 && item.is('var'))
-					return Array.from({length: n}, () => s).join(opts.mulChar);
-				return `pow(${s}, ${opts.printConst(n)})`;
+				if (Number.isInteger(nn) && nn < 3 && item.is('var'))
+					return Array.from({length: nn}, () => s).join(opts.mulChar);
+				return `pow(${s}, ${opts.printConst(nn)})`;
 			}
 
-			if (opts.radicalPower && n < 1 && isAlmostInteger(1 / n)) {
-				const c = radicalChars[Math.round(1 / n)];
+			if (opts.radicalPower && nn < 1 && isAlmostInteger(1 / nn)) {
+				const c = radicalChars[Math.round(1 / nn)];
 				if (c)
 					return `${c}${s}`;
 			}
 
 			if (opts.superPower)
-				return `${s}${toSuperscript(opts.printConst(n))}`;
-			return `${s}^${opts.printConst(n)}`;
+				return `${s}${toSuperscript(opts.printConst(nn))}`;
+			return `${s}^${opts.printConst(nn)}`;
 		}
 
-		if (factors[0].pow < 0) {
-			return opts.printConst(this.num) + factors.map(i =>
-				(i.pow < 0 ? opts.divChar : opts.mulChar) + printTerm(i.item, Math.abs(i.pow))
+		if (factors[0].pow.sign() < 0) {
+			return opts.printConst(Number(this.num)) + factors.map(i =>
+				(i.pow.sign() < 0 ? opts.divChar : opts.mulChar) + printTerm(i.item, i.pow.abs())
 			).join('');
 		} else {
 			return printScaled(factors.map((i, j) =>
-				(j === 0 ? '' : i.pow < 0 ? opts.divChar : opts.mulChar) + printTerm(i.item, Math.abs(i.pow))
-			).join(''), this.num, opts);
+				(j === 0 ? '' : i.pow.sign() < 0 ? opts.divChar : opts.mulChar) + printTerm(i.item, i.pow.abs())
+			).join(''), Number(this.num), opts);
 		}
 
 	}
@@ -1179,12 +1187,12 @@ export class symbolicCompare extends symbolicBoolean {
 		}
 
 		if (a.a === b.a) {
-			if (isConst(a.b) && isConst(b.b))
-				return inner(a.op, b.op, a.b.value, b.b.value);
+				if (isConst(a.b) && isConst(b.b))
+				return inner(a.op, b.op, Number(a.b.value), Number(b.b.value));
 
 		} else if (a.b === b.b) {
-			if (isConst(a.a) && isConst(b.a))
-				return inner(reverseOp(a.op), reverseOp(b.op), a.a.value, b.a.value);
+				if (isConst(a.a) && isConst(b.a))
+				return inner(reverseOp(a.op), reverseOp(b.op), Number(a.a.value), Number(b.a.value));
 		}
 	}
 
@@ -1458,7 +1466,7 @@ class symbolicPartition extends symbolic {
 	sub(b: param): symbolic {
 		return	symbolicPartition.create(this.partitions.map(p => partition(p.bool, p.value.sub(b))), this.otherwise.sub(b));
 	}
-	scale(b: number): symbolic	{
+	scale(b: Numeric): symbolic	{
 		return	symbolicPartition.create(this.partitions.map(p => partition(p.bool, p.value.scale(b))), this.otherwise.scale(b));
 	}
 	mul(b: param): symbolic {
@@ -1524,7 +1532,8 @@ class symbolicInfinity extends specialConstant('infinity', '∞', Infinity) {
 		return this;
 	}
 	mul(b: param): symbolic {
-		if (typeof b === 'number' ? b === 0 : isConst(b) && b.value === 0)
+		const n = asNumeric(b);
+		if (n && n.is0())
 			return nan;
 		return this;
 	}

@@ -6,6 +6,7 @@
  */
 
 import { factor, symbolic, mulFactors } from './symbolic';
+import { Numeric } from './rational';
 
 type  Monomial = number[];
 
@@ -21,7 +22,7 @@ type Compare = (a: Monomial, b: Monomial) => number;
 // ============================================================================
 
 function monomialToSymbolic(mon: Monomial, variables: readonly symbolic[]): symbolic {
-	return mulFactors(1, ...mon.map((exp, i) => factor(variables[i], exp)).filter(Boolean));
+	return mulFactors(new Numeric(1), ...mon.map((exp, i) => factor(variables[i], new Numeric(exp))).filter(Boolean));
 }
 
 /**
@@ -128,12 +129,12 @@ function extractTerm(expr: symbolic, variables: readonly symbolic[]): Term {
 	const mon: Monomial = [];
 	
 	if (expr.is('mul')) {
-		const coefFactors: symbolic[] = expr.num !== 1 ? [symbolic.from(expr.num)] : [];
+		const coefFactors: symbolic[] = !expr.num.is1() ? [symbolic.from(expr.num)] : [];
 		
 		for (const factor of expr.factors) {
 			const idx = variables.indexOf(factor.item);
 			if (idx >= 0) {
-				mon[idx] = factor.pow;
+				mon[idx] = Number(factor.pow);
 			} else {
 				coefFactors.push(factor.item.npow(factor.pow));
 			}
@@ -157,19 +158,19 @@ function extractTerm(expr: symbolic, variables: readonly symbolic[]): Term {
  */
 function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: Compare): Term | undefined {
 	// After expansion, unwrap if it got wrapped again
-	let scale = 1;
-	if (poly.is('mul') && poly.factors.length === 1 && poly.factors[0].pow === 1 && poly.factors[0].item.is('add')) {
+	let scale = new Numeric(1);
+	if (poly.is('mul') && poly.factors.length === 1 && poly.factors[0].pow.is1() && poly.factors[0].item.is('add')) {
 		scale = poly.num;
 		poly = poly.factors[0].item;
 	}
-	
+
 	if (!poly.is('add'))
 		return extractTerm(poly, variables);
-	
+
 	// Find term with largest monomial
 	const bestTerm = extractTerm(poly.terms[0].item, variables);
 	let bestMon = bestTerm.mon;
-	let bestCoef = bestTerm.coef.scale(poly.terms[0].coef * scale);
+	let bestCoef = bestTerm.coef.scale(poly.terms[0].coef.mul(scale));
 	
 	for (let i = 1; i < poly.terms.length; i++) {
 		const term = extractTerm(poly.terms[i].item, variables);
@@ -177,10 +178,10 @@ function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: C
 		// So ordering(bestMon, term.mon) > 0 means term.mon is larger than bestMon
 		if (ordering(bestMon, term.mon) > 0) {
 			bestMon = term.mon;
-			bestCoef = term.coef.scale(poly.terms[i].coef * scale);
+			bestCoef = term.coef.scale(poly.terms[i].coef.mul(scale));
 		}
 	}
-	
+
 	return { coef: bestCoef, mon: bestMon };
 }
 
@@ -256,10 +257,6 @@ export function polynomialDivision(
 
 			if (divides(ltg.mon, lt.mon)) {
 				const c = lt.coef.div(ltg.coef);
-				if (c.is('const') && Math.abs(c.value) < 1e-8)
-					continue; // avoid tiny coefficients
-				if (c.is('mul') && Math.abs(c.num) < 1e-8)
-					break;
 
 				const m = divideMonomial(lt.mon, ltg.mon)!;
 				try {

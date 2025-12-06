@@ -83,10 +83,10 @@ export default tslint.config(
 					"selector": "Identifier[name='default']",
 					"message": "'default' is a reserved word."
 				},
-				{
-					"selector": "Identifier[name='delete']",
-					"message": "'delete' is a reserved word."
-				},
+				//{
+				//	"selector": "Identifier[name='delete']",
+				//	"message": "'delete' is a reserved word."
+				//},
 				{
 					"selector": "Identifier[name='do']",
 					"message": "'do' is a reserved word."

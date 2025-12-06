@@ -1,4 +1,4 @@
-import { scalar, gcd, absB, signB, gcdB, divB, minB, lazySlice, has, rationalApprox, rationalApproxT } from "./core";
+import { isNumber, isInstance, Operators, scalar, gcd, absB, signB, gcdB, divB, minB, lazySlice, has, rationalApprox, rationalApproxT, denominator } from "./core";
 
 type scalar1<T extends scalar<T>> = scalar<T> & has<'divmod'> & has<'recip'>;
 
@@ -53,15 +53,62 @@ function *convergents<T extends scalar<T>>(terms: (bigint|number)[]): Generator<
 // number rationals
 //-----------------------------------------------------------------------------
 
-export class rational implements scalar<rational> {
-	static from(n: number, maxDen?: number): rational {
-		if (Number.isInteger(n))
-			return new rational(n, 1);
-		const [h, k] = rationalApprox(n, maxDen ?? 1e20, 1e-20);
-		return new rational(h, k);
+class _rational {
+	constructor(public num: number, public den = 1) {
+		if (this.den < 0) {
+			this.den = -this.den;
+			this.num = -this.num;
+		}
 	}
+	from(n: number):	rational { return rational.from(n); }
+	dup():				rational { return new _rational(this.num, this.den); }
+
+	simplify():	rational	{ return rational.simplified(this.num, this.den); }
+	neg(): 		rational	{ return new _rational(-this.num, this.den); }
+	recip():	rational	{ return new _rational(this.den, this.num); }
+	abs():	 	rational	{ return new _rational(Math.abs(this.num), this.den); }
+	frac():		rational	{ return new _rational(this.num % this.den, this.den); }
+	floor():	number		{ return Math.floor(this.num / this.den); }
+	sign():		number		{ return this.num === 0 ? 0 : this.num > 0 ? 1 : -1; }
+	mag():	 	number		{ return Math.abs(this.num / this.den); }
+
+	set(b: rational):	rational { this.num = b.num; this.den = b.den; return this; }
+	scale(b: number):	rational { return this.mul(rational.from(b)); }
+	mul(b: rational):	rational { return rational.simplified(this.num * b.num, this.den * b.den); }
+	add(b: rational):	rational { return rational.simplified(this.num * b.den + b.num * this.den, this.den * b.den); }
+	sub(b: rational):	rational { return rational.simplified(this.num * b.den - b.num * this.den, this.den * b.den); }
+	div(b: rational):	rational { return this.mul(b.recip()); }
+	mod(b: rational):	rational { return this.div(b).frac().mul(b); }
+	ipow(b: number):	rational {
+		return b < 0
+			? rational(this.den ** -b, this.num ** -b)
+			: rational(this.num ** b, this.den ** b);
+	}
+	divmod(b: rational): number	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
+	lt(b: rational):	boolean { return this.compare(b) < 0; }
+	eq(b: rational):	boolean { return b instanceof rational && this.compare(b) === 0; }
+	compare(b: rational): number { return this.num * b.den - b.num * this.den; }
+
+	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num} / ${this.den}`; }
+	valueOf():	number		{ return this.num / this.den; }
+}
+
+
+export const rational = Object.assign(
+	function(num: number, den = 1) {
+		const g = gcd(num, den);
+		return new _rational(num / g, den / g);
+	},
+	{// statics
+	zero()				{ return new _rational(0, 1); },
+	from(n: number, maxDen?: number): rational {
+		if (Number.isInteger(n))
+			return rational(n, 1);
+		const [h, k] = rationalApprox(n, maxDen ?? 1e20, 1e-20);
+		return new _rational(h, k);
+	},
 	
-	static fromContinuedFraction(terms: number[], maxDen?: number): rational {
+	fromContinuedFraction(terms: number[], maxDen?: number): rational {
 		let p2 = 1, q2 = 0;
 		let p1 = terms[0], q1 = 1;
 
@@ -75,48 +122,19 @@ export class rational implements scalar<rational> {
 				break;
 			}
 		}
-		return new rational(p1, q1);
-	}
+		return new _rational(p1, q1);
+	},
 
-	static simplified(num: number, den: number): rational {
+	simplified(num: number, den: number): rational {
 		const g = gcd(num, den);
-		return new rational(num / g, den / g);
+		return new _rational(num / g, den / g);
 	}
+});
 
-	constructor(public num: number, public den = 1) {
-		if (this.den < 0) {
-			this.den = -this.den;
-			this.num = -this.num;
-		}
-	}
-	from(n: number):	rational { return rational.from(n); }
-	dup():				rational { return new rational(this.num, this.den); }
+rational.prototype = _rational.prototype;
+export type rational = _rational;
+export default rational;
 
-	simplify():	rational	{ return rational.simplified(this.num, this.den); }
-	neg(): 		rational	{ return new rational(-this.num, this.den); }
-	recip():	rational	{ return new rational(this.den, this.num); }
-	abs():	 	rational	{ return new rational(Math.abs(this.num), this.den); }
-	frac():		rational	{ return new rational(this.num % this.den, this.den); }
-	floor():	number		{ return Math.floor(this.num / this.den); }
-	sign():		number		{ return this.num === 0 ? 0 : this.num > 0 ? 1 : -1; }
-	mag():	 	number		{ return Math.abs(this.num / this.den); }
-
-	set(b: rational):	rational { this.num = b.num; this.den = b.den; return this; }
-	scale(b: number):	rational { return this.mul(rational.from(b)); }
-	mul(b: rational):	rational { return rational.simplified(this.num * b.num, this.den * b.den); }
-	add(b: rational):	rational { return rational.simplified(this.num * b.den + b.num * this.den, this.den * b.den); }
-	sub(b: rational):	rational { return rational.simplified(this.num * b.den - b.num * this.den, this.den * b.den); }
-	div(b: rational):	rational { return this.mul(b.recip()); }
-	mod(b: rational):	rational { return this.div(b).frac().mul(b); }
-
-	divmod(b: rational): number	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
-	lt(b: rational):	boolean { return this.compare(b) < 0; }
-	eq(b: rational):	boolean { return this.compare(b) === 0; }
-	compare(b: rational): number { return this.num * b.den - b.num * this.den; }
-
-	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num} / ${this.den}`; }
-	valueOf():	number		{ return this.num / this.den; }
-}
 
 //-----------------------------------------------------------------------------
 // bigint rationals
@@ -184,7 +202,11 @@ export class rationalB implements scalar<rationalB> {
 	sub(b: rationalB):	rationalB	{ return new rationalB(this.num * b.den - b.num * this.den, this.den * b.den); }
 	div(b: rationalB):	rationalB	{ return this.mul(b.recip()); }
 	mod(b: rationalB):	rationalB	{ return this.div(b).frac().mul(b); }
-
+	ipow(b: number):	rationalB	{
+		return b < 0
+			? new rationalB(this.den ** BigInt(-b), this.num ** BigInt(-b))
+			: new rationalB(this.num ** BigInt(b), this.den ** BigInt(b));
+	}
 	divmod(b: rationalB):	bigint	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
 	compare(b: rationalB):	number	{ return signB(this.num * b.den - b.num * this.den); }
 	lt(b: rationalB):		boolean	{ return this.compare(b) < 0; }
@@ -250,3 +272,65 @@ export class rationalT<T extends scalar1<T>> {
 	toString()	{ return `${this.num} / ${this.den}`; }
 }
 */
+
+//-----------------------------------------------------------------------------
+// Numeric
+//-----------------------------------------------------------------------------
+
+// Numeric abstraction: allow `number | rational | rationalB` during migration
+type Num = number | rational | rationalB;
+
+export class Numeric {
+	constructor(public value: Num) {}
+
+	dup()	{ return new Numeric(this.value); }
+	sign()	{ return isNumber(this.value) ? Math.sign(this.value) : this.value.sign(); }
+	neg()	{ return new Numeric(isNumber(this.value) ? -this.value : this.value.neg()); }
+	abs()	{ return new Numeric(isNumber(this.value) ? Math.abs(this.value) : this.value.abs()); }
+	recip()	{ return new Numeric(isNumber(this.value) ? 1 / this.value : this.value.recip()); }
+	scale(b: number)	{ return new Numeric(isNumber(this.value) ? this.value * b : this.value.scale(b)); }
+
+	add(other: Numeric): Numeric {
+		const [a, b] = Numeric.coerce(this.value, other.value);
+		return new Numeric(isNumber(a) ? a + (b as number) : a.add(b as any));
+	}
+	sub(other: Numeric): Numeric {
+		const [a, b] = Numeric.coerce(this.value, other.value);
+		return new Numeric(isNumber(a) ? a - (b as number) : a.sub(b as any));
+	}
+	mul(other: Numeric): Numeric {
+		const [a, b] = Numeric.coerce(this.value, other.value);
+		return new Numeric(isNumber(a) ? a * (b as number) : a.mul(b as any));
+	}
+	div(other: Numeric): Numeric {
+		const [a, b] = Numeric.coerce(this.value, other.value);
+		return new Numeric(isNumber(a) ? rational(a, b as number) : a.div(b as any));
+	}
+
+	npow(n: number)		{
+		return new Numeric(isNumber(this.value) ? Math.pow(this.value, n) : Number.isInteger(n) ? this.value.ipow(n) : this.valueOf() ** n);
+	}
+	lt(other: Numeric)	{ return this.valueOf() < other.valueOf(); }
+	valueOf() {
+		return isNumber(this.value) ? this.value : Number(this.value.valueOf());
+	}
+	is0() { return this.valueOf() === 0; }
+	is1() { return this.valueOf() === 1; }
+
+	denominator() {
+		if (isNumber(this.value))
+			return denominator(this.value, 1000);
+		return Number(this.value.den);
+	}
+	toString() {
+		return this.value.toString();
+	}
+
+	static coerce(a: Num, b: Num): [Num, Num] {
+		return isNumber(a) ? (isNumber(b) ? [a, b] : [b.from(a), b]) as any
+			: isNumber(b) ? [a, a.from(b)] as any
+			: a.constructor === b.constructor ? [a, b] as any
+			: a instanceof rational ? [new rationalB(BigInt(a.num), BigInt(a.den)), b] as any
+			: [a, new rationalB(BigInt(b.num), BigInt(b.den))] as any;
+	}
+}

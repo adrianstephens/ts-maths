@@ -44,8 +44,6 @@ class _complex {
 	toString()	{ return `${this.r} ${this.i >= 0 ? '+' : '-'} ${Math.abs(this.i)}i`; }
 }
 
-export type complex = _complex;
-
 function fromPolar2(theta: number, r1: number, r2: number)	{
 	const {c, s} = sincos(theta);
 	return complex(c * r1, s * r2);
@@ -95,7 +93,10 @@ export const complex = Object.assign(
 
 	conjugatePair(c: complex) { return [c, c.conj()]; },
 });
+
 complex.prototype = _complex.prototype;
+export type complex = _complex;
+export default complex;
 
 export class complexT<T extends scalarExt<T>> {
 	constructor(public r: T, public i: T) {}
@@ -126,7 +127,6 @@ export class complexT<T extends scalarExt<T>> {
 	[Symbol.for("debug.description")]() { return `${this.r} + ${this.i} i`; }
 }
 
-export default complex;
 
 export const complexOps: Operators<complex> = {
 	...OperatorsBase(_complex),

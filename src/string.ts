@@ -1,5 +1,6 @@
-import { Operators, isAlmostInteger, rationalApprox } from './core';
-import rational, {algebraic, algebraicOps} from './rational';
+import { Num, Operators, isAlmostInteger } from './core';
+import rational from './rational';
+import algebraic from './algebraic';
 
 //-----------------------------------------------------------------------------
 // output
@@ -89,7 +90,7 @@ export function fractionString(num: number, den: number, chars = fractionChars, 
 function radicalString(n: number, symbol: string, opts?: FractionOptions): string|undefined {
 	if (opts === false)
 		return isAlmostInteger(n) ? Math.round(n).toString() : undefined;
-	const [num, den] = rationalApprox(n, 1000, 1e-8);
+	const [num, den] = Num.rationalApprox(n, 1000, 1e-8);
 	if (Math.abs(n - num / den) < 1e-10)
 		return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts?.chars, opts?.superSub);
 }
@@ -118,7 +119,7 @@ export function parseNumber(s: string): [number, algebraic] {
 	for (const [i, r] of Object.entries(radicalChars)) {
 		if (c === r) {
 			const [offset, num] = parseNumber(s.slice(r.length));
-			return [offset + r.length, algebraicOps.pow(num, rational(1, +i))];
+			return [offset + r.length, algebraic.pow(num, rational(1, +i))];
 		}
 	}
 

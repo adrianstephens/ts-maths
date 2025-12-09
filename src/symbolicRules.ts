@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import { approx, minT } from './core';
+import { approx, Gen } from './core';
 import { symbolic, MatchOptions, Bindings, term, factor, mulFactors, addTerms, factorAsSymbolic } from './symbolic';
 import { Numeric} from './rational';
 // Use Groebner / polynomial helpers for deterministic elimination
@@ -96,7 +96,7 @@ function getFactors(terms: readonly Readonly<term>[]): factorSet[] {
 	function addFactor(item: symbolic, pow: Numeric, t: term) {
 		const info = factors[item.id] ??= { item: item, pow: pow, terms: new Set<term>() };
 		info.terms.add(t);
-		info.pow = minT(info.pow, pow);
+		info.pow = Gen.min(info.pow, pow);
 	}
 	for (const t of terms) {
 		if (t.item.is('mul')) {

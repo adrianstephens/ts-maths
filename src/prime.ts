@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 
-import { absB, gcd, gcdB, modPow, modPowB, randomB } from './core';
+import { Num, Big } from './core';
 
 const smallPrimes	= [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
 const MR64			= [2, 325, 9375, 28178, 450775, 9780504, 1795265022];
@@ -34,11 +34,11 @@ function MillerRabin(n: number): number {
 */
 	function tryWitness(a: number): number {
 		// quick gcd check: if a shares a factor with n, return it
-		const factor = gcd(a, n);
+		const factor = Num.gcd(a, n);
 		if (factor > 1 && factor < n)
 			return factor;
 
-		let x = modPow(a, d, n);
+		let x = Num.modPow(a, d, n);
 		if (x === 1 || x === n - 1)
 			return 0;
 
@@ -47,11 +47,11 @@ function MillerRabin(n: number): number {
 			x = (x * x) % n;
 			if (x === 1) {
 				// Found nontrivial square root: x is such that x^2 ≡ 1 (mod n) but x ≠ ±1
-				const factor = gcd(x0 - 1, n);
+				const factor = Num.gcd(x0 - 1, n);
 				if (factor > 1 && factor < n)
 					return factor;
 				// try the other sign as well (rarely useful here, but harmless)
-				const factor2 = gcd(x0 + 1, n);
+				const factor2 = Num.gcd(x0 + 1, n);
 				if (factor2 > 1 && factor2 < n)
 					return factor2;
 			}
@@ -86,7 +86,7 @@ function pollardRhoBrent(n: number, f: (x: number) => number, y: number): number
 				y = f(y);
 				q = (q * Math.abs(x - y)) % n;
 			}
-			g = gcd(q, n);
+			g = Num.gcd(q, n);
 		}
 	}
 
@@ -94,7 +94,7 @@ function pollardRhoBrent(n: number, f: (x: number) => number, y: number): number
 		g = 1;
 		for (let attempts = 0; g === 1 && attempts < 4096; attempts++) {
 			y0 = f(y0);
-			g = gcd(Math.abs(x - y0), n);
+			g = Num.gcd(Math.abs(x - y0), n);
 		}
 	}
 	return g === 1 ? n : g;
@@ -267,7 +267,7 @@ function makeWitnesses(n: bigint, rounds = 12): Iterable<bigint> {
 	const bits = n.toString(2).length;
 	return (function*() {
 		for (let i = 0; i < rounds; i++)
-			yield randomB(bits) % (n - 3n) + 2n;
+			yield Big.random(bits) % (n - 3n) + 2n;
 	})();
 }
 
@@ -318,11 +318,11 @@ function MillerRabinB(n: bigint, witnesses: Iterable<bigint>): bigint {
 
 	function tryWitness(a: bigint): bigint {
 		// quick gcd check: if a shares a factor with n, return it
-		const factor = gcdB(a, n);
+		const factor = Big.gcd(a, n);
 		if (factor > 1n && factor < n)
 			return factor;
 
-		let x = modPowB(a, d, n);
+		let x = Big.modPow(a, d, n);
 		if (x === 1n || x === n - 1n)
 			return 0n;
 
@@ -331,11 +331,11 @@ function MillerRabinB(n: bigint, witnesses: Iterable<bigint>): bigint {
 			x = (x * x) % n;
 			if (x === 1n) {
 				// Found nontrivial square root: x is such that x^2 ≡ 1 (mod n) but x ≠ ±1
-				const factor = gcdB(x0 - 1n, n);
+				const factor = Big.gcd(x0 - 1n, n);
 				if (factor > 1n && factor < n)
 					return factor;
 				// try the other sign as well (rarely useful here, but harmless)
-				const factor2 = gcdB(x0 + 1n, n);
+				const factor2 = Big.gcd(x0 + 1n, n);
 				if (factor2 > 1n && factor2 < n)
 					return factor2;
 			}
@@ -361,7 +361,7 @@ function pollardRhoOnceB(n: bigint, f: (x: bigint) => bigint): bigint {
 	while (d === 1n) {
 		x = f(x);
 		y = f(f(y));
-		d = gcdB(absB(x - y), n);
+		d = Big.gcd(Big.abs(x - y), n);
 	}
 	return d;
 }
@@ -381,9 +381,9 @@ function pollardRhoBrentB(n: bigint, f: (x: bigint) => bigint, y: bigint): bigin
 			let q = 1n;
 			for (let i = 0; i < m && i < r - k; i++) {
 				y = f(y);
-				q = (q * absB(x - y)) % n;
+				q = (q * Big.abs(x - y)) % n;
 			}
-			g = gcdB(q, n);
+			g = Big.gcd(q, n);
 		}
 	}
 
@@ -391,7 +391,7 @@ function pollardRhoBrentB(n: bigint, f: (x: bigint) => bigint, y: bigint): bigin
 		g = 1n;
 		for (let attempts = 0; g === 1n && attempts < 4096; attempts++) {
 			y0 = f(y0);
-			g = gcdB(absB(x - y0), n);
+			g = Big.gcd(Big.abs(x - y0), n);
 		}
 	}
 	return g === 1n ? n : g;
@@ -400,7 +400,7 @@ function pollardRhoBrentB(n: bigint, f: (x: bigint) => bigint, y: bigint): bigin
 // Recursively factor n into prime factors
 export function factorBigInt(n: bigint): Map<bigint, number> {
 	const out	= new Map<bigint, number>();
-	n			= absB(n);
+	n			= Big.abs(n);
 
 	for (const i of smallPrimes) {
 		const	p		= BigInt(i);
@@ -424,10 +424,10 @@ export function factorBigInt(n: bigint): Map<bigint, number> {
 			if (factor === 1n) {
 				const bits	= m.toString(2).length;
 				for (let attempt = 0; attempt < 10; attempt++) {
-					const c	= randomB(bits) % (m - 1n) + 1n;
+					const c	= Big.random(bits) % (m - 1n) + 1n;
 					//factor	= pollardRhoOnce(m, c);
 					// f(x) = x^2 + c mod n
-					factor	= pollardRhoBrentB(m, (x: bigint) => (x * x + c) % m, randomB(bits) % m);
+					factor	= pollardRhoBrentB(m, (x: bigint) => (x * x + c) % m, Big.random(bits) % m);
 					if (factor < m)
 						break;
 				}
@@ -452,7 +452,7 @@ export class factorisationB extends Map<bigint, number> {
 			return;
 		}
 		super();
-		n	= absB(n);
+		n	= Big.abs(n);
 
 		for (const i of smallPrimes) {
 			const	p		= BigInt(i);
@@ -476,10 +476,10 @@ export class factorisationB extends Map<bigint, number> {
 				if (factor === 1n) {
 					const bits	= m.toString(2).length;
 					for (let attempt = 0; attempt < 10; attempt++) {
-						const c	= randomB(bits) % (m - 1n) + 1n;
+						const c	= Big.random(bits) % (m - 1n) + 1n;
 						//factor	= pollardRhoOnce(m, c);
 						// f(x) = x^2 + c mod n
-						factor	= pollardRhoBrentB(m, (x: bigint) => (x * x + c) % m, randomB(bits) % m);
+						factor	= pollardRhoBrentB(m, (x: bigint) => (x * x + c) % m, Big.random(bits) % m);
 						if (factor < m)
 							break;
 					}

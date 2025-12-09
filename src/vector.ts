@@ -1,5 +1,5 @@
 /* eslint-disable no-restricted-syntax */
-import {compareT, maxT, minT, ops, scalar, scalarExt, has} from './core';
+import {Gen, ops, scalar, scalarExt, has} from './core';
 import complex from './complex';
 import { Polynomial, PolynomialN } from './polynomial';
 import { floatN, characteristic, eigenvalues, LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';
@@ -249,9 +249,9 @@ export class vecImpT<T extends vscalar<T>, E extends string> implements vops<vec
 	div(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => v.div(b[k]))); }
 	add(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => v.add(b[k]))); }
 	sub(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => v.sub(b[k]))); }
-	min(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => minT(v, b[k]))); }
-	max(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => maxT(v, b[k]))); }
-	eq(b: vector<E, T>) 	{ return this.entries().every(([k, v]) => compareT(v, b[k]) === 0); }
+	min(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => Gen.min(v, b[k]))); }
+	max(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => Gen.max(v, b[k]))); }
+	eq(b: vector<E, T>) 	{ return this.entries().every(([k, v]) => Gen.compare(v, b[k]) === 0); }
 	dot(b: vector<E, T>) 	{ return this.entries().reduce((acc, [k, v]) => acc.add(v.mul(b[k])), this._values[0].from(0)); }
 	perp() 					{
 		const comps = this._values;

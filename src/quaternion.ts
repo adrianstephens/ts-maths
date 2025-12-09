@@ -1,5 +1,4 @@
 
-import { sincos, sin2cos } from "./core";
 import { float4, float3x3, float3, normalise } from "./vector";
 
 // Concatenate a float3 and a scalar into a float4
@@ -68,8 +67,7 @@ export const quaternion = Object.assign(
 	{// statics
 	exp(q: quaternion) {
 		const	t		= q.v.xyz.len();
-		const	sc		= sincos(t);
-		return quaternion(concat(q.v.xyz.scale(sc.s / t), sc.c).scale(Math.exp(q.v.w)));
+		return quaternion(concat(q.v.xyz.scale(Math.sin(t) / t), Math.cos(t)).scale(Math.exp(q.v.w)));
 	},
 	log(q: quaternion): quaternion {
 		const	v		= q.v.xyz;
@@ -170,9 +168,9 @@ export const unitQuaternion = Object.assign(
 	},
 	fromEulerZYX(angles: float3): unitQuaternion {
 		const	half	= angles.scale(0.5);
-		const	{s: sx, c:cx}	= sincos(half.x);
-		const	{s: sy, c:cy}	= sincos(half.y);
-		const	{s: sz, c:cz}	= sincos(half.z);
+		const	sx = Math.sin(half.x), cx = Math.cos(half.x);
+		const	sy = Math.sin(half.y), cy = Math.cos(half.y);
+		const	sz = Math.sin(half.z), cz = Math.cos(half.z);
 		return new _unitQuat(float4(
 			sx * cy * cz - cx * sy * sz,
 			cx * sy * cz + sx * cy * sz,
@@ -181,8 +179,7 @@ export const unitQuaternion = Object.assign(
 		));
 	},
 	fromAxisAngle(axis: float3, angle: number): unitQuaternion {
-		const { s, c } = sincos(angle * 0.5);
-		return new _unitQuat(concat(normalise(axis).scale(s), c));
+		return new _unitQuat(concat(normalise(axis).scale(Math.sin(angle / 2)), Math.cos(angle / 2)));
 	},
 	between(a: float3, b: float3) {
 		const half	= a.add(b).scale(0.5);
@@ -193,7 +190,8 @@ export const unitQuaternion = Object.assign(
 	pow(q: unitQuaternion, y: number) {
 		const	t	= q.v.xyz.len();
 		const	s	= Math.sin(Math.asin(t) * y);
-		return q.create(concat(q.v.xyz.scale(t ? s / t : 1), sin2cos(s)));
+		const	c	= Math.sqrt((1 - s) * (1 + s));
+		return q.create(concat(q.v.xyz.scale(t ? s / t : 1), c));
 	},
 	log(q: unitQuaternion): quaternion {
 		const	v		= q.v.xyz;

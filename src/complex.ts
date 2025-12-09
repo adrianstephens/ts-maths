@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 
-import { OperatorsBase, Operators, scalarExt, approx, sincos } from "./core";
+import { OperatorsBase, Operators, scalar, scalarExt, approx, has } from "./core";
 
 class _complex {
 	constructor(public r: number, public i: number) {}
@@ -21,6 +21,7 @@ class _complex {
 	sub(b: complex): complex	{ return complex(this.r - b.r, this.i - b.i); }
 	div(b: complex): complex	{ return this.mul(b.conj()).scale(1 / b.magSq()); }
 	npow(b: number): complex	{ return complex.fromPolar(Math.pow(this.mag(), b), this.arg() * b); }
+	rpow(n: number, d: number): complex	{ return this.npow(n / d); }
 	pow(b: complex): complex	{
 		if (b.i === 0)
 			return this.npow(b.r);
@@ -45,8 +46,7 @@ class _complex {
 }
 
 function fromPolar2(theta: number, r1: number, r2: number)	{
-	const {c, s} = sincos(theta);
-	return complex(c * r1, s * r2);
+	return complex(Math.cos(theta) * r1, Math.sin(theta) * r2);
 }
 
 
@@ -56,7 +56,7 @@ export const complex = Object.assign(
 	},
 	{// statics
 	zero()				{ return complex(0, 0); },
-	fromPolar(r: number, t: number)	{ const {c, s} = sincos(t); return complex(c * r, s * r); },
+	fromPolar(r: number, t: number)	{ return complex(Math.cos(t) * r, Math.sin(t) * r); },
 	sqrt(a: complex|number)	{
 		return typeof a === 'number' ? (a < 0 ? complex(0, Math.sqrt(-a)) : complex(Math.sqrt(a), 0)) : a.sqrt();
 	},
@@ -98,10 +98,12 @@ complex.prototype = _complex.prototype;
 export type complex = _complex;
 export default complex;
 
-export class complexT<T extends scalarExt<T>> {
+type scalarComplex<T extends scalar<T>> = scalar<T> & has<'sqrt'>;
+
+export class complexT<T extends scalarComplex<T>> {
 	constructor(public r: T, public i: T) {}
-	static fromPolar<T extends scalarExt<T>>(r: T, t: number)		{ const {c, s} = sincos(t); return new complexT(r.scale(c), r.scale(s)); }
-	static conjugatePair<T extends scalarExt<T>>(c: complexT<T>	)	{ return [c, c.conj()]; }
+	static fromPolar<T extends scalarComplex<T>>(r: T, t: number)		{ return new complexT(r.scale(Math.cos(t)), r.scale(Math.sin(t))); }
+	static conjugatePair<T extends scalarComplex<T>>(c: complexT<T>	)	{ return [c, c.conj()]; }
 
 	dup() 		{ return new complexT(this.r.dup(), this.i.dup()); }
 	neg() 		{ return new complexT(this.r.neg(), this.i.neg()); }
@@ -121,6 +123,30 @@ export class complexT<T extends scalarExt<T>> {
 	sqrt()	{
 		const m = this.mag();
 		return new complexT(m.add(this.r).scale(0.5).sqrt(), m.sub(this.r).scale(0.5).sqrt());
+	}
+
+	cbrt() {
+		// Algebraic cube root using Cardano-like formula
+		// ∛(a+bi) = ∛(r)e^(iθ/3) where r=|a+bi|, θ=arg(a+bi)
+		// In algebraic form: u+vi where u²+v² = ∛(a²+b²), u³-3uv²=a
+		// Simplified: u = ∛((a+|z|)/2), v = sign(b)∛((|z|-a)/2)
+		const mag = this.magSq().sqrt();
+		const u = mag.add(this.r).scale(0.5).rpow(1, 3);
+		const v_mag = mag.sub(this.r).scale(0.5).rpow(1, 3);
+		const v = this.i.sign() < 0 ? v_mag.neg() : v_mag;
+		return new complexT(u, v);
+	}
+
+	rpow(n: number, d: number) {
+		if (n === 1) {
+			switch (d) {
+				case 2:		return this.sqrt();
+				case 3:		return this.cbrt();
+			}
+		}
+		// fallback to polar form for other cases
+		const r = this.mag().rpow(n, d);
+		return complexT.fromPolar(r, Math.atan2(Number(this.i), Number(this.r)) * n / d);
 	}
 
 	toString()	{ return `${this.r} ${this.i.sign() >= 0 ? '+' : '-'} ${this.i.abs()}i`; }

@@ -1,266 +1,316 @@
-import { isNumber, isInstance, Operators, scalar, gcd, absB, signB, gcdB, divB, minB, lazySlice, has, rationalApprox, rationalApproxT, denominator } from "./core";
-import rational from './rational';
+import { isNumber, isInstance, Operators } from "./core";
+import rational from "./rational";
+import { radicalChars } from "./string";
 
-//-----------------------------------------------------------------------------
-// algebraic
-//-----------------------------------------------------------------------------
+type algebraic = number | rational | compound;
 
-export type algebraic = number | rational | radical | algebraicSum | algebraicProd
+type root = { base: algebraic, root: number };
+type term = { coeff: rational, roots: root[] };
 
-class radical {
-	constructor(public base: algebraic, public root: number) {}
-	eq(b: algebraic)	{
-		return b instanceof radical && this.root === b.root && algebraicOps.eq(this.base, b.base);
+class compound {
+	constructor(public terms: term[] = []) {}
+
+	eq(other: algebraic): boolean {
+		return String(this) === String(other);
 	}
-	neg()		{ return new algebraicProd([-1, this]); }
-	valueOf()	{ return Number(this.base) ** (1 / this.root); }
-	toString()	{ return this.root === 2 ? `sqrt(${this.base})` : `root(${this.base}, ${this.root})`; }
-}
-class algebraicSum {
-	constructor(public terms: algebraic[]) {}
-	eq(b: algebraic) {
-		return b instanceof algebraicSum && this.terms.length === b.terms.length && this.terms.every((t, i) => algebraicOps.eq(t, b.terms[i]));
+	toString(): string {
+		return this.terms.map(({coeff, roots}, i) => roots.length === 0
+			? (i === 0 ? String(coeff) : (coeff.sign() > 0 ? ' + ' : ' - ') + String(coeff.abs()))
+			: [
+				(i === 0 ? '' : coeff.sign() > 0 ? ' + ' : ' - '),
+				...(!coeff.abs().eq(rational(1)) ? [maybeParentheses(coeff.abs())] : []),
+				...roots.map(r => radicalChars[r.root] ? `${radicalChars[r.root]}${maybeParentheses(r.base)}` : `${maybeParentheses(r.base)}^(1/${r.root})`)
+			].join('')
+		).join('') || '0';
 	}
-	neg()		{ return new algebraicSum(this.terms.map(algebraicOps.neg)); }
-	valueOf()	{ return this.terms.reduce((a: number, b) => a + Number(b), 0); }
-	toString(): string { return `(${this.terms.map(t => t.toString()).join(' + ')})`; }
-}
-class algebraicProd {
-	constructor(public factors: algebraic[]) {}
-	eq(b: algebraic) {
-		return b instanceof algebraicProd && this.factors.length === b.factors.length && this.factors.every((f, i) => algebraicOps.eq(f, b.factors[i]));
+	valueOf() {
+		return this.terms.reduce((a, {coeff, roots}) => a + 
+			roots.reduce((a, {base, root}) => a * Number(base) ** (1 / root), Number(coeff))
+		, 0);
 	}
-	neg()		{ return combineFactors([-1, ...this.factors]); }
-	valueOf() 	{ return this.factors.reduce((a: number, b) => a * Number(b), 1); }
-	toString(): string { return `(${this.factors.map(t => t.toString()).join(' * ')})`; }
 }
 
-function makeRadical(n: algebraic, root: number): algebraic {
-	if (isInstance(n, radical)) {
-		root *= n.root;
-		n = n.base;
-	}
+function root(base: algebraic, root: number) : root {
+	return {base, root};
+}
+function term(coeff: number | rational, roots: root[] = []): term {
+	return {coeff: asRational(coeff), roots};
+}
+function isZero(a: algebraic): boolean {
+	return a === 0 || (isInstance(a, rational) && a.sign() === 0);
+}
+function asRational(x: number | rational) : rational {
+	return isNumber(x) ? rational(x) : x;
+}
+function asTerms(a: algebraic): term[] {
+	return a instanceof compound ? a.terms : [term(a)];
+}
 
-	if (n instanceof algebraicProd)
-		return combineFactors(n.factors.map(f => makeRadical(f, root)));
+function maybeParentheses(x: algebraic) {
+	const s = String(x);
+	return  /[^0-9]/.exec(s) ? `(${s})` : s;
+}
 
-	if (!isNumber(n))
-		return new radical(n, root);
-
-	if (n === 1)
-		return 1;
-	
-	let coefficient = 1;
-	let remaining = n;
-	
-	// Factor out perfect powers
-	for (let i = 2; ; i++) {
-		const factor = i ** root;
-		if (factor > remaining)
-			break;
-		while (remaining % factor === 0) {
-			coefficient *= i;
-			remaining /= factor;
+function simplifyRadical(base: number, n: number) {
+	let remaining = base, extracted = 1;
+	for (let i = 2, f = 2 ** n; f <= remaining; f = ++i ** n) {
+		while (remaining % f === 0) {
+			extracted *= i;
+			remaining /= f;
 		}
 	}
-	
-	return	remaining === 1 ? coefficient
-		:	coefficient === 1 ? new radical(remaining, root)
-		:	new algebraicProd([coefficient, new radical(remaining, root)]);
+	return [remaining, extracted];
 }
 
-function combineTerms(terms: algebraic[]): algebraic {
-	const termCounts = new Map<string, {factors: algebraic[], coef: rational}>();
-	let	sum = rational(0);
-
-	for (const term of terms) {
-		if (isNumber(term)) {
-			sum = sum.add(rational(term));
-		} else if (isInstance(term, rational)) {
-			sum = sum.add(term);
-		} else {
-			let rat = rational(1);
-			let factors: algebraic[] = [term];
-
-			if (isInstance(term, algebraicProd)) {
-				factors = term.factors;
-				const num1 = factors.find(f => isNumber(f));
-				if (num1) {
-					rat = rational(num1);
-					factors = factors.filter(f => f !== num1);
-				}
-				const rat1 = factors.find(f => isInstance(f, rational));
-				if (rat1) {
-					rat = rat1;
-					factors = factors.filter(f => !isInstance(f, rational));
+// Try to denest compound square roots: √(a + b√c) = √x + √y
+function simplifyQuad(base: compound): term[] | undefined {
+	let [t1, t2] = base.terms;
+	if (t1.roots.length)
+		[t1, t2] = [t2, t1];
+	if (t1.roots.length === 0 && t2.roots.length === 1) {
+		const a = t1.coeff;
+		const b = t2.coeff;
+		const r = t2.roots[0];
+		if (r.root === 2 && !(r.base instanceof compound)) {
+			const disc = a.mul(a).sub(b.mul(b).mul(asRational(r.base)));
+			if (disc.sign() >= 0) {
+				const sqrtDisc = Math.sqrt(Number(disc));
+				if (Math.floor(sqrtDisc) === sqrtDisc) {
+					const sqrtDiscRat = rational(sqrtDisc);
+					const x = a.add(sqrtDiscRat).div(rational(2));
+					const y = a.sub(sqrtDiscRat).div(rational(2));
+					if (x.sign() >= 0 && y.sign() >= 0)
+						return [term(b.sign(), [root(x, 2)]), term(b.sign(), [root(y, 2)])];
 				}
 			}
-
-			const key = JSON.stringify(factors);
-			const existing = termCounts.get(key);
-			if (existing)
-				existing.coef = existing.coef.add(rat);
-			else
-				termCounts.set(key, {factors, coef: rat});
 		}
 	}
-
-	// Add combined terms
-	const combined: algebraic[] = [];
-	for (const {factors, coef} of termCounts.values()) {
-		if (coef.sign()) {
-			if (!coef.eq(rational(1)))
-				factors.unshift(coef.den === 1 ? coef.num : coef);
-			combined.push(factors.length === 1 ? factors[0] : new algebraicProd(factors));
-		}
-	}
-
-	if (combined.length === 0)
-		return sum.den === 1 ? sum.num : sum;
-
-	if (!sum.eq(rational(0)))
-		combined.push(sum);
-
-	return combined.length === 1 ? combined[0] : new algebraicSum(combined);
 }
 
-function combineFactors(factors: algebraic[]): algebraic {
-	const combined: algebraic[] = [];
-	const radicalByBase:	Record<string, {base: algebraic, power: rational}> = {};
-	let product = rational(1);
+function termsCrossMul(at: term[], bt: term[]): term[] {
+	const result: term[] = [];
+	for (const termA of at) {
+		for (const termB of bt)
+			result.push(...termMul(termA, termB));
+	}
+	return result;
+}
 
-	for (const factor of factors) {
-		if (isNumber(factor)) {
-			product = product.scale(factor);
-		} else if (isInstance(factor, rational)) {
-			product = product.mul(factor);
-		} else if (isInstance(factor, radical)) {
-			const existing = radicalByBase[JSON.stringify(factor.base)] ??= {base: factor.base, power: rational(0)};
-			existing.power = existing.power.add(rational(1, factor.root));
-		} else {
-			combined.push(factor);
+// Normalize rational bases: (a/b)^(1/n) = a^(1/n) / b^(1/n)
+function normalizeRoot(r: root): root[] {
+	if (isInstance(r.base, rational) && r.base.den !== 1) {
+		return [
+			{base: r.base.num, root: r.root},
+			{base: r.base.den, root: -r.root}
+		];
+	}
+	return [r];
+}
+
+// multiply two terms
+function termMul(termA: term, termB: term): term[] {
+	let coeff = termA.coeff.mul(termB.coeff);
+	const compounds: compound[] = [];
+	const rootPowers: Record<string, {root: root, power: rational, count: number}> = {};
+	
+	// Accumulate powers: a^(1/n) × a^(1/m) = a^(1/n + 1/m)
+	// Normalize rational bases first so (1/2)^(1/4) becomes 2^(1/4) / 2^(1/4)
+	for (const r of [...termA.roots, ...termB.roots]) {
+		for (const nr of normalizeRoot(r)) {
+			const key = String(nr.base);
+			const power = rational(1, nr.root);
+			const existing = rootPowers[key];
+			if (existing) {
+				existing.power = existing.power.add(power);
+				existing.count++;
+			} else {
+				rootPowers[key] = {root: nr, power, count: 1};
+			}
+		}
+	}
+	
+	// Convert accumulated powers back to roots, only calling algebraic.pow when power changed
+	const roots: root[] = [];
+	for (const {root, power, count} of Object.values(rootPowers)) {
+		if (count === 1) {
+			// Unchanged - just keep the root
+			roots.push(root);
+		} else if (power.sign()) {
+			// Power changed - need to simplify through algebraic.pow
+			const t = algebraic.pow(root.base, power);
+			if (t instanceof compound)
+				compounds.push(t);
+			else
+				coeff = coeff.mul(asRational(t));
+		}
+	}
+	
+	let result = [term(coeff, roots)];
+	for (const t of compounds)
+		result = termsCrossMul(result, t.terms);
+	return result;
+}
+
+// take nth root of a term: flatten nested roots: (c × a^(1/n))^(1/m) = c^(1/m) × a^(1/nm)
+function termRoot(t: term, n: number) {
+	const roots = t.roots.map(r => root(r.base, r.root * n));
+	const flattened = simplifyTerms([{coeff: rational(1), roots}]);
+	return algebraic.mul(algebraic.pow(t.coeff, rational(1, n)), flattened);
+}
+
+function simplifyTerm(t: term): term[] {
+	let coeff = t.coeff;
+	const compounds: compound[] = [];
+	const roots: root[] = [];
+
+	// Normalize rational bases first, then combine products under same root
+	const rootGroups: algebraic[][] = [];
+	for (const r of t.roots) {
+		for (const nr of normalizeRoot(r))
+			(rootGroups[nr.root] ??= []).push(nr.base);
+	}
+	
+	for (const i in rootGroups) {
+		const root	= +i;
+		const bases = rootGroups[root];
+
+		// Multiply all numeric/rational bases together
+		let product = rational(1);
+		for (const base of bases) {
+			if (!(base instanceof compound))
+				product = product.mul(asRational(base));
+		}
+		
+		if (!product.eq(rational(1))) {
+			if (root < 0)
+				product = product.recip();
+			const aroot = Math.abs(root);
+			const [numRem, numExt] = simplifyRadical(product.num, aroot);
+			const [denRem, denExt] = simplifyRadical(product.den, aroot);
+			coeff = coeff.mul(rational(numExt, denExt));
+			if (numRem !== 1 || denRem !== 1)
+				roots.push({base: denRem === 1 ? numRem : rational(numRem, denRem), root: aroot});
+		}
+
+		for (const base of bases) {
+			if (base instanceof compound) {
+				if (root === 2 && base.terms.length === 2) {
+					const result = simplifyQuad(base);
+					if (result) {
+						compounds.push(new compound(result));
+						continue;
+					}
+				}
+				roots.push({base, root});
+			}
 		}
 	}
 
-	if (product.sign() === 0)
+	// Multiply collected compound factors
+	let result: term[] = [term(coeff, roots)];
+	for (const c of compounds)
+		result = termsCrossMul(result, c.terms);
+	return result;
+}
+
+function simplifyTerms(terms: term[]): algebraic {
+	const termMap: Record<string, term> = {};
+
+	for (const t of terms) {
+		if (t.coeff.sign()) {
+			const ts	= simplifyTerm(t);
+			for (const t of ts) {
+				const key	= JSON.stringify(t.roots.sort());
+				if (termMap[key])
+					termMap[key].coeff = termMap[key].coeff.add(t.coeff);
+				else
+					termMap[key] = t;
+			}
+		}
+	}
+
+	// Remove zero terms and convert back to array
+	const simplified = Array.from(Object.values(termMap)).filter(t => t.coeff.sign() !== 0);
+	if (simplified.length === 0)
 		return 0;
 
-	const radicalsByRoot:	string[][] = [];
-	for (const [key, {power}] of Object.entries(radicalByBase))
-		(radicalsByRoot[power.den] ??= []).push(key);
-
-	// Combine radicals with same root: √a × √b = √(a×b)
-	for (const i in radicalsByRoot) {
-		const root	= +i;
-		const exprs	= radicalsByRoot[root];
-		if (root === 1) {
-			const base = exprs.reduce((a: algebraic, b) => algebraicOps.mul(a, radicalByBase[b].base), 1);
-			if (isNumber(base)) {
-				product = product.scale(base);
-			} else if (isInstance(base, rational)) {
-				product = product.mul(base);
-			}
-			for (const key of exprs) {
-				const expr = radicalByBase[key];
-				expr.power = rational(0);
-			}
-
-		} else if (exprs.length > 1) {
-			const base = exprs.reduce((a: algebraic, b) => algebraicOps.mul(a, radicalByBase[b].base), 1);
-			combined.push(makeRadical(base, root));
-			for (const key of exprs) {
-				const expr = radicalByBase[key];
-				expr.power = rational(expr.power.floor());
-			}
+	// Look for pattern: x^(1/n) + c·x^(-1/n) which can denest => 2·(x^(1/2n))
+	if (simplified.length === 2) {
+		const [t1, t2] = simplified;
+		if (t1.roots.length === 1 && t2.roots.length === 1) {
+			const r1 = t1.roots[0], r2 = t2.roots[0];
+			if (algebraic.eq(r1.base, r2.base) && r1.root === -r2.root && t1.coeff.eq(t2.coeff))
+				return algebraic.mul(t1.coeff.scale(2), algebraic.pow(r1.base, rational(1, 2 * Math.abs(r1.root))));
 		}
 	}
 
-	// Add combined radicals
-	for (const {base, power} of Object.values(radicalByBase)) {
-		if (power.sign() > 0)
-			combined.push(algebraicOps.pow(base, power));
+	if (simplified.length === 1 && simplified[0].roots.length === 0) {
+		const coeff = simplified[0].coeff;
+		return coeff.den === 1 ? coeff.num : coeff;
 	}
 
-	// Add combined numeric/rational factor
-	if (combined.length === 0)
-		return product.den === 1 ? product.num : product;
-
-	if (!product.eq(rational(1)))
-		combined.unshift(product.den === 1 ? product.num : product);
-
-	return combined.length === 1 ? combined[0] : new algebraicProd(combined);
+	return new compound(simplified);
 }
 
+const algebraic: Operators<algebraic> & {
+	abs(a: algebraic): algebraic;
+} = {
+	from: (n: number) => rational.from(n),
+	func: () => undefined,
+	variable: () => undefined,
 
-export const algebraicOps: Operators<algebraic> = {
-	from(n: number) { return n; },
-	func(_name: string, _args: algebraic[]) { return undefined; },
-	variable(_name: string) { return undefined; },
+	dup: (a: algebraic) => a,
+	neg: (a: algebraic) => isNumber(a) ? -a
+		: isInstance(a, rational) ? a.neg()
+		: new compound(a.terms.map(t => term(t.coeff.neg(), t.roots))),
+	
+	add: (a: algebraic, b: algebraic) => simplifyTerms([...asTerms(a), ...asTerms(b)]),
+	mul: (a: algebraic, b: algebraic) => isZero(a) || isZero(b) ? 0 : simplifyTerms(termsCrossMul(asTerms(a), asTerms(b))),
+	sub: (a: algebraic, b: algebraic) => algebraic.add(a, algebraic.neg(b)),
+	div: (a: algebraic, b: algebraic) => algebraic.mul(a, algebraic.pow(b, rational(-1))),
 
-	dup(a: algebraic) {
-		return a;
-	},
-	neg(a: algebraic) {
-		return isNumber(a) ? -a : a.neg();
-	},
-	add(a: algebraic, b: algebraic) {
-		return combineTerms([...(a instanceof algebraicSum ? a.terms : [a]), ...(b instanceof algebraicSum ? b.terms : [b])]);
-	},
-	sub(a: algebraic, b: algebraic) {
-		return this.add(a, this.neg(b));
-	},
-	mul(a: algebraic, b: algebraic) {
-		// Expand (a+b)×(c+d) = ac + ad + bc + bd
-		if (a instanceof algebraicSum || b instanceof algebraicSum) {
-			const aTerms = a instanceof algebraicSum ? a.terms : [a];
-			const bTerms = b instanceof algebraicSum ? b.terms : [b];
-			const expandedTerms: algebraic[] = [];
-			for (const aTerm of aTerms) {
-				for (const bTerm of bTerms)
-					expandedTerms.push(combineFactors([...(aTerm instanceof algebraicProd ? aTerm.factors : [aTerm]), ...(bTerm instanceof algebraicProd ? bTerm.factors : [bTerm])]));
-			}
-			return combineTerms(expandedTerms);
+	ipow: (a: algebraic, n: number) => {
+		if (n === 0)
+			return 1;
+		if (isZero(a))
+			return 0;
+		if (n < 0)
+			return algebraic.pow(algebraic.ipow(a, -n), rational(-1));
+		
+		let result = n & 1 ? a : undefined;
+		for (n >>= 1; n; n >>= 1) {
+			a = algebraic.mul(a, a);
+			if (n & 1)
+				result = result ? algebraic.mul(result, a) : a;
 		}
-		return combineFactors([...(a instanceof algebraicProd ? a.factors : [a]), ...(b instanceof algebraicProd ? b.factors : [b])]);
+		return result!;
 	},
-
-	div(a: algebraic, b: algebraic) {
-		return this.mul(a, this.ipow(b, -1));
+	rpow: (a: algebraic, n: number, d: number) => {
+		return algebraic.pow(a, rational(n, d));
 	},
-	ipow(a: algebraic, n: number) {
-		if (isNumber(a))
-			return n < 0 ? rational(1, a ** -n) : a ** n;
-		if (isInstance(a, rational))
-			return a.ipow(n);
-		if (isInstance(a, radical))
-			return this.pow(a.base, rational(n, a.root));
-		throw new Error('unsupported type for ipow');
-	},
-	pow(a: algebraic, b: algebraic) {
+	pow: (a: algebraic, b: algebraic) => {
 		if (isNumber(b))
-			return this.ipow(a, b);
+			return algebraic.ipow(a, b);
+
 		if (isInstance(b, rational)) {
-			if (b.num !== 1)
-				a = this.ipow(a, b.num);
-			return b.den === 1 ? a : makeRadical(a, b.den);
+			if (isZero(a))
+				return 0;
+
+			const	base = Math.abs(b.num) === 1 ? a : algebraic.ipow(a, Math.abs(b.num));
+			const	root = b.num < 0 ? -b.den : b.den;
+			return	root === 1 ? base
+				:	base instanceof compound && base.terms.length === 1 ? termRoot(base.terms[0], root)
+				:	simplifyTerms([term(1, [{base, root}])]);
 		}
-		throw new Error('unsupported type for pow');
+		throw new Error('unsupported exponent');
 	},
 
-	eq(a: algebraic, b: algebraic): boolean {
-		if (a === b)
-			return true;
-		if (isInstance(a, rational) && isInstance(b, rational))
-			return a.eq(b);
-		if (isInstance(a, radical))
-			return a.eq(b);
-		if (a instanceof algebraicSum)
-			return a.eq(b);
-		if (a instanceof algebraicProd)
-			return a.eq(b);
-		return false;
-	},
-	lt(a: algebraic, b: algebraic) { throw new Error('unsupported type for lt'); }
+	eq: (a: algebraic, b: algebraic) => String(a) === String(b),
+	lt: (a: algebraic, b: algebraic) => Number(a) < Number(b),
+	abs: (a: algebraic) => isNumber(a) ? Math.abs(a)
+		: isInstance(a, rational) ? a.abs()
+		: new compound(a.terms.map(t => term(t.coeff.abs(), t.roots))),
 
 };
 
+export default algebraic;

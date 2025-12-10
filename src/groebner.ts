@@ -6,7 +6,7 @@
  */
 
 import { factor, symbolic, mulFactors } from './symbolic';
-import { Numeric } from './rational';
+import rational from './rational';
 
 type  Monomial = number[];
 
@@ -22,7 +22,7 @@ type Compare = (a: Monomial, b: Monomial) => number;
 // ============================================================================
 
 function monomialToSymbolic(mon: Monomial, variables: readonly symbolic[]): symbolic {
-	return mulFactors(new Numeric(1), ...mon.map((exp, i) => factor(variables[i], new Numeric(exp))).filter(Boolean));
+	return mulFactors(rational(1), ...mon.map((exp, i) => factor(variables[i], rational(exp))).filter(Boolean));
 }
 
 /**
@@ -158,7 +158,7 @@ function extractTerm(expr: symbolic, variables: readonly symbolic[]): Term {
  */
 function leadingTerm(poly: symbolic, variables: readonly symbolic[], ordering: Compare): Term | undefined {
 	// After expansion, unwrap if it got wrapped again
-	let scale = new Numeric(1);
+	let scale = rational(1);
 	if (poly.is('mul') && poly.factors.length === 1 && poly.factors[0].pow.is1() && poly.factors[0].item.is('add')) {
 		scale = poly.num;
 		poly = poly.factors[0].item;

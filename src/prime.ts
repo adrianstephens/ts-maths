@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 
-import { Num, Big } from './core';
+import Num from './num';
+import Big from './big';
 
 const smallPrimes	= [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
 const MR64			= [2, 325, 9375, 28178, 450775, 9780504, 1795265022];

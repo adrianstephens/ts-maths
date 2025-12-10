@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
-import {Gen, ops, scalar, scalarExt, has} from './core';
+import {ops, scalar, scalarExt, has} from './core';
+import Gen from './gen';
 import complex from './complex';
 import { Polynomial, PolynomialN } from './polynomial';
 import { floatN, characteristic, eigenvalues, LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';

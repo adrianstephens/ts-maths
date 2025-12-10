@@ -1,9 +1,9 @@
 /* eslint-disable no-restricted-syntax */
-import { approx, Gen } from './core';
+import Gen from './gen';
+import rational from './rational';
 import { symbolic, MatchOptions, Bindings, term, factor, mulFactors, addTerms, factorAsSymbolic } from './symbolic';
-import { Numeric} from './rational';
 // Use Groebner / polynomial helpers for deterministic elimination
-import { groebnerBasis, lexOrder } from './groebner';
+//import { groebnerBasis, lexOrder } from './groebner';
 // polynomial/resultant helpers were used previously for a heavyweight fallback
 // but we now use a deterministic Groebner-based eliminant inside the rule.
 
@@ -93,7 +93,7 @@ interface factorCandidate {
 function getFactors(terms: readonly Readonly<term>[]): factorSet[] {
 	const factors: Record<string, factorSet> = {};
 
-	function addFactor(item: symbolic, pow: Numeric, t: term) {
+	function addFactor(item: symbolic, pow: rational, t: term) {
 		const info = factors[item.id] ??= { item: item, pow: pow, terms: new Set<term>() };
 		info.terms.add(t);
 		info.pow = Gen.min(info.pow, pow);
@@ -103,7 +103,7 @@ function getFactors(terms: readonly Readonly<term>[]): factorSet[] {
 			for (const f of t.item.factors)
 				addFactor(f.item, f.pow, t);
 		} else {
-			addFactor(t.item, new Numeric(1), t);
+			addFactor(t.item, rational(1), t);
 		}
 	}
 	return Object.values(factors);
@@ -172,7 +172,7 @@ function applyFactorCandidate(terms: Set<term>, f: factorCandidate) {
 	const terms2 = f.terms.intersection(terms);
 	for (const v of terms2)
 		terms.delete(v);
-	return addTerms(new Numeric(0), ...Array.from(terms2).map(t => f.remove(t))).mul(f.mul);
+	return addTerms(rational(0), ...Array.from(terms2).map(t => f.remove(t))).mul(f.mul);
 }
 
 
@@ -211,7 +211,7 @@ function commonFactors(terms: readonly Readonly<term>[], scorer: (sym: symbolic)
 		for (const candidate of candidates) {
 			const terms = candidate.terms.intersection(remaining);
 			if (terms.size > 1)  {
-				const inner = addTerms(new Numeric(0), ...Array.from(terms).map(t => candidate.remove(t)));
+				const inner = addTerms(rational(0), ...Array.from(terms).map(t => candidate.remove(t)));
 				const score = scoreCandidate(terms, inner);
 				if (!best || score > best.score)
 					best = { candidate, terms, inner, score };
@@ -230,6 +230,10 @@ function commonFactors(terms: readonly Readonly<term>[], scorer: (sym: symbolic)
 }
 
 export function factored(node: symbolic) {
+	if (node.is('mul'))
+		return node.visit({
+			post: (x: symbolic): symbolic => x.is('add') ? factored(x) : x,
+		});
 	if (!node.is('add'))
 		return node;
 	const scorer = scoreFactory();
@@ -333,12 +337,12 @@ export const generalRules: Rule[] = [
 	// narrow fraction rules: same denominator and one-denominator-is-product-of-other
 	// rewrite A/U - V  ->  (A - U*V) / U
 	// rewrite V - A/U  ->  (U*V - A) / U
-	//PatternRule('sub-over-denom',
-	//	A.div(U).sub(V),
-	//	//V.sub(A.div(U)),
-	//	bs => bs.A.sub(bs.U.mul(bs.V)).div(bs.U)
-	//	//bs => bs.U.mul(bs.V).sub(bs.A).div(bs.U)
-	//),
+	PatternRule('sub-over-denom',
+		A.div(U).sub(V),
+		//V.sub(A.div(U)),
+		bs => bs.A.sub(bs.U.mul(bs.V)).div(bs.U)
+		//bs => bs.U.mul(bs.V).sub(bs.A).div(bs.U)
+	),
 
 	// rewrite A/U - B/V  ->  (A*V - B*U) / (U*V)
 	PatternRule('sub-over-denoms 2',

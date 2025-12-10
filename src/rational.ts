@@ -1,51 +1,8 @@
-import { Num, Big, Gen, isNumber, scalar, scalarRational, lazySlice } from "./core";
+import { Operators, scalarRational, lazySlice } from "./core";
+import Num from './num';
+import Big from './big';
+import Gen, {OperatorsBase} from './gen';
 
-//-----------------------------------------------------------------------------
-// continued fractions
-//-----------------------------------------------------------------------------
-export function continuedFraction(x: number, maxTerms = 64, eps?: number): number[] {
-	const out: number[] = [];
-
-	for (let i = 0; i < maxTerms; i++) {
-		const a = Math.floor(x);
-		out.push(a);
-		x -= a;
-		if (x === 0 || (eps !== undefined && Math.abs(x) < eps))
-			break;
-		x = 1 / x;
-	}
-	return out;
-}
-
-export function continuedFractionT<T extends scalarRational<T>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
-	const out: (bigint|number)[] = [];
-	const one = x.from(1);
-
-	x = x.dup();
-	let a = x.divmod(one);
-	if (x.sign() < 0) {
-		--a;
-		x = x.add(one);
-	}
-	out.push(a);
-
-	for (let i = 1; i < maxTerms && (x.sign() !== 0 && (eps === undefined || eps.lt(x.abs()))); i++) {
-		x = x.recip();
-		out.push(x.divmod(one));
-	}
-	return out;
-}
-/*
-function *convergents<T extends scalar<T>>(terms: (bigint|number)[]): Generator<{n: bigint, d: bigint, a: bigint}> {
-	let p2 = 0n, p1 = 1n;
-	let q2 = 1n, q1 = 0n;
-	for (const i of terms) {
-		const a = BigInt(i);
-		[p2, q2, p1, q1] = [p1, q1, a * p1 + p2, a * q1 + q2];
-		yield {n: p1, d: q1, a};
-	}
-}
-*/
 
 //-----------------------------------------------------------------------------
 // number rationals
@@ -89,15 +46,29 @@ class _rational {
 
 	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num}/${this.den}`; }
 	valueOf():	number		{ return this.num / this.den; }
+
+	is0(): boolean			{ return this.num === 0; }
+	is1(): boolean			{ return this.num === this.den; }
 }
 
 
-export const rational = Object.assign(
+export const rational: ((num: number, den?: number) => rational) & Operators<rational> & {
+	zero(): rational;
+	from(n: number, maxDen?: number): rational;
+	fromContinuedFraction(terms: number[], maxDen?: number): rational;
+	simplified(num: number, den: number): rational;
+} = Object.assign(
+//export const rational = Object.assign(
 	function(num: number, den = 1) {
 		const g = Num.gcd(num, den);
 		return new _rational(num / g, den / g);
 	},
+	OperatorsBase(_rational),
 	{// statics
+	variable(_name: string): undefined			{},
+	rpow(a: rational, n: number, d: number)		{ if (d === 1) return a.ipow(n); throw new Error("invalid"); },
+	pow(a: rational, b: rational)				{ return this.rpow(a, b.num, b.den); },
+
 	zero()				{ return new _rational(0, 1); },
 	from(n: number, maxDen?: number): rational {
 		if (Number.isInteger(n))
@@ -138,23 +109,71 @@ export default rational;
 // bigint rationals
 //-----------------------------------------------------------------------------
 
-export class rationalB implements scalar<rationalB> {
-	static from(n: number|bigint|scalarRational<any>, maxDen?: bigint): rationalB {
+class _rationalB {
+	constructor(public num: bigint, public den = 1n) {
+		if (this.den < 0n) {
+			this.den = -this.den;
+			this.num = -this.num;
+		}
+	}
+	from(n: number|bigint):	rationalB	{ return rationalB.from(n); }
+	dup():					rationalB	{ return rationalB(this.num, this.den); }
+
+	simplify(): rationalB {
+		const g = Big.gcd(this.num, this.den);
+		return rationalB(this.num / g, this.den / g);
+	}
+	neg(): 		rationalB	{ return rationalB(-this.num, this.den); }
+	recip():	rationalB	{ return rationalB(this.den, this.num); }
+	abs():	 	rationalB	{ return rationalB(Big.abs(this.num), this.den); }
+	frac():		rationalB	{ return rationalB(this.num % this.den, this.den); }
+	floor():	bigint		{ return this.num / this.den; }
+	sign():		number		{ return this.num === 0n ? 0 : this.num > 0n ? 1 : -1; }
+	mag():	 	number		{ return Big.divToNum(Big.abs(this.num), this.den); }
+
+	set(b: rationalB):	rationalB	{ this.num = b.num; this.den = b.den; return this; }
+	scale(b: number):	rationalB	{ return this.mul(rationalB.from(b)); }
+	mul(b: rationalB):	rationalB	{ return rationalB(this.num * b.num, this.den * b.den); }
+	add(b: rationalB):	rationalB	{ return rationalB(this.num * b.den + b.num * this.den, this.den * b.den); }
+	sub(b: rationalB):	rationalB	{ return rationalB(this.num * b.den - b.num * this.den, this.den * b.den); }
+	div(b: rationalB):	rationalB	{ return this.mul(b.recip()); }
+	mod(b: rationalB):	rationalB	{ return this.div(b).frac().mul(b); }
+	ipow(b: number):	rationalB	{
+		return b < 0
+			? rationalB(this.den ** BigInt(-b), this.num ** BigInt(-b))
+			: rationalB(this.num ** BigInt(b), this.den ** BigInt(b));
+	}
+	divmod(b: rationalB):	bigint	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
+	compare(b: rationalB):	number	{ return Big.sign(this.num * b.den - b.num * this.den); }
+	lt(b: rationalB):		boolean	{ return this.compare(b) < 0; }
+	eq(b: rationalB):		boolean	{ return this.compare(b) === 0; }
+
+	toString()			{ return this.den === 1n ? `${this.num}` : `${this.num}/${this.den}`; }
+	valueOf():	number	{ return Big.divToNum(this.num, this.den); }
+}
+
+export const rationalB = Object.assign(
+	function(num: bigint, den = 1n) {
+		const g = Big.gcd(num, den);
+		return new _rationalB(num / g, den / g);
+	},
+	{// statics
+	from(n: number|bigint|scalarRational<any>, maxDen?: bigint): rationalB {
 		if (typeof n === 'bigint')
-			return new rationalB(n, 1n);
+			return rationalB(n, 1n);
 
 		if (typeof n === 'number') {
 			if (Number.isInteger(n))
-				return new rationalB(BigInt(n), 1n);
+				return rationalB(BigInt(n), 1n);
 
 			const [h, k] = Num.rationalApprox(n, 1e20);
-			return new rationalB(BigInt(h), BigInt(k));
+			return rationalB(BigInt(h), BigInt(k));
 		}
 		const [h, k] = Gen.rationalApprox(n, maxDen ?? 1n << 64n, n.from(1e-8));
-		return new rationalB(BigInt(h), BigInt(k));
-	}
+		return rationalB(BigInt(h), BigInt(k));
+	},
 
-	static fromContinuedFraction(terms: (bigint|number)[], maxDen?: bigint): rationalB {
+	fromContinuedFraction(terms: (bigint|number)[], maxDen?: bigint): rationalB {
 		let p2 = 1n, q2 = 0n;
 		let p1 = BigInt(terms[0]), q1 = 1n;
 
@@ -169,53 +188,15 @@ export class rationalB implements scalar<rationalB> {
 				break;
 			}
 		}
-		return new rationalB(p1, q1);
+		return rationalB(p1, q1);
 	}
+});
 
-	constructor(public num: bigint, public den = 1n) {
-		if (this.den < 0n) {
-			this.den = -this.den;
-			this.num = -this.num;
-		}
-	}
-	from(n: number|bigint):	rationalB	{ return rationalB.from(n); }
-	dup():					rationalB	{ return new rationalB(this.num, this.den); }
-
-	simplify(): rationalB {
-		const g = Big.gcd(this.num, this.den);
-		return new rationalB(this.num / g, this.den / g);
-	}
-	neg(): 		rationalB	{ return new rationalB(-this.num, this.den); }
-	recip():	rationalB	{ return new rationalB(this.den, this.num); }
-	abs():	 	rationalB	{ return new rationalB(Big.abs(this.num), this.den); }
-	frac():		rationalB	{ return new rationalB(this.num % this.den, this.den); }
-	floor():	bigint		{ return this.num / this.den; }
-	sign():		number		{ return this.num === 0n ? 0 : this.num > 0n ? 1 : -1; }
-	mag():	 	number		{ return Big.divToN(Big.abs(this.num), this.den); }
-
-	set(b: rationalB):	rationalB	{ this.num = b.num; this.den = b.den; return this; }
-	scale(b: number):	rationalB	{ return this.mul(rationalB.from(b)); }
-	mul(b: rationalB):	rationalB	{ return new rationalB(this.num * b.num, this.den * b.den); }
-	add(b: rationalB):	rationalB	{ return new rationalB(this.num * b.den + b.num * this.den, this.den * b.den); }
-	sub(b: rationalB):	rationalB	{ return new rationalB(this.num * b.den - b.num * this.den, this.den * b.den); }
-	div(b: rationalB):	rationalB	{ return this.mul(b.recip()); }
-	mod(b: rationalB):	rationalB	{ return this.div(b).frac().mul(b); }
-	ipow(b: number):	rationalB	{
-		return b < 0
-			? new rationalB(this.den ** BigInt(-b), this.num ** BigInt(-b))
-			: new rationalB(this.num ** BigInt(b), this.den ** BigInt(b));
-	}
-	divmod(b: rationalB):	bigint	{ const q = this.div(b); this.set(q.frac().mul(b)); return q.floor(); }
-	compare(b: rationalB):	number	{ return Big.sign(this.num * b.den - b.num * this.den); }
-	lt(b: rationalB):		boolean	{ return this.compare(b) < 0; }
-	eq(b: rationalB):		boolean	{ return this.compare(b) === 0; }
-
-	toString()			{ return this.den === 1n ? `${this.num}` : `${this.num}/${this.den}`; }
-	valueOf():	number	{ return Big.divToN(this.num, this.den); }
-}
+rationalB.prototype = _rationalB.prototype;
+export type rationalB = _rationalB;
 
 //-----------------------------------------------------------------------------
-// generic rationals
+// generic rationals - why?
 //-----------------------------------------------------------------------------
 /*
 export class rationalT<T extends scalarRational<T>> {
@@ -274,7 +255,7 @@ export class rationalT<T extends scalarRational<T>> {
 //-----------------------------------------------------------------------------
 // Numeric
 //-----------------------------------------------------------------------------
-
+/*
 // Numeric abstraction: allow `number | rational | rationalB` during migration
 type Num = number | rational | rationalB;
 
@@ -285,7 +266,7 @@ export class Numeric {
 	sign()	{ return isNumber(this.value) ? Math.sign(this.value) : this.value.sign(); }
 	neg()	{ return new Numeric(isNumber(this.value) ? -this.value : this.value.neg()); }
 	abs()	{ return new Numeric(isNumber(this.value) ? Math.abs(this.value) : this.value.abs()); }
-	recip()	{ return new Numeric(isNumber(this.value) ? 1 / this.value : this.value.recip()); }
+	recip()	{ return new Numeric(isNumber(this.value) ? rational(1, this.value) : this.value.recip()); }
 	scale(b: number)	{ return new Numeric(isNumber(this.value) ? this.value * b : this.value.scale(b)); }
 
 	add(other: Numeric): Numeric {
@@ -305,8 +286,14 @@ export class Numeric {
 		return new Numeric(isNumber(a) ? rational(a, b as number) : a.div(b as any));
 	}
 
+	ipow(n: number)		{
+		return new Numeric(isNumber(this.value) ? Math.pow(this.value, n) : this.value.ipow(n));
+	}
+	rpow(n: number, d: number)		{
+		return new Numeric(Number(this.value) ** (n / d));
+	}
 	npow(n: number)		{
-		return new Numeric(isNumber(this.value) ? Math.pow(this.value, n) : Number.isInteger(n) ? this.value.ipow(n) : this.valueOf() ** n);
+		return new Numeric(Number(this.value) ** n);
 	}
 	lt(other: Numeric)	{ return this.valueOf() < other.valueOf(); }
 	valueOf() {
@@ -328,7 +315,8 @@ export class Numeric {
 		return isNumber(a) ? (isNumber(b) ? [a, b] : [b.from(a), b]) as any
 			: isNumber(b) ? [a, a.from(b)] as any
 			: a.constructor === b.constructor ? [a, b] as any
-			: a instanceof rational ? [new rationalB(BigInt(a.num), BigInt(a.den)), b] as any
-			: [a, new rationalB(BigInt(b.num), BigInt(b.den))] as any;
+			: a instanceof rational ? [rationalB(BigInt(a.num), BigInt(a.den)), b] as any
+			: [a, rationalB(BigInt(b.num), BigInt(b.den))] as any;
 	}
 }
+*/

@@ -1,6 +1,5 @@
-import { Num, Operators, isAlmostInteger } from './core';
-import rational from './rational';
-import algebraic from './algebraic';
+import { Operators } from './core';
+import Num, { isAlmostInteger } from './num';
 
 //-----------------------------------------------------------------------------
 // output
@@ -110,55 +109,6 @@ export function outputNumber(n: number, opts?: ConstOptions): string {
 	return n.toString();
 }
 
-const reRational	= /^((\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))/;
-const reNumber 		= /^(((\d+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))|((\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?))/;
-
-export function parseNumber(s: string): [number, algebraic] {
-	const c = s.charAt(0);
-
-	for (const [i, r] of Object.entries(radicalChars)) {
-		if (c === r) {
-			const [offset, num] = parseNumber(s.slice(r.length));
-			return [offset + r.length, algebraic.pow(num, rational(1, +i))];
-		}
-	}
-
-	if (revFractionChars[c]) {
-		const [num, den] = revFractionChars[c];
-		return [1, num / den];
-	}
-
-	const f = reRational.exec(s);
-	if (f)
-		return [f[0].length, rational(+fromSuperscript(f[2]), +fromSubscript(f[3]))];
-
-
-	const map = revSuperscriptMap[c] ? revSuperscriptMap : revSubscriptMap[c] ? revSubscriptMap : null;
-	if (map) {
-		const out: string[] = [];
-		for (const ch of s) {
-			const m = map[ch];
-			if (!m)
-				break;
-			out.push(m);
-		}
-		s = out.join('');
-	}
-
-	const m = reNumber.exec(s);
-	if (m)
-		return [m[0].length, m[3] ? rational(+m[3], +fromSubscript(m[4])) : parseFloat(m[0])];
-
-	return [0,0];
-}
-
-function parseNumber1(s: string): number {
-	const m = reNumber.exec(s);
-	if (m)
-		return m[3] ? +m[3] / +fromSubscript(m[4]) : parseFloat(m[0]);
-	return NaN;
-}
-
 type VerticalStyle = {left: string; right: string, mid: number};
 export const verticalStyles = {
 	bigBraces: {
@@ -197,6 +147,9 @@ const reSuper 		= /^[⁰¹²³⁴⁵⁶⁷⁸⁹¹²³⁴⁵⁶⁷⁸⁹⁺⁻�
 const reIdentifier	= /^[\p{L}_][\p{L}\d_]*/u;
 const reMultiply	= /^[*.⋅×]/;
 const reDivide		= /^[/÷]/;
+const reRational	= /^((\d+|[⁰¹²³⁴⁵⁶⁷⁸⁹]+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))/;
+const reNumber 		= /^(((\d+)[/\u2044\u2215](\d+|[₀₁₂₃₄₅₆₇₈₉]+))|((\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?))/;
+const revRadical	= buildReverseMap(radicalChars);
 
 const knownSymbols: Record<string, string> = {
 	'π': 'pi',
@@ -208,50 +161,76 @@ const knownSymbols: Record<string, string> = {
 export function parse<T>(ops: Operators<T>, s: string): T {
 	let pos = 0;
 
-	function remainder() {
-		return s.slice(pos);
-	}
-	function move(n: number) {
-		pos = Math.min(pos + n, s.length);
-	}
-	function peek(c: string) {
-		return s.slice(pos, pos + c.length) === c;
-	}
+	function remainder() 			{ return s.slice(pos); }
+	function move(n: number) 		{ pos = Math.min(pos + n, s.length); }
+	function peek(n = 1) 			{ return s.slice(pos, pos + n); }
+	function check(c: string) 		{ return peek(c.length) === c; }
+	function checkre(re: RegExp)	{ return re.exec(remainder()); }
+
 	function skip(c: string) {
-		if (remainder().startsWith(c)) {
-			pos += c.length;
-			return true;
+		if (!check(c))
+			return false;
+		pos += c.length;
+		return true;
+	}
+	function skipre(re: RegExp) {
+		const m = re.exec(remainder());
+		if (m) {
+			pos += m.index + m[0].length;
+			return m;
 		}
-		return false;
 	}
 	function expect(c: string) {
 		if (!skip(c)) 
 			throw new Error(`Expected '${c}'`);
 	}
-	function peekre(re: RegExp) {
-		return re.exec(remainder());
-	}
-	function match(re: RegExp) {
-		const m = re.exec(remainder());
-		if (m) {
-			pos += m.index + m[0].length;
-			return m[0];
-		}
+	function skipSpaces() {
+		skipre(/\s*/);
 	}
 
-	function skipSpaces() {
-		match(/\s*/);
+	function rational(n: number, d: number) {
+		if (d === 1)
+			return ops.from(n);
+		return ops.div(ops.from(n), ops.from(d));
+	}
+
+	function number(m: string[]) {
+		return m[3] ? rational(+m[3], +fromSubscript(m[4])) : ops.from(parseFloat(m[0]));
 	}
 
 	function parsePrimary(): T {
 		skipSpaces();
 
 		// number
-		const [offset, num] = parseNumber(remainder());
-		if (offset > 0) {
-			move(offset);
-			return ops.from(Number(num));
+
+		let m = skipre(reRational);
+		if (m)
+			return rational(+fromSuperscript(m[2]), +fromSubscript(m[3]));
+
+		const c = peek();
+		const frac = revFractionChars[c];
+		if (frac) {
+			move(1);
+			return rational(frac[0], frac[1]);
 		}
+
+		const map = revSuperscriptMap[c] ? revSuperscriptMap : revSubscriptMap[c] ? revSubscriptMap : null;
+		if (map) {
+			const out: string[] = [];
+			for (const ch of s) {
+				const m = map[ch];
+				if (!m)
+					break;
+				out.push(m);
+			}
+			const m = reNumber.exec(out.join(''));
+			if (m)
+				return number(m);
+		}
+
+		m = skipre(reNumber);
+		if (m)
+			return number(m);
 
 		// parenthesized
 		if (skip('(')) {
@@ -262,8 +241,10 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 		}
 
 		// identifier or function
-		let id = match(reIdentifier);
-		if (id) {
+		m = skipre(reIdentifier);
+		if (m) {
+			let id = m[0];
+
 			// function call
 			if (skip('(')) {
 				const savepos = pos - 1;
@@ -308,12 +289,21 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 
 	// parse power (right-associative)
 	function parsePower(): T {
+		const r = revRadical[peek()];
+		if (r) {
+			move(1);
+			return ops.rpow(parsePower(), 1, +r);
+		}
+
 		let left = parsePrimary();
 		skipSpaces();
-		const sup = match(reSuper);
+		const sup = skipre(reSuper);
 		if (sup) {
-			const t = fromSuperscript(sup[0]);
-			left = ops.pow(left, ops.from(parseNumber1(t)));
+			const m = reNumber.exec(fromSuperscript(sup[0]));
+			if (!m)
+				throw new Error(`Invalid superscript: ${sup[0]}`);
+			const pow = m[3] ? rational(+m[3], +fromSubscript(m[4])) : ops.from(parseFloat(m[0]));
+			left = ops.pow(left, pow);
 		}
 		while (skipSpaces(), skip('^'))
 			left = ops.pow(left, parsePower());
@@ -325,11 +315,11 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 		let left = parsePower();
 		for (;;) {
 			skipSpaces();
-			if (match(reMultiply) || peekre(/^[\d.]/) || peekre(/^[\p{L}_]/u)) {
+			if (skipre(reMultiply) || checkre(/^[\d.]/) || checkre(/^[\p{L}_]/u)) {
 				left = ops.mul(left, parsePower());
-			} else if (match(reDivide)) {
+			} else if (skipre(reDivide)) {
 				left = ops.div(left, parsePower());
-			} else if (peek('(')) {
+			} else if (check('(')) {
 				left = ops.mul(left, parsePower());
 			} else {
 				break;
@@ -352,9 +342,9 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 	function parseExpression(): T {
 		let left = parseUnary();
 		let op;
-		while ((op = (skipSpaces(), match(/^[+-]/)))) {
+		while ((op = (skipSpaces(), skipre(/^[+-]/)))) {
 			const right = parseUnary();
-			left = op === '+' ? ops.add(left, right) : ops.sub(left, right);
+			left = op[0] === '+' ? ops.add(left, right) : ops.sub(left, right);
 		}
 		return left;
 	}

@@ -3,7 +3,7 @@ import { generalRules } from '../dist/symbolicRules';
 import { Polynomial } from '../dist/polynomial';
 import { symbolic, symbolicOperators } from '../dist/symbolic';
 import { parse } from '../dist/string';
-import complex, { complexOps } from '../dist/complex';
+import complex from '../dist/complex';
 
 // Minimal reproducer: build the degree-3 polynomial used in tests and simplify its real roots
 async function run() {
@@ -57,8 +57,8 @@ async function run() {
     };
 
     function validate(a: symbolic, b: symbolic) {
-      const va = a.evaluateT(complexOps, bindings);
-      const vb = b.evaluateT(complexOps, bindings);
+      const va = a.evaluateT(complex, bindings);
+      const vb = b.evaluateT(complex, bindings);
       if (va && vb && (va.approx(vb, 1e-10) || va.approx(vb.neg(), 1e-10)))
         return true;
       return false;

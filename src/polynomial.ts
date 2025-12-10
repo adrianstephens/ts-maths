@@ -1,12 +1,13 @@
 /* eslint-disable no-restricted-syntax */
 import {
-	Num, Big, Gen,
 	ops,		scalar,	scalarRational, scalarExt,
-	isInstance,	isNumber, has,	hasStatic,	arrayOf,
-	isScalar,	isScalarRational, isScalarExt,	asScalarExt,	asScalarT,
-	extent,	extentT,
-	maxT2,
+	isInstance,	has,	hasStatic,	arrayOf,
+	isScalar,	isScalarRational, isScalarExt,	asScalarT
 } from './core';
+
+import Num, {extent, asScalarExt, isNumber} from './num';
+import Big from './big';
+import Gen, {extentT} from './gen';
 
 import { toSuperscript } from './string';
 import { factorisation, factorisationB } from './prime';
@@ -964,8 +965,8 @@ class polynomialB implements Polynomial<bigint> {
 	evaluate(t: bigint|rationalB|bigint[]) {
 		if (Array.isArray(t))
 			return t.map(t => sparseEvaluateB(this.c, t));
-		if (t instanceof rationalB)
-			return new rationalB(sparseEvaluateB(this.c, t.num), sparseEvaluateB(this.c, t.den));
+		if (isInstance(t, rationalB))
+			return rationalB(sparseEvaluateB(this.c, t.num), sparseEvaluateB(this.c, t.den));
 		return sparseEvaluateB(this.c, t);
 	}
 	deriv() {
@@ -1038,7 +1039,7 @@ class polynomialB implements Polynomial<bigint> {
 		while (i && Big.abs(this.c[i]) < epsilon)
 			i--;
 		const d = this.c[i];
-		return new polynomialNT<rationalB>(this.c.slice(0, i).map(v => new rationalB(v, d)));
+		return new polynomialNT<rationalB>(this.c.slice(0, i).map(v => rationalB(v, d)));
 	}
 
 	rationalRoots(): rationalB[] {
@@ -1456,7 +1457,7 @@ function lagrangeImprovedB(c: bigint[]): bigint {
 */
 function lagrangeImprovedT<T extends scalarExt<T>>(c: T[]|complexT<T>[]) {
 	const N = c.length;
-	const zero = c[0] instanceof complexT ? c[0].r.from(0) : c[0].from(0);
+	const zero = isInstance(c[0], complexT) ? c[0].r.from(0) : c[0].from(0);
 	return sumTop2T(zero, c.map((c, i) => c.abs().rpow(1, (N - i))));
 }
 
@@ -1816,13 +1817,16 @@ function normPolyRealRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): T[] {
 			case 2: {
 				const e = k[1].scale(0.5);
 				const d = e.mul(e).sub(k[0]);
-				if (d.sign() > 0) {
-					const r = d.sqrt();
-					return [r.neg().sub(e), r.sub(e)];
-				} else if (d.sign() === 0) {
-					return [e.neg()];
-				} else {
-					return [];//[-e, Math.sqrt(-d)];
+				switch (d.sign()) {
+					default:
+					case 1: {
+						const r = d.sqrt();
+						return [r.neg().sub(e), r.sub(e)];
+					}
+					case 0:
+						return [e.neg()];
+					case -1:
+						return [];//[-e, Math.sqrt(-d)];
 				}
 			}
 			case 3: {
@@ -1835,8 +1839,8 @@ function normPolyRealRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): T[] {
 					case -1: {
 						//3 real roots - use complex cube roots
 						const	rh = h.abs().sqrt();
-						const	x = new complexT(g, rh).rpow(1, 3);
-						const	y = new complexT(g, rh.neg()).rpow(1, 3);
+						const	x = complexT(g, rh).rpow(1, 3);
+						const	y = complexT(g, rh.neg()).rpow(1, 3);
 						const	half	= k[0].from(1).div(k[0].from(2));
 						const	sqrt3	= k[0].from(3).rpow(1, 2);
 						return [
@@ -1874,7 +1878,7 @@ function normPolyRealRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): T[] {
 				} else {
 					// solve the resolvent cubic ...
 					const r 	= normPolyRealRootsT([q.neg().mul(q).scale(1 / 8), p.mul(p).scale(1 / 4).sub(t), p], epsilon);
-					const m 	= maxT2(...r);
+					const m 	= Gen.max(...r);
 					const v 	= m.scale(2).sqrt();
 					const u 	= q.div(m.scale(8).sqrt());
 					roots3 = [...normPolyRealRootsT([m.add(p.scale(0.5)).sub(u), v], epsilon), ...normPolyRealRootsT([m.add(p.scale(0.5)).add(u), v.neg()], epsilon)];
@@ -2159,7 +2163,7 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 		++zeros;
 
 	return zeros > 0
-		? [...checkEven(k.slice(zeros)), new complexT(zero, zero)]
+		? [...checkEven(k.slice(zeros)), complexT(zero, zero)]
 		: checkEven(k);
 
 	function checkEven(k: T[]): complexT<T>[] {
@@ -2181,18 +2185,18 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 	function normal(k: T[]): complexT<T>[] {
 		switch (k.length) {
 			case 1:
-				return [new complexT(k[0].neg(), zero)];
+				return [complexT(k[0].neg(), zero)];
 
 			case 2: {
 				const e = k[1].scale(0.5);
 				const d = e.mul(e).sub(k[0]);
 				if (!(d.sign() <= 0)) {
 					const r = d.sqrt();
-					return [new complexT(r.neg().sub(e), zero), new complexT(r.sub(e), zero)];
+					return [complexT(r.neg().sub(e), zero), complexT(r.sub(e), zero)];
 				} else if (d.sign() === 0) {
-					return [new complexT(e.neg(), zero)];
+					return [complexT(e.neg(), zero)];
 				} else {
-					return complexT.conjugatePair(new complexT(e.neg(), d.sqrt()));
+					return complexT.conjugatePair(complexT(e.neg(), d.sqrt()));
 				}
 			}
 			case 3: {
@@ -2211,9 +2215,9 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 						//const	c		= k[0].from(Math.cos(angle)), s = k[0].from(Math.sin(angle));
 						const	rf		= f.sqrt();
 						return [
-							new complexT(c.scale(2).mul(rf).sub(e), zero),
-							new complexT((c.neg().sub(s.scale(sqrt3))).mul(rf).sub(e), zero),
-							new complexT((c.neg().add(s.scale(sqrt3))).mul(rf).sub(e), zero),
+							complexT(c.scale(2).mul(rf).sub(e), zero),
+							complexT((c.neg().sub(s.scale(sqrt3))).mul(rf).sub(e), zero),
+							complexT((c.neg().add(s.scale(sqrt3))).mul(rf).sub(e), zero),
 						];
 					}
 					default:
@@ -2222,11 +2226,11 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 						const	rh = h.sqrt();
 						const	x = g.add(rh).rpow(1, 3);
 						const	y = g.sub(rh).rpow(1, 3);
-						return [new complexT(x.add(y).sub(e), zero), ...complexT.conjugatePair(new complexT(x.add(y).scale(-0.5).sub(e), y.sub(x).scale(sqrt3 / 2)))];
+						return [complexT(x.add(y).sub(e), zero), ...complexT.conjugatePair(complexT(x.add(y).scale(-0.5).sub(e), y.sub(x).scale(sqrt3 / 2)))];
 					}
 					case 0: {
 						//3 real and equal
-						return [new complexT(k[0].neg().rpow(1, 3), zero)];
+						return [complexT(k[0].neg().rpow(1, 3), zero)];
 					}
 				}
 			}
@@ -2241,16 +2245,16 @@ function normPolyComplexRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): comp
 				let roots3: complexT<T>[];
 				if (has('lt')(t) && t.abs().lt(epsilon)) {
 					// no absolute term: y(y^3 + py + q) = 0
-					roots3	= [new complexT(zero, zero), ...normPolyComplexRootsT([q, p, zero], epsilon)];
+					roots3	= [complexT(zero, zero), ...normPolyComplexRootsT([q, p, zero], epsilon)];
 				} else {
 					// solve the resolvent cubic ...
 					const r = normPolyRealRootsT([q.neg().mul(q).scale(1 / 8), p.mul(p).scale(1 / 4).sub(t), p], epsilon);
-					const m = maxT2(...r);
+					const m = Gen.max(...r);
 					const v = m.scale(2).sqrt();
 					const u = q.div(m.scale(8).sqrt());
 					roots3 = [...normPolyComplexRootsT([m.add(p.scale(0.5)).sub(u), v], epsilon), ...normPolyComplexRootsT([m.add(p.scale(0.5)).add(u), v.neg()], epsilon)];
 				}
-				return roots3.map(r => new complexT(r.r.sub(k[3].scale(1 / 4)), r.i));
+				return roots3.map(r => complexT(r.r.sub(k[3].scale(1 / 4)), r.i));
 			}
 
 			default:
@@ -2302,16 +2306,16 @@ function aberthT<T extends scalarExt<T>>(poly: polynomialNT<T>|polynomialNT<comp
 		from = poly.c[0].from;
 		evaluate = (p, t) => {
 			let i = p.c.length - 1;
-			let r = t.add(new complexT<T>(p.c[i], p.c[i].scale(0)));
+			let r = t.add(complexT<T>(p.c[i], p.c[i].scale(0)));
 			while (i--)
-				r = r.mul(t).add(new complexT<T>(p.c[i], p.c[i].scale(0)));
+				r = r.mul(t).add(complexT<T>(p.c[i], p.c[i].scale(0)));
 			return r;
 		};
 	}
 
 	const n			= poly.degree();
 	const zero		= from(0), one = from(1);
-	const czero		= new complexT<T>(zero, zero), cone = new complexT<T>(one, zero);
+	const czero		= complexT<T>(zero, zero), cone = complexT<T>(one, zero);
 	const dpoly 	= poly.deriv();
 
 	const radius	= lagrangeImprovedT<T>(poly.c);
@@ -2450,7 +2454,7 @@ function* rationalDivisorsB(numFactors: Map<bigint, number>, denFactors: Map<big
 		if (limit && num * limit.den > den * limit.num)
 			return;
 		if (i === numEntries.length) {
-			yield new rationalB(num, den);
+			yield rationalB(num, den);
 			return;
 		}
 		const [p, exp] = numEntries[i++];
@@ -2465,7 +2469,7 @@ function* rationalDivisorsB(numFactors: Map<bigint, number>, denFactors: Map<big
 	function* backtrackDen(i: number, den: bigint): Generator<rationalB> {
 		if (i === denEntries.length) {
 			if (numEntries.length === 0)
-				yield new rationalB(1n, den);
+				yield rationalB(1n, den);
 			else
 				yield *backtrackNum(0, 1n, den);
 			return;

@@ -48,7 +48,6 @@ export function isNumber(x: any): x is number {
 }
 
 const NumOps: Operators<number> = {
-	from(n) { return n; },
 	func(name, args) {
 		const fn = (Math as unknown as Record<string, (...args: number[]) => number>)[name];
 		return fn ? fn(...args) : undefined;
@@ -62,13 +61,14 @@ const NumOps: Operators<number> = {
 			default:			return undefined;
 		}
 	},
+	from(n) { return n; },
 	dup(n) 		{ return n; },
 	neg(a) 		{ return -a; },
+	scale(a, b)	{ return a * b; },
 	add(a, b) 	{ return a + b; },
 	sub(a, b) 	{ return a - b; },
 	mul(a, b) 	{ return a * b; },
 	div(a, b) 	{ return a / b; },
-
 	ipow(a, b) 	{ return a ** b; },
 	rpow(a, n, d) { return a ** (n / d); },
 	pow(a, b) 	{ return Math.pow(a, b); },
@@ -96,9 +96,9 @@ class _Num implements scalarExt<_Num> {
 	from(n: number | bigint)	{ return Num(Number(n)); }
 
 	sqrt(): 			Num		{ return Num(Math.sqrt(this.value)); }
+	ipow(n: number):	Num		{ return Num(this.value ** n); }
 	npow(n: number):	Num		{ return Num(this.value ** n); }
 	rpow(n: number, d:number)	{ return Num(this.value ** (n / d)); }
-//	pow(n: number):		Num		{ return Num(this.value ** n); }
 
 	valueOf():			number	{ return this.value; }
 	toString()					{ return this.value.toString(); }

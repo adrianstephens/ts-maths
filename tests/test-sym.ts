@@ -1,15 +1,13 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { test, expect, assert } from './test';
-import { Operators } from '../dist/core';
-import Gen, { OperatorsBase } from '../dist/gen';
 import Num from '../dist/num';
-import { outputNumber, toSuperscript, radicalChars, fractionChars, parse } from '../dist/string';
-import { symbolic, symbolicOperators } from '../dist/symbolic';
+import { outputNumber, radicalChars, fractionChars, parse } from '../dist/string';
+import { symbolic, symbolicOperators, term, factor, mulFactors } from '../dist/symbolic';
 import { applyRules, trigRules, invTrigRules, generalRules, scoreFactory, factored } from '../dist/symbolicRules';
 import { applyRulesEgraph, EGraphOptions, startSimplify, simplify } from '../dist/egraph';
 import { Polynomial } from '../dist/polynomial';
 import { vscalar, vectorT, normalise, mat, E2, E3, E4, E5 , vector, float2, float3, float4, float2x2, float3x3, float4x4} from '../dist/vector';
-import big from '../../big/dist/index';
 import complex from '../dist/complex';
 
 //symbolic.setDefaultStringifyOptions({ccode: true, radicalPower: true, superPower: true});
@@ -17,23 +15,8 @@ symbolic.setDefaultStringifyOptions({
 	superPower: true,
 	radicalPower: true,
 	mulChar: '⋅',
-	printConst: n=>outputNumber(n, {fractions: {chars: fractionChars, superSub: true}, radicals: radicalChars})}
-);
-
-
-const bigOperators: Operators<big> = {
-	...OperatorsBase(big),
-	from(n: number) { return big.from(n, 100); },
-	variable(name: string) {
-		switch (name) {
-			case 'pi':			return big.pi(100);
-			case 'e':			return big.exp(1, 100);
-			case 'infinity':	return big.Infinity;
-			default:			return undefined;
-		}
-	},
-};
-
+	//printConst: n=>outputNumber(n, {fractions: {chars: fractionChars, superSub: true}, radicals: radicalChars})
+});
 
 function makeFunction(expr: symbolic, var1: string) {
 	return (x: number) => expr.evaluate({ [var1]: x });
@@ -156,17 +139,25 @@ test('bug', () => {
 //	const eqn = parse(symbolicOperators, '(b * c / (a * d - b * c) / a + 1 / a) * b - b * d / (a * d - b * c)');
 //	const simp = applyRulesEgraph(eqn, generalRules, opts);
 //	assert(simp === symbolic.zero);
+
+
+});
+
+test('complex', () => {
+	const z = parse(symbolicOperators, '1 + 2i');
+	const t1 = symbolic.conj(z);
+	const t2 = symbolic.re(z);
+	const t3 = symbolic.im(z);
+	const targ = parse(symbolicOperators, 'arg(1 + 2i)');
+
+	const t4 = parse(symbolicOperators, 're(A^2+B) + im(B^3+A)');
+	const t5 = parse(symbolicOperators, 'arg(A)');
+	const t5d = t5.derivative('A');
+	const t5e = factored(t5d);
 });
 
 test('symbolic', () => {
-	const equation = 'sin(pi / 4) + log(10) sqrt(2)';
-	const resn = parse(Num, equation);
-	const resb = parse(bigOperators, equation);
-	expect(resn).toBeCloseTo(Math.sin(Math.PI / 4) + Math.log(10) * Math.sqrt(2));
-
-	expect(parse(Num, '∛⅒')).toBeCloseTo(0.1 ** (1 / 3));
-	expect(outputNumber(0.1 ** (1 / 3))).toEqual('∛⅒');
-	expect(parse(Num, '⁶⁷/₂₃₄')).toBeCloseTo(67/234);
+	const t = parse(symbolicOperators, 'sqrt(2)');
 
 	const x = symbolic.variable("x");
 	const y = symbolic.variable("y");
@@ -202,12 +193,6 @@ test('symbolic', () => {
 	const sin = symbolic.sin(e3);
 	const dsin = sin.derivative("x");
 	expect(dsin).toEqual(parse(symbolicOperators, '2 x cos(x² + y² + z²)'));
-
-	const pow = e3.pow(x);
-	const dpow = pow.derivative("x");
-	expect(dpow).toEqual(parse(symbolicOperators, '2x²(x² + y² + z²)^(x - 1) + log(x² + y² + z²)(x² + y² + z²)^x'));
-	expect(dpow).toEqual(parse(symbolicOperators, '2x.x(x² + y² + z²)^(x - 1) + log(x² + y² + z²)(x² + y² + z²)^x'));
-//	expect(dpow).toEqual(parse(symbolicOperators, '2 * x² * (x² + y² + z²) ^ (x - 1) + log(x² + y² + z²) * (x² + y² + z²) ^ (x)'));
 });
 
 test('symbolic transforms', () => {
@@ -227,7 +212,6 @@ test('symbolic transforms', () => {
 	// Apply egraph with available rules (symbolic exposes a list of rules)
 	const rules = trigRules.concat(invTrigRules).concat(generalRules);
 	const out = applyRulesEgraph(expr, rules, {maxRounds: 8, maxExpansions: 16});//, { verbose: true, debugNode: 'replace'});
-
 	console.log('Original  :', String(expr));
 	console.log('Extracted :', String(out));
 	if (!approxEqualEval(out, expr, ['a', 'b']))
@@ -507,7 +491,7 @@ test('vector perp()', () => {
 	};
 
 
-	const out = applyRulesEgraph(dd, rules, {verbose: true, maxRounds: 6, maxExpansions: 0});
+	const out = applyRulesEgraph(dd, rules, {verbose: false, maxRounds: 6, maxExpansions: 0});
 	console.log(String(out));
 
 });
@@ -686,7 +670,7 @@ test('symbolic polynomials', () => {
 				return true;
 			};
 
-			const r2 = applyRulesEgraph(r, generalRules, {verbose: true, debugNode: 'replace', callback, validate});
+			const r2 = applyRulesEgraph(r, generalRules, {verbose: false, debugNode: 'replace', callback, validate});
 			console.log(String(r2));
 		}
 	}

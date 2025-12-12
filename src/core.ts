@@ -26,6 +26,7 @@ export interface Operators<T> {
 
 	dup(a: T): T;
 	neg(a: T): T;
+	scale(a: T, b: number):	T;
 	add(a: T, b: T): T;
 	sub(a: T, b: T): T;
 	mul(a: T, b: T): T;
@@ -38,24 +39,22 @@ export interface Operators<T> {
 	lt(a: T, b: T): any;
 
 //	optional
-//	scale(b: S):		C;
 //	npow(a: T, n: number): T;
-//	rpow(a: T, n: number, d: number): T;
 }
 
 
 export function Type<T>(operators: Operators<T>) {
 	return class Ops implements ops<Ops> {
 		constructor(public value: T) {}
-		from(n: number): Ops { return new Ops(operators.from(n)); }
-		dup(): Ops			{ return new Ops(operators.dup(this.value)); }
-		neg(): Ops			{ return new Ops(operators.neg(this.value)); }
-		scale(b: number): Ops { return new Ops(operators.mul(this.value, operators.from(b))); }
-		add(b: Ops): Ops	{ return new Ops(operators.add(this.value, b.value)); }
-		sub(b: Ops): Ops	{ return new Ops(operators.sub(this.value, b.value)); }
-		mul(b: Ops): Ops	{ return new Ops(operators.mul(this.value, b.value)); }
-		div(b: Ops): Ops 	{ return new Ops(operators.div(this.value, b.value)); }
-		mag():		number	{ return typeof this.value === 'number' ? Math.abs(this.value) : 0; }
+		from(n: number): Ops 	{ return new Ops(operators.from(n)); }
+		dup(): Ops				{ return new Ops(operators.dup(this.value)); }
+		neg(): Ops				{ return new Ops(operators.neg(this.value)); }
+		scale(b: number): Ops	{ return new Ops(operators.scale(this.value, b)); }
+		add(b: Ops): Ops		{ return new Ops(operators.add(this.value, b.value)); }
+		sub(b: Ops): Ops		{ return new Ops(operators.sub(this.value, b.value)); }
+		mul(b: Ops): Ops		{ return new Ops(operators.mul(this.value, b.value)); }
+		div(b: Ops): Ops 		{ return new Ops(operators.div(this.value, b.value)); }
+		mag():		number		{ return typeof this.value === 'number' ? Math.abs(this.value) : 0; }
 
 		// scalar
 		abs():		Ops		{ if (hasFree('abs')(operators)) return new Ops(operators.abs(this.value)); return this; };
@@ -92,6 +91,7 @@ export interface ops<C extends ops<C, S>, S=number> {
 
 export interface scalar<C extends scalar<C, S>, S=number> extends ops<C, S> {
 	from(n: number | bigint):	C;
+	ipow(n: number):	C;
 	abs():				C;
 	sign():				number;
 	eq(b: C):			boolean;

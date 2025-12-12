@@ -1,11 +1,7 @@
-/* eslint-disable no-restricted-syntax */
 import Gen from './gen';
 import rational from './rational';
 import { symbolic, MatchOptions, Bindings, term, factor, mulFactors, addTerms, factorAsSymbolic } from './symbolic';
-// Use Groebner / polynomial helpers for deterministic elimination
-//import { groebnerBasis, lexOrder } from './groebner';
-// polynomial/resultant helpers were used previously for a heavyweight fallback
-// but we now use a deterministic Groebner-based eliminant inside the rule.
+import { MVPoly, Monomial } from './mvpolynomial';
 
 export type Scorer = (n: symbolic, best?: number) => number;
 
@@ -13,7 +9,7 @@ export type Rule = {
 	name:		string;
 	match:		(node: symbolic, opts?: MatchOptions) => Bindings | null;
 	replace:	(bs: Bindings) => symbolic;
-	guard?:		(bs: Bindings) => boolean;
+	guard?:		(bs: Bindings, context?: any) => boolean;
 };
 
 
@@ -229,6 +225,7 @@ function commonFactors(terms: readonly Readonly<term>[], scorer: (sym: symbolic)
 	return [...factored, ...remaining];
 }
 
+
 export function factored(node: symbolic) {
 	if (node.is('mul'))
 		return node.visit({
@@ -239,6 +236,63 @@ export function factored(node: symbolic) {
 	const scorer = scoreFactory();
 	const terms = commonFactors(node.terms, scorer);
 	return addTerms(node.num, ...terms);
+}
+
+//-----------------------------------------------------------------------------
+// multivariate polynomials
+//-----------------------------------------------------------------------------
+
+export function toMVPoly(expr: symbolic, variables: readonly symbolic[]): MVPoly<symbolic> {
+	expr = expr.expand();
+	
+	let scale = rational(1);
+
+	if (expr.is('mul') && expr.factors.length === 1 && expr.factors[0].pow.is1() && expr.factors[0].item.is('add')) {
+		scale = expr.num;
+		expr = expr.factors[0].item;
+	}
+
+	const terms = expr.is('add') ? expr.terms as term[] : [term(expr)];
+	const poly = new MVPoly<symbolic>();
+
+	for (const i of terms) {
+		const mon = new Monomial;
+
+		if (i.item.is('mul')) {
+			const coefFactors: symbolic[] = [symbolic.from(i.coef)];
+
+			for (const factor of i.item.factors) {
+				const idx = variables.indexOf(factor.item);
+				if (idx >= 0) {
+					mon[idx] = Number(factor.pow);
+				} else {
+					coefFactors.push(factor.item.npow(factor.pow));
+				}
+			}
+
+			poly.addTerm(mon, coefFactors.length === 0 ? symbolic.from(1) : coefFactors.reduce((a, b) => a.mul(b)));
+		} else {
+			const idx = variables.indexOf(expr);
+			if (idx >= 0) {
+				mon[idx] = 1;
+				poly.addTerm(mon, symbolic.from(i.coef));
+			} else {
+				poly.addTerm(mon, expr.scale(i.coef));
+			}
+		}
+	}
+	if (scale !== rational(1))
+		return poly.mulCoef(symbolic.from(scale));
+	return poly;
+}
+
+export function fromMVPoly(poly: MVPoly<symbolic>, variables: readonly symbolic[]): symbolic {
+	return poly.terms.reduce((acc: symbolic, term) => 
+		acc.add(mulFactors(rational(1), factor(term.coef), ...term.mon.map((exp, i) => 
+			factor(variables[i], rational(exp))
+		))),
+		symbolic.one
+	);
 }
 
 //-----------------------------------------------------------------------------
@@ -438,108 +492,15 @@ export const generalRules: Rule[] = [
 	),
 
 
-	// Cubic-sum contracting identity for cube-roots:
-	// Match the expanded RHS and contract it to the compact cube form:
-	// U + V + 3*cbrt(UV)*(cbrt(U) + cbrt(V))  ->  (cbrt(U) + cbrt(V))^3
-	/*
-	{
-		name: 'cbrt-sum-cubic-identity-contract',
-		match(node: symbolic, _opts?: MatchOptions) {
-			try { console.log('egraph-diagnostic: attempting cbrt-sum-cubic-identity-contract on', String(node)); } catch {}
-			// Robust scanner: look for two additive terms that are cube-roots (possibly with numeric multipliers).
-			if (!node.is('add'))
-				return null;
-			const terms = node.terms;
-			const candidates: { term: term; base: symbolic }[] = [];
-			for (const t of terms) {
-				if (t.item.is('mul') && t.item.factors.length === 1 && approx(t.item.factors[0].pow, 1 / 3))
-					candidates.push({ term: t, base: t.item.factors[0].item });
-			}
-			if (candidates.length < 2)
-				return null;
-			// Try each pair and verify by constructing (cbrt(U)+cbrt(V))^3 and comparing textual form
-			for (let i = 0; i < candidates.length; ++i) {
-				for (let j = i + 1; j < candidates.length; ++j) {
-					const a = candidates[i];
-					const b = candidates[j];
-					// Keep the compact radical form (avoid expanding into huge polynomials)
-					const out = a.base.npow(1 / 3).add(b.base.npow(1 / 3)).npow(3);
-					// Deterministic check via Groebner basis elimination (eliminate alpha)
-					function groebnerCheck(outExpr: symbolic, Uexpr: symbolic, Vexpr: symbolic) {
-						// Avoid explosion on huge inputs
-						if (String(Uexpr).length > 3000 || String(Vexpr).length > 3000)
-							return false;
-
-						const alpha = symbolic.variable('__alpha_g');
-						const sVar = symbolic.variable('__s_g');
-
-						const f1 = alpha.npow(3).sub(Uexpr); // alpha^3 - U
-						const f2 = sVar.sub(alpha).npow(3).sub(Vexpr); // (s - alpha)^3 - V
-
-						try {
-							const G = groebnerBasis([f1, f2], [alpha, sVar], lexOrder);
-							// find an eliminant polynomial that does not contain alpha
-							const contains = (expr: symbolic, v: symbolic) => {
-								let found = false;
-								expr.visit({ pre: n => { if (n.is('var') && n.toString() === v.toString()) { found = true; return undefined; } return n; } });
-								return found;
-							};
-
-							for (const g of G) {
-								if (!contains(g, alpha)) {
-									const sub = g.substitute({ ['__s_g']: outExpr }).expand();
-									if (sub === symbolic.zero)
-										return true;
-								}
-							}
-						} catch (e) {
-							try { console.log('egraph-diagnostic: groebner check failed', e); } catch {}
-						}
-						return false;
-					}
-
-					// Dump candidate diagnostic details to help understand mismatches
-					console.log('egraph-diagnostic: cbrt candidates', i, j,
-						'a.base=', String(a.base), 'b.base=', String(b.base),
-						'a.term=', String(a.term), 'b.term=', String(b.term),
-						'a.factor_pow=', a.term.item.is('mul') ? a.term.item.factors[0].pow : 'N/A',
-						'b.factor_pow=', b.term.item.is('mul') ? b.term.item.factors[0].pow : 'N/A',
-						'out_len=', String(out).length, 'node_len=', String(node).length);
-
-					// Deterministic Groebner-based check
-					if (groebnerCheck(out, a.base, b.base)) {
-						const bs: Bindings = {} as any;
-						bs.U = a.base;
-						bs.V = b.base;
-						const rem = node.terms.filter(t => t !== a.term && t !== b.term);
-						if (rem.length || node.num)
-							bs['_addrest'] = addTerms(node.num, ...rem);
-						try { console.log('egraph-diagnostic: numeric cbrt-sum match; U=', String(bs.U), 'V=', String(bs.V)); } catch {}
-						return bs;
-					} else {
-						try { console.log('egraph-diagnostic: cbrt-sum groebner candidate failed for pair', i, j); } catch {}
-					}
-				}
-			}
-			return null;
-		},
-		replace(bs: Bindings) {
-			const out = bs.U.npow(1 / 3).add(bs.V.npow(1 / 3)).npow(3);
-			return replaceRest(bs, out);
-		}
-	},
-	*/
-];
+	PatternRule('cbrt-sum-cubic-identity-contract',
+		U.rpow(1, 3).add(V.rpow(1, 3)),
+		bs => bs.U.add(bs.V),
+		bs => {
+			// guard: check that U and V satisfy the cubic identity
+			const S = bs.U.add(bs.V);
+			const P = bs.U.mul(bs.V);
 
 /*
-Represent exponents exactly
-Store exponents as rational numerator/denominator (or small integers plus a flag) so pow(..., 1/3) is a distinct matchable node. This fixes many match failures.
-
-Detect candidate patterns
-Add a pattern/rule that recognizes sums of two cube-roots:
-match: s = pow(U, 1/3) + pow(V, 1/3)
-Then compute S = simplify(U + V) and P = simplify(U * V) (in the e-graph, look up EClasses for those).
-
 Quick easy collapses
 x If U and V are perfect cubes: U = a^3 and V = b^3 → s → a + b (trivial).
 If P is a perfect cube (there exists W with W^3 == UV in the e-graph) then set w = pow(UV, 1/3) (which becomes W) and try to solve s from s^3 - 3 w s - S = 0. If that cubic factors (over rationals or existing classes), contract it.
@@ -557,6 +518,11 @@ Use elimination / resultant when needed
 To get a minimal polynomial for s = α+β, eliminate α between α^3 - U = 0 and (s - α)^3 - V = 0 (compute resultant in the polynomial ring). That yields the cubic relation for s. If that cubic reduces (factors) in the e-graph to a simpler form, you can apply contractions.
 This is not a single local rewrite; it is a small algebraic computation that can be implemented as a rule for the special pattern pow(U,1/3)+pow(V,1/3).
 */
+			return false;
+		}
+	),
+
+];
 
 export const trigRules: Rule[] = [
 	// sin(A+B) = sin(A)cos(B) + cos(A)sin(B)
@@ -645,7 +611,6 @@ export const atan2Rules: Rule[] = [
 	PatternRule('atan2-to-atan',
 		symbolic.atan2(B, A),
 		bs => symbolic.atan(bs.B.div(bs.A)),
-		bs => !bs.A.is('const') || bs.A.value.sign() > 0  // only when x > 0
 	),
 
 	// atan2 symmetry
@@ -658,7 +623,6 @@ export const atan2Rules: Rule[] = [
 	PatternRule('atan2-scale-invariance',
 		symbolic.atan2(B.mul(C), A.mul(C)),
 		bs => symbolic.atan2(bs.B, bs.A),
-		bs => !bs.C.is('const') || bs.C.value.sign() > 0  // only for positive C
 	),
 
 	// atan2 of zero

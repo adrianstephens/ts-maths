@@ -2,7 +2,7 @@ import { Operators, scalarRational, lazySlice } from "./core";
 import Num from './num';
 import Big from './big';
 import Gen, {OperatorsBase} from './gen';
-
+import { fractionString } from "./string";
 
 //-----------------------------------------------------------------------------
 // number rationals
@@ -44,11 +44,16 @@ class _rational {
 	eq(b: rational):	boolean { return b instanceof rational && this.compare(b) === 0; }
 	compare(b: rational): number { return this.num * b.den - b.num * this.den; }
 
-	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num}/${this.den}`; }
+//	toString()				{ return this.den === 1 ? `${this.num}` : `${this.num}/${this.den}`; }
 	valueOf():	number		{ return this.num / this.den; }
 
+	isInteger(): boolean	{ return this.den === 1; }
 	is0(): boolean			{ return this.num === 0; }
 	is1(): boolean			{ return this.num === this.den; }
+
+	toString(opts?: {chars: Record<number, Record<number, string>>, superSub: boolean}): string {
+		return fractionString(this.num, this.den, opts?.chars, opts?.superSub);
+	}
 }
 
 
@@ -73,7 +78,7 @@ export const rational: ((num: number, den?: number) => rational) & Operators<rat
 	from(n: number, maxDen?: number): rational {
 		if (Number.isInteger(n))
 			return rational(n, 1);
-		const [h, k] = Num.rationalApprox(n, maxDen ?? 1e20, 1e-20);
+		const [h, k] = Num.rationalApprox(n, maxDen ?? 1e6, 1e-20);
 		return new _rational(h, k);
 	},
 	

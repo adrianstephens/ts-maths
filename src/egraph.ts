@@ -305,7 +305,7 @@ export default class EGraph {
 				// and match through single numeric factors)
 				const bs = r.match(node);
 
-				if (!bs || (r.guard && !r.guard(bs))) {
+				if (!bs || (r.guard && !r.guard(bs, this))) {
 					if (debugNode === 'all' || debugNode === nid)
 						console.warn(`egraph-diagnostic: rule ${r.name} on ${node} ${bs ? "matched, but guard failed" : "no match"}`);
 					continue;

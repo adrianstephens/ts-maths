@@ -112,10 +112,10 @@ export function outputNumber(n: number, opts?: ConstOptions): string {
 type VerticalStyle = {left: string; right: string, mid: number};
 export const verticalStyles = {
 	bigBraces: {
-		left: '⎛⎜⎝', right: '⎞⎟⎠', mid: 1
+		left: '⎛⎜⎝', right: '⎞⎟⎠', mid: 1		//macos
 	},
 	bigBraces1: {
-		left: ' ⎛⎜ ⎝', right: ' ⎞⎟ ⎠', mid: 2
+		left: ' ⎛⎜ ⎝', right: ' ⎞⎟ ⎠', mid: 2	//windows
 	},
 	brackets: {
 		left: ' ⎡⎢⎣', right: ' ⎤⎥⎦', mid: 1
@@ -143,7 +143,7 @@ export function verticalArray(array: string[], style: VerticalStyle): string {
 // parser
 //-----------------------------------------------------------------------------
 
-const reSuper 		= /^[⁰¹²³⁴⁵⁶⁷⁸⁹¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᐟ˙]+/;
+const reSuper 		= /^[⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ᐟ˙]+/;
 const reIdentifier	= /^[\p{L}_][\p{L}\d_]*/u;
 const reMultiply	= /^[*.⋅×]/;
 const reDivide		= /^[/÷]/;

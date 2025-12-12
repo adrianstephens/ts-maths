@@ -4,7 +4,7 @@ import Gen from './gen';
 import complex from './complex';
 import { Polynomial, PolynomialN } from './polynomial';
 import { floatN, characteristic, eigenvalues, LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';
-import { Blade, BladeT } from './kvector';
+import { Blade } from './kvector';
 import { verticalArray, verticalStyles } from './string';
 export { floatN	} from './vector2';
 
@@ -193,7 +193,7 @@ export class vecImp<E extends string> implements vops<vector<E>, number> {
 		switch (this.keys().length) {
 			case 2:	return _cross2(this._values, b._values);
 			case 3:	return this.create(..._cross3(this._values, b._values));
-			default: return Blade.from(this._values, b._values);
+			default: return Blade(this._values, b._values);
 		}
 	}
 	toString() 				{ return '('+this._values.join(', ')+')'; }
@@ -275,7 +275,7 @@ export class vecImpT<T extends vscalar<T>, E extends string> implements vops<vec
 		switch (this.keys().length) {
 			case 2:	return _cross2T(this._values, b._values);
 			case 3: return this.create(..._cross3T(this._values, b._values));
-			default: return BladeT.from(this._values, b._values);
+			default: return Blade(this._values, b._values);
 		}
 	}
 

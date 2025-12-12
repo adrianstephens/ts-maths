@@ -25,6 +25,7 @@ export function OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T)
 	// guaranteed by the ops constraint
 	r.dup = (a: T) => a.dup();
 	r.neg = (a: T) => a.neg();
+	r.scale = (a: T, b: number) => a.scale(b);
 	r.add = (a: T, b: T) =>	a.add(b);
 	r.sub = (a: T, b: T) => a.sub(b);
 	r.mul = (a: T, b: T) =>	a.mul(b);

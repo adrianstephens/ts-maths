@@ -2763,6 +2763,60 @@ function discriminantT<T extends scalar<T>>(p: Polynomial<T>) {
 	return (((n * (n - 1))) & 2 ? R.neg() : R).div(p.leadCoeff());
 }
 
+//-----------------------------------------------------------------------------
+// polynomial factorization via vieta's formulas
+//-----------------------------------------------------------------------------
+
+/**
+ * Generate Vieta's formulas for a polynomial of given degree
+ * Returns equations relating roots to coefficients
+ * 
+ * For degree n with roots r₁, r₂, ..., rₙ and coefficients c₁, c₂, ..., cₙ:
+ * - σ₁ = r₁ + r₂ + ... + rₙ = -c₁
+ * - σ₂ = r₁r₂ + r₁r₃ + ... = c₂
+ * - σ₃ = r₁r₂r₃ + ... = -c₃
+ * - ...
+ * - σₙ = r₁r₂...rₙ = (-1)ⁿcₙ
+ */
+export function vietasFormulas<T extends scalar<T>>(poly: polynomialT<T>, roots: T[]): T[] {
+	const n = roots.length;
+	if (n !== poly.c.length)
+		throw new Error('Number of roots must match number of coefficients');
+	
+	const equations: T[] = [];
+	
+	// Generate elementary symmetric polynomials σₖ
+	for (let k = 1; k <= n; k++) {
+		let sigma = poly.c[0].from(0);
+		
+		// Sum over all k-element subsets of roots
+		const indices = Array.from({ length: k }, (_, i) => i);
+		
+		function generateSubsets(start: number, depth: number) {
+			if (depth === k) {
+				// Multiply the k roots at these indices
+				let product = roots[indices[0]];
+				for (let i = 1; i < k; i++)
+					product = product.mul(roots[indices[i]]);
+				sigma = sigma.add(product);
+				return;
+			}
+			
+			for (let i = start; i <= n - (k - depth); i++) {
+				indices[depth] = i;
+				generateSubsets(i + 1, depth + 1);
+			}
+		}
+		
+		generateSubsets(0, 0);
+		
+		// σₖ = (-1)ᵏ⁺¹ × cₖ  (alternating signs)
+		const sign = (k % 2 === 0) ? 1 : -1;
+		equations.push(sigma.sub(poly.c[k - 1].scale(sign)));
+	}
+	
+	return equations;
+}
 
 //-----------------------------------------------------------------------------
 //	Legendre polynomial and roots

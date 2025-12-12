@@ -2,50 +2,77 @@
 import { vscalar, vops } from './vector';
 import { toSubscript } from './string';
 
-export class Blade {
+export interface Blade<T> {
+	k: number;
+	n: number;
+	components: T[];
+
+	wedge(v: T[] | vops<any, number>): Blade<T>;
+	getCoeff(indices: number[]): T;
+	add(other: Blade<T>):	Blade<T>;
+	sub(other: Blade<T>):	Blade<T>;
+	scale(scalar: number):	Blade<T>
+	norm():					T;
+	normalize():			Blade<T>;
+	dual():					Blade<T>;
+}
+
+// Overloads to ensure numeric literal arrays like `[-1, 1]` resolve to `Polynomial<number>`
+export function Blade(...vectors: (number[] | vops<any, number>)[]): Blade<number>;
+export function Blade<T extends vscalar<T>>(...vectors: T[][] | vops<any, T>[]): Blade<T>;
+export function Blade(...vectors: any[]) {
+	switch (typeof vectors[0][0]) {
+		case 'number':
+			return BladeN.from(...vectors) as Blade<number>;
+		default:
+			return BladeT.from(...vectors) as Blade<vscalar<any>>;
+	}
+}
+
+class BladeN {
 	constructor(public k: number, public n: number, public components: number[]) {
 	}
-	static from(...vectors: (number[] | vops<any, number>)[]): Blade {
+	static from(...vectors: (number[] | vops<any, number>)[]): BladeN {
 		const vecs: number[][] = vectors[0] instanceof Array ? vectors as number[][] : (vectors as vops<any, number>[]).map(v => v._values);
 		const k = vecs.length;
 		const n = vecs[0].length;
-		return new Blade(k, n, wedge(k, n, vecs));
+		return new BladeN(k, n, wedge(k, n, vecs));
 	}
-	wedge(v: number[] | vops<any, number>): Blade {
-		return new Blade(this.k + 1, this.n, wedgeWith(this.k, this.n, this.components, v instanceof Array ? v : v._values));
+	wedge(v: number[] | vops<any, number>): BladeN {
+		return new BladeN(this.k + 1, this.n, wedgeWith(this.k, this.n, this.components, v instanceof Array ? v : v._values));
 	}
 	getCoeff(indices: number[]): number {
 		return this.components[basisIndex(indices, this.n)];
 	}
-	add(other: Blade): Blade {
+	add(other: BladeN): BladeN {
 		if (this.k !== other.k || this.n !== other.n)
 			throw new Error('Blades must have same grade and dimension');
-		return new Blade(this.k, this.n, this.components.map((c, i) => c + other.components[i]));
+		return new BladeN(this.k, this.n, this.components.map((c, i) => c + other.components[i]));
 	}
-	sub(other: Blade): Blade {
+	sub(other: BladeN): BladeN {
 		if (this.k !== other.k || this.n !== other.n)
 			throw new Error('Blades must have same grade and dimension');
-		return new Blade(this.k, this.n, this.components.map((c, i) => c - other.components[i]));
+		return new BladeN(this.k, this.n, this.components.map((c, i) => c - other.components[i]));
 	}
-	scale(scalar: number): Blade {
-		return new Blade(this.k, this.n, this.components.map(c => c * scalar));
+	scale(scalar: number): BladeN {
+		return new BladeN(this.k, this.n, this.components.map(c => c * scalar));
 	}
 	norm(): number {
 		return Math.sqrt(this.components.reduce((sum, c) => sum + c * c, 0));
 	}
-	normalize(): Blade {
+	normalize(): BladeN {
 		const n = this.norm();
 		return n === 0 ? this : this.scale(1 / n);
 	}
-	dual(): Blade {
-		return new Blade(this.n - this.k, this.n, dual(this.k, this.n, this.components));
+	dual(): BladeN {
+		return new BladeN(this.n - this.k, this.n, dual(this.k, this.n, this.components));
 	}
 	toString(): string {
 		return toString(this.k, this.n, this.components);
 	}
 }
 
-export class BladeT<T extends vscalar<T>> {
+class BladeT<T extends vscalar<T>> {
 	constructor(public k: number, public n: number, public components: T[]) {
 	}
 	static from<T extends vscalar<T>>(...vectors: T[][] | vops<any, T>[]): BladeT<T> {

@@ -1,12 +1,12 @@
 import { test, expect, verify, approxArray, makeApproxArray } from './test';
-import { Blade, BladeT } from '../dist/kvector';
+import { Blade } from '../dist/kvector';
 import { E3, float3, vectorT } from '../dist/vector';
 import { symbolic } from '../dist/symbolic';
 
 test('wedge product 2-vectors', () => {
 	const v1 = [1, 2, 3];
 	const v2 = [4, 5, 6];
-	const blade = Blade.from(v1, v2);
+	const blade = Blade(v1, v2);
 	
 	expect(blade.k, 'grade').toEqual(2);
 	expect(blade.n, 'dimension').toEqual(3);
@@ -22,7 +22,7 @@ test('wedge product 3-vectors (coplanar)', () => {
 	const v2 = [4, 5, 6];
 	const v3 = [7, 8, 9]; // coplanar with v1, v2
 	
-	const blade = Blade.from(v1, v2, v3);
+	const blade = Blade(v1, v2, v3);
 	
 	expect(blade.k, 'grade').toEqual(3);
 	expect(blade.n, 'dimension').toEqual(3);
@@ -35,7 +35,7 @@ test('wedge product 3-vectors (non-coplanar)', () => {
 	const v2 = [0, 1, 0];
 	const v3 = [0, 0, 1];
 	
-	const blade = Blade.from(v1, v2, v3);
+	const blade = Blade(v1, v2, v3);
 	
 	verify(blade.components, [1], approxArray, 'unit volume');
 });
@@ -45,10 +45,10 @@ test('incremental wedge', () => {
 	const v2 = [4, 5, 6];
 	const v3 = [7, 8, 10];
 	
-	const blade2 = Blade.from(v1, v2);
+	const blade2 = Blade(v1, v2);
 	const blade3 = blade2.wedge(v3);
 	
-	const direct = Blade.from(v1, v2, v3);
+	const direct = Blade(v1, v2, v3);
 	
 	verify(blade3.components, direct.components, approxArray, 'incremental vs direct');
 });
@@ -56,7 +56,7 @@ test('incremental wedge', () => {
 test('getCoeff', () => {
 	const v1 = [1, 2, 3];
 	const v2 = [4, 5, 6];
-	const blade = Blade.from(v1, v2);
+	const blade = Blade(v1, v2);
 	
 	expect(blade.getCoeff([0, 1]), 'e₀∧e₁').toBeCloseTo(-3);
 	expect(blade.getCoeff([0, 2]), 'e₀∧e₂').toBeCloseTo(-6);
@@ -66,11 +66,11 @@ test('getCoeff', () => {
 test('add blades', () => {
 	const v1 = [1, 0, 0];
 	const v2 = [0, 1, 0];
-	const blade1 = Blade.from(v1, v2); // e₀∧e₁
+	const blade1 = Blade(v1, v2); // e₀∧e₁
 	
 	const v3 = [0, 1, 0];
 	const v4 = [0, 0, 1];
-	const blade2 = Blade.from(v3, v4); // e₁∧e₂
+	const blade2 = Blade(v3, v4); // e₁∧e₂
 	
 	const sum = blade1.add(blade2);
 	
@@ -81,7 +81,7 @@ test('add blades', () => {
 test('scale blade', () => {
 	const v1 = [1, 2, 3];
 	const v2 = [4, 5, 6];
-	const blade = Blade.from(v1, v2);
+	const blade = Blade(v1, v2);
 	
 	const scaled = blade.scale(2);
 	
@@ -91,7 +91,7 @@ test('scale blade', () => {
 test('norm and normalize', () => {
 	const v1 = [1, 0, 0];
 	const v2 = [0, 1, 0];
-	const blade = Blade.from(v1, v2);
+	const blade = Blade(v1, v2);
 	
 	expect(blade.norm(), 'norm').toBeCloseTo(1);
 	
@@ -103,7 +103,7 @@ test('Hodge dual (cross product)', () => {
 	const v1 = [1, 2, 3];
 	const v2 = [4, 5, 6];
 	
-	const bivector = Blade.from(v1, v2);
+	const bivector = Blade(v1, v2);
 	const cross = bivector.dual();
 	
 	// Cross product: v1 × v2 = [2*6 - 3*5, 3*4 - 1*6, 1*5 - 2*4]
@@ -116,7 +116,7 @@ test('Hodge dual (double dual)', () => {
 	const v1 = float3(1, 0, 0);
 	const v2 = float3(0, 1, 0);
 	
-	const blade = Blade.from(v1, v2);
+	const blade = Blade(v1, v2);
 	const dual = blade.dual();
 	const doubleDual = dual.dual();
 	
@@ -134,13 +134,13 @@ test('4D wedge products', () => {
 	const v3 = [0, 0, 1, 0];
 	const v4 = [0, 0, 0, 1];
 	
-	const blade2 = Blade.from(v1, v2);
+	const blade2 = Blade(v1, v2);
 	expect(blade2.components.length, '4D 2-blade components').toEqual(6); // C(4,2)
 	
-	const blade3 = Blade.from(v1, v2, v3);
+	const blade3 = Blade(v1, v2, v3);
 	expect(blade3.components.length, '4D 3-blade components').toEqual(4); // C(4,3)
 	
-	const blade4 = Blade.from(v1, v2, v3, v4);
+	const blade4 = Blade(v1, v2, v3, v4);
 	expect(blade4.components.length, '4D 4-blade components').toEqual(1); // C(4,4)
 	verify(blade4.components, [1], approxArray, 'unit 4-volume');
 });
@@ -160,7 +160,7 @@ test('Hodge dual symbolic', () => {
 	const v1 = vectorT(E3, a, b, c);
 	const v2 = vectorT(E3, d, e, f);
 	
-	const blade = BladeT.from(v1, v2);
+	const blade = Blade(v1, v2);
 	const dual = blade.dual();
 	const doubleDual = dual.dual();
 

@@ -1,5 +1,5 @@
 import {Operators, scalarExt} from "./core";
-import {Num} from "./num";
+import {real} from "./real";
 
 //-----------------------------------------------------------------------------
 // bigint
@@ -13,30 +13,34 @@ class _Big implements scalarExt<_Big> {
 	constructor(public value: bigint) {}
 	dup(): 				Big			{ return Big(this.value); }
 	neg(): 				Big			{ return Big(-this.value); }
-	sqrt():				Big			{ return Big(Big.root(this.value, 2)); }
 	scale(b: number):	Big			{ return Big(this.value * BigInt(b)); }
+	add(b: Big):		Big			{ return Big(this.value + b.value); }
+	sub(b: Big):		Big			{ return Big(this.value - b.value); }
+	mul(b: Big):		Big			{ return Big(this.value * b.value); }
+	div(b: Big):		Big			{ return Big(this.value / b.value); }
+	mag():				number 		{ return Number(Big.abs(this.value)); }
+
+	from(n: number | bigint)		{ return Big(BigInt(n)); }
 	ipow(n: number):	Big			{ return Big(this.value ** BigInt(n)); }
 	rpow(n: number, d:number):	Big	{ return Big(Big.rpow(this.value, n, d)); }
 	npow(n: number):	Big			{ return Big(Big.npow(this.value, n)); }
-	mul(b: Big):		Big			{ return Big(this.value * b.value); }
-	div(b: Big):		Big			{ return Big(this.value / b.value); }
-	add(b: Big):		Big			{ return Big(this.value + b.value); }
-	sub(b: Big):		Big			{ return Big(this.value - b.value); }
-	mag():				number 		{ return Number(Big.abs(this.value)); }
+	sqrt():				Big			{ return Big(Big.root(this.value, 2)); }
 
-	sign():				number		{ return Big.sign(this.value); }
 	abs():				Big			{ return Big(Big.abs(this.value)); }
+	sign():				number		{ return Big.sign(this.value); }
 	recip():			Big			{ return Big(1n / this.value); }
 	divmod(b: Big):		number		{ const q = this.value / b.value; this.value -= q * b.value; return Number(q); }
-	lt(b: Big):		boolean			{ return this.value < b.value; }
-	eq(b: Big):		boolean			{ return this.value === b.value; }
-	from(n: number | bigint)		{ return Big(BigInt(n)); }
+	lt(b: Big):			boolean		{ return this.value < b.value; }
+	eq(b: Big):			boolean		{ return this.value === b.value; }
 
 	valueOf():			number		{ return Number(this.value); }
 	toString()						{ return this.value.toString(); }
 }
 
-const BigOps: Operators<bigint> = {
+export const Big = Object.assign(
+	function (value: bigint) {
+		return new _Big(value);
+	}, {
 	func(_name, _args) 	{ return undefined; },
 	variable(_name) 	{ return undefined; },
 	from(n) 			{ return BigInt(n); },
@@ -52,13 +56,8 @@ const BigOps: Operators<bigint> = {
 	pow(a, b) 			{ return a ** b; },
 	eq(a, b) 			{ return a === b; },
 	lt(a, b) 			{ return a < b; },
-};
+	} as Operators<bigint>, {
 
-export const Big = Object.assign(
-	function (value: bigint) {
-		return new _Big(value);
-	},
-	BigOps, {
 	shift(x: bigint, n: bigint)	{ return n > 0 ? x << n : x >> -n; },
 	sign(a: bigint) 			{ return a === 0n ? 0 : a < 0n ? -1 : 1; },
 	abs(a: bigint) 				{ return a < 0n ? -a : a; },
@@ -82,7 +81,7 @@ export const Big = Object.assign(
 		return x.reduce((a, b) => (a / Big.gcd(a, b)) * b, 1n);
 	},
 
-	divToNum(a: bigint, b: bigint) {
+	divToReal(a: bigint, b: bigint) {
 		if (b === 0n)
 			return Infinity;
 		if (a === 0n)
@@ -115,12 +114,11 @@ export const Big = Object.assign(
 		return result;
 	},
 
-
 	npow(x: bigint, n: number) {
-		const d = Num.denominator(n, 100);
+		const d = real.denominator(n, 100);
 		if (d === 0)
 			throw new Error('Big.npow: exponent not representable as rational');
-		return BigOps.rpow(x, n * d, d);
+		return Big.root(x ** BigInt(n * d), d);
 	},
 
 	random(bits: number) {

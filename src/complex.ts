@@ -1,7 +1,7 @@
 /* eslint-disable no-restricted-syntax */
 
 import { scalar, has } from "./core";
-import Num from "./num";
+import real from "./real";
 import { OperatorsBase } from "./gen";
 
 class _complex {
@@ -36,7 +36,7 @@ class _complex {
 	}
 
 	eq(b: complex):	boolean		{ return this.r === b.r && this.i === b.i; }
-	approx(b: complex, eps = 1e-8):	boolean		{ return Num.approx(this.r, b.r, eps) && Num.approx(this.i, b.i, eps); }
+	approx(b: complex, eps = 1e-8):	boolean		{ return real.approx(this.r, b.r, eps) && real.approx(this.i, b.i, eps); }
 
 	sqrt()	{
 		const m = this.abs();
@@ -49,7 +49,6 @@ class _complex {
 function fromPolar2(theta: number, r1: number, r2: number)	{
 	return complex(Math.cos(theta) * r1, Math.sin(theta) * r2);
 }
-
 
 export const complex = Object.assign(
 	function (r: number, i = 0) {
@@ -67,11 +66,13 @@ export const complex = Object.assign(
 		}
 	},
 	lt: (a: complex, b: complex) => a.r < b.r || (a.r === b.r && a.i < b.i),
-
-	zero()				{ return complex(0, 0); },
 	fromPolar(r: number, t: number)	{ return complex(Math.cos(t) * r, Math.sin(t) * r); },
+
+	zero()				{ return complex(0); },
+	re(a: complex)		{ return complex(a.r); },
+	im(a: complex)		{ return complex(a.i); },
 	sqrt(a: complex|number)	{
-		return typeof a === 'number' ? (a < 0 ? complex(0, Math.sqrt(-a)) : complex(Math.sqrt(a), 0)) : a.sqrt();
+		return typeof a === 'number' ? (a < 0 ? complex(0, Math.sqrt(-a)) : complex(Math.sqrt(a))) : a.sqrt();
 	},
 	ln(a: complex)		{ return complex(Math.log(a.mag()), a.arg()); },
 	exp(a: complex)		{ return this.fromPolar(Math.exp(a.r), a.i); },
@@ -101,8 +102,8 @@ export const complex = Object.assign(
 	conjugatePair(c: complex) { return [c, c.conj()]; },
 });
 
-complex.prototype = _complex.prototype;
-export type complex = _complex;
+complex.prototype	= _complex.prototype;
+export type complex	= _complex;
 export default complex;
 
 type scalarComplex<T extends scalar<T>> = scalar<T> & has<'sqrt'> & has<'rpow'>;
@@ -154,6 +155,7 @@ export const complexT = Object.assign(
 	fromPolar<T extends scalarComplex<T>>(r: T, t: number)		{ return complexT(r.scale(Math.cos(t)), r.scale(Math.sin(t))); },
 	conjugatePair<T extends scalarComplex<T>>(c: complexT<T>)	{ return [c, c.conj()]; },
 });
+
 complexT.prototype = _complexT.prototype;
 export type complexT<T extends scalarComplex<T>> = _complexT<T>;
 

@@ -6,35 +6,80 @@
 		"url": "git+https://github.com/adrianstephens/ts-maths.git"
 	},
 	"exports": {
-		"./vector": {
-			"require": "./dist/vector.js",
-			"import": "./esm/vector.js",
-			"browser": "./esm/vector.js"
+		"./core": {
+			"types": "./dist/core.d.ts",
+			"require": "./dist/core.js",
+			"import": "./esm/core.js"
+		},
+		"./integer": {
+			"types": "./dist/integer.d.ts",
+			"require": "./dist/integer.js",
+			"import": "./esm/integer.js"
+		},
+		"./real": {
+			"types": "./dist/real.d.ts",
+			"require": "./dist/real.js",
+			"import": "./esm/real.js"
 		},
 		"./rational": {
+			"types": "./dist/rational.d.ts",
 			"require": "./dist/rational.js",
-			"import": "./esm/rational.js",
-			"browser": "./esm/rational.js"
+			"import": "./esm/rational.js"
 		},
 		"./complex": {
+			"types": "./dist/complex.d.ts",
 			"require": "./dist/complex.js",
-			"import": "./esm/complex.js",
-			"browser": "./esm/complex.js"
+			"import": "./esm/complex.js"
 		},
 		"./quaternion": {
+			"types": "./dist/quaternion.d.ts",
 			"require": "./dist/quaternion.js",
-			"import": "./esm/quaternion.js",
-			"browser": "./esm/quaternion.js"
+			"import": "./esm/quaternion.js"
+		},
+		"./vector": {
+			"types": "./dist/vector.d.ts",
+			"require": "./dist/vector.js",
+			"import": "./esm/vector.js"
 		},
 		"./geometry": {
+			"types": "./dist/geometry.d.ts",
 			"require": "./dist/geometry.js",
-			"import": "./esm/geometry.js",
-			"browser": "./esm/geometry.js"
+			"import": "./esm/geometry.js"
 		},
 		"./polynomial": {
+			"types": "./dist/polynomial.d.ts",
 			"require": "./dist/polynomial.js",
-			"import": "./esm/polynomial.js",
-			"browser": "./esm/polynomial.js"
+			"import": "./esm/polynomial.js"
+		},
+		"./mvpolynomial": {
+			"types": "./dist/mvpolynomial.d.ts",
+			"require": "./dist/mvpolynomial.js",
+			"import": "./esm/mvpolynomial.js"
+		},
+		"./gen": {
+			"types": "./dist/gen.d.ts",
+			"require": "./dist/gen.js",
+			"import": "./esm/gen.js"
+		},
+		"./string": {
+			"types": "./dist/string.d.ts",
+			"require": "./dist/string.js",
+			"import": "./esm/string.js"
+		},
+		"./big": {
+			"types": "./dist/big.d.ts",
+			"require": "./dist/big.js",
+			"import": "./esm/big.js"
+		},
+		"./prime": {
+			"types": "./dist/prime.d.ts",
+			"require": "./dist/prime.js",
+			"import": "./esm/prime.js"
+		},
+		"./statistics": {
+			"types": "./dist/statistics.d.ts",
+			"require": "./dist/statistics.js",
+			"import": "./esm/statistics.js"
 		}
 	},
 	"files": [

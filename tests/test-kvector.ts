@@ -1,7 +1,6 @@
 import { test, expect, verify, approxArray, makeApproxArray } from './test';
 import { Blade } from '../dist/kvector';
-import { E3, float3, vectorT } from '../dist/vector';
-import { symbolic } from '../dist/symbolic';
+import { float3 } from '../dist/vector';
 
 test('wedge product 2-vectors', () => {
 	const v1 = [1, 2, 3];
@@ -144,28 +143,3 @@ test('4D wedge products', () => {
 	expect(blade4.components.length, '4D 4-blade components').toEqual(1); // C(4,4)
 	verify(blade4.components, [1], approxArray, 'unit 4-volume');
 });
-
-test('Hodge dual symbolic', () => {
-	const a = symbolic.variable('a');
-	const b = symbolic.variable('b');
-	const c = symbolic.variable('c');
-	const d = symbolic.variable('d');
-	const e = symbolic.variable('e');
-	const f = symbolic.variable('f');
-
-
-	//const zero = symbolic.zero;
-	//const one = symbolic.one;
-
-	const v1 = vectorT(E3, a, b, c);
-	const v2 = vectorT(E3, d, e, f);
-	
-	const blade = Blade(v1, v2);
-	const dual = blade.dual();
-	const doubleDual = dual.dual();
-
-	console.log('blade:', blade.components.map(String));
-	console.log('dual:', dual.components.map(String));
-	console.log('double dual:', doubleDual.components.map(String));
-});
-

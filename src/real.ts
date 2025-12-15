@@ -1,53 +1,42 @@
 import {Operators, scalar, scalarExt} from "./core";
-
-//-----------------------------------------------------------------------------
-// integer
-//-----------------------------------------------------------------------------
-
-export type integer = number & { __brand: 'Integer' };
-
-export const integer = {
-	div(a: integer, b: integer): integer {
-		return Math.trunc(a / b) as integer;
-	},
-
-	sqrt(n: integer): integer {
-		if (n < 0)
-			throw new Error("Negative number");
-		let x: number = n;
-		for (let y = (x + 1) >> 1; y < x; )
-			[x, y] = [y, (x + n / x) >> 1];
-		return x as integer;
-	},
-
-	root(n: integer, r: integer): integer {
-		if (n < 0 && (r & 1) === 0)
-			throw new Error("Negative number");
-		let x: number = n;
-		const r1 = r - 1;
-		for (let y = (r1 * x + n / Math.pow(x, r1)) / r; y < x; )
-			[x, y] = [y, (r1 * x + n / Math.pow(x, r1)) / r];
-		return Math.round(x) as integer;
-	}
-};
-
-export function isInteger(n: number): n is integer {
-	return Number.isInteger(n);
-}
-
-export function isAlmostInteger(x: number, epsilon = Number.EPSILON) {
-	return Num.approx(x, Math.round(x), epsilon);
-}
+import {integer} from "./integer";
 
 //-----------------------------------------------------------------------------
 // number
 //-----------------------------------------------------------------------------
 
-export function isNumber(x: any): x is number {
-	return typeof x === 'number';
+class _real implements scalarExt<_real> {
+	constructor(public value: number) {}
+	dup(): 				real	{ return real(this.value); }
+	neg(): 				real	{ return real(-this.value); }
+	scale(b: number):	real	{ return real(this.value * b); }
+	mul(b: real):		real	{ return real(this.value * b.value); }
+	div(b: real):		real	{ return real(this.value / b.value); }
+	add(b: real):		real	{ return real(this.value + b.value); }
+	sub(b: real):		real	{ return real(this.value - b.value); }
+	mag():				number 	{ return Math.abs(this.value); }
+
+	from(n: number | bigint)	{ return real(Number(n)); }
+	sign():				number	{ return Math.sign(this.value); }
+	abs():				real	{ return real(Math.abs(this.value)); }
+	recip():			real	{ return real(1 / this.value); }
+	divmod(b: real):	number	{ const q = Math.floor(this.value / b.value); this.value -= q * b.value; return q; }
+	lt(b: real):		boolean	{ return this.value < b.value; }
+	eq(b: real):		boolean	{ return this.value === b.value; }
+
+	sqrt(): 			real	{ return real(Math.sqrt(this.value)); }
+	ipow(n: number):	real	{ return real(this.value ** n); }
+	npow(n: number):	real	{ return real(this.value ** n); }
+	rpow(n: number, d:number)	{ return real(this.value ** (n / d)); }
+
+	valueOf():			number	{ return this.value; }
+	toString()					{ return this.value.toString(); }
 }
 
-const NumOps: Operators<number> = {
+export const real = Object.assign(
+	function (value: number) {
+		return new _real(value);
+	}, {
 	func(name, args) {
 		const fn = (Math as unknown as Record<string, (...args: number[]) => number>)[name];
 		return fn ? fn(...args) : undefined;
@@ -61,7 +50,7 @@ const NumOps: Operators<number> = {
 			default:			return undefined;
 		}
 	},
-	from(n) { return n; },
+	from(n) 	{ return n; },
 	dup(n) 		{ return n; },
 	neg(a) 		{ return -a; },
 	scale(a, b)	{ return a * b; },
@@ -74,42 +63,12 @@ const NumOps: Operators<number> = {
 	pow(a, b) 	{ return Math.pow(a, b); },
 	eq(a, b) 	{ return a === b; },
 	lt(a, b) 	{ return a < b; },
-};
+	} as Operators<number>, {
 
-class _Num implements scalarExt<_Num> {
-	constructor(public value: number) {}
-	dup(): 				Num		{ return Num(this.value); }
-	neg(): 				Num		{ return Num(-this.value); }
-	scale(b: number):	Num		{ return Num(this.value * b); }
-	mul(b: Num):		Num		{ return Num(this.value * b.value); }
-	div(b: Num):		Num		{ return Num(this.value / b.value); }
-	add(b: Num):		Num		{ return Num(this.value + b.value); }
-	sub(b: Num):		Num		{ return Num(this.value - b.value); }
-	mag():				number 	{ return Math.abs(this.value); }
-
-	sign():				number	{ return Math.sign(this.value); }
-	abs():				Num		{ return Num(Math.abs(this.value)); }
-	recip():			Num		{ return Num(1 / this.value); }
-	divmod(b: Num):	number		{ const q = Math.floor(this.value / b.value); this.value -= q * b.value; return q; }
-	lt(b: Num):			boolean	{ return this.value < b.value; }
-	eq(b: Num):			boolean	{ return this.value === b.value; }
-	from(n: number | bigint)	{ return Num(Number(n)); }
-
-	sqrt(): 			Num		{ return Num(Math.sqrt(this.value)); }
-	ipow(n: number):	Num		{ return Num(this.value ** n); }
-	npow(n: number):	Num		{ return Num(this.value ** n); }
-	rpow(n: number, d:number)	{ return Num(this.value ** (n / d)); }
-
-	valueOf():			number	{ return this.value; }
-	toString()					{ return this.value.toString(); }
-}
-
-export const Num = Object.assign(
-	function (value: number) {
-		return new _Num(value);
+	is(x: any): x is number {
+		return typeof x === 'number';
 	},
-	NumOps, {
-
+	
 	approx(x: number, y: number, epsilon = Number.EPSILON) {
 		return Math.abs(x - y) < epsilon;
 	},
@@ -117,7 +76,6 @@ export const Num = Object.assign(
 	copySign(a: number, b: number) {
 		return b < 0 ? -Math.abs(a) : Math.abs(a);
 	},
-
 	gcd(...values: number[]) {
 		let a = 0;
 		for (let b of values) {
@@ -132,13 +90,12 @@ export const Num = Object.assign(
 	},
 
 	lcm(...x: number[]) {
-		return x.reduce((a, b) => (a / Num.gcd(a, b)) * b, 1);
+		return x.reduce((a, b) => (a / real.gcd(a, b)) * b, 1);
 	},
-
-	denominator(x: number, maxDen: number, eps = Number.EPSILON) {
+	denominator(x: number, maxDen: number, eps = Number.EPSILON): integer {
 		x = Math.abs(x) % 1;
 		if (x <= eps)
-			return 1;
+			return 1 as integer;
 
 		let k1 = 1, k2 = 0;
 		do {
@@ -147,17 +104,17 @@ export const Num = Object.assign(
 			x -= f;
 			[k2, k1] = [k1, f * k1 + k2];
 		} while (x > eps && k1 < maxDen);
-		return k1;
+		return k1 as integer;
 	},
 
-	commonDenominator(numbers: number[], maxDen = 1000, eps = Number.EPSILON) {
+	commonDenominator(numbers: number[], maxDen = 1000, eps = Number.EPSILON): integer {
 		let scale = 1;
 		for (const n of numbers) {
-			scale *= Num.denominator(n * scale, maxDen, eps);
+			scale *= real.denominator(n * scale, maxDen, eps);
 			if (scale > maxDen)
-				return 0;
+				return 0 as integer;
 		}
-		return scale;
+		return scale as integer;
 	},
 
 	rationalApprox(x: number, maxDen: number, eps = Number.EPSILON) {
@@ -180,10 +137,10 @@ export const Num = Object.assign(
 			[h2, h1, k2, k1] = [h1, f * h1 + h2, k1, f * k1 + k2];
 			b -= f;
 		}
-		return [h1, k1];
+		return [h1 as integer, k1 as integer];
 	},
 
-	continuedFraction(x: number, maxTerms = 64, eps?: number): number[] {
+	continuedFraction(x: number, maxTerms = 64, eps?: number): integer[] {
 		const out: number[] = [];
 
 		for (let i = 0; i < maxTerms; i++) {
@@ -194,35 +151,25 @@ export const Num = Object.assign(
 				break;
 			x = 1 / x;
 		}
-		return out;
+		return out as integer[];
 	},
 
-	modPow(base: number, exp: number, mod: number) {
-		let result = 1;
-		while (exp) {
-			base %= mod;
-			if (exp & 1)
-				result = (result * base) % mod;
-			base *= base;
-			exp >>= 1;
-		}
-		return result;
-	}
+
 });
 
-Num.prototype = _Num.prototype;
-export type Num = _Num;
-export default Num;
+real.prototype = _real.prototype;
+export type real = _real;
+export default real;
 
 
 export function asScalar(x: number|scalar<any>): scalar<any> {
 	if (typeof x === 'number')
-		return Num(x);
+		return real(x);
 	return x;
 }
 export function asScalarExt(x: number|scalarExt<any>): scalarExt<any> {
 	if (typeof x === 'number')
-		return Num(x);
+		return real(x);
 	return x;
 }
 

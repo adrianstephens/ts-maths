@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { expect, test, assert } from './test';
-import { approx } from '../dist/core';
+import real from '../dist/real';
 import {
 	vec,
 	float2, float3, float4,
@@ -32,14 +32,14 @@ import {
 
 function assertOrthonormalBasis(m: float4x4, tol = 1e-9) {
 	const a = m.x, b = m.y, c = m.z, nv = m.w;
-	assert(approx(a.len(), 1, tol), 'a not unit');
-	assert(approx(b.len(), 1, tol), 'b not unit');
-	assert(approx(c.len(), 1, tol), 'c not unit');
-	assert(approx(a.dot(b), 0, tol), 'a·b not zero');
-	assert(approx(a.dot(c), 0, tol), 'a·c not zero');
-	assert(approx(b.dot(c), 0, tol), 'b·c not zero');
+	assert(real.approx(a.len(), 1, tol), 'a not unit');
+	assert(real.approx(b.len(), 1, tol), 'b not unit');
+	assert(real.approx(c.len(), 1, tol), 'c not unit');
+	assert(real.approx(a.dot(b), 0, tol), 'a·b not zero');
+	assert(real.approx(a.dot(c), 0, tol), 'a·c not zero');
+	assert(real.approx(b.dot(c), 0, tol), 'b·c not zero');
 	// last column should be unit (it's the input normalised)
-	assert(approx(nv.len(), 1, tol), 'nv not unit');
+	assert(real.approx(nv.len(), 1, tol), 'nv not unit');
 }
 
 test('swizzle and basic vector ops', () => {
@@ -55,7 +55,7 @@ test('swizzle and basic vector ops', () => {
 	expect(v2.add(v2)).toEqual(float2(2, 4));
 	expect(v2.scale(2)).toEqual(float2(2, 4));
 	assert(v3.dot(float3(1, 0, 0)) === 1, 'dot mismatch');
-	assert(approx(normalise(v3).len(), 1, 1e-12), 'normalise failed');
+	assert(real.approx(normalise(v3).len(), 1, 1e-12), 'normalise failed');
 });
 
 test('2x2 and 2x3 matmul / inverse / affine', () => {
@@ -204,7 +204,7 @@ test('float3x3.basis produces orthonormal rows/cols', () => {
 	// last column should be normalised dir
 	expect(m.z).toEqual(normalise(dir));
 	// columns should be orthogonal
-	assert(approx(m.x.dot(m.y), 0, 1e-12), 'float3x3 basis columns not orthogonal');
+	assert(real.approx(m.x.dot(m.y), 0, 1e-12), 'float3x3 basis columns not orthogonal');
 });
 
 
@@ -212,15 +212,15 @@ test('sincos_half and max_circle_point basic sanity', () => {
 	const s = sincos_half(float2(0.5, 0.5));
 	assert(s.len() > 0, 'sincos_half returned zero');
 	const m = max_circle_point(float2x2.identity());
-	assert(approx(m.len(), 1, 1e-12), 'max_circle_point not unit');
+	assert(real.approx(m.len(), 1, 1e-12), 'max_circle_point not unit');
 });
 
 
 test('matrix determinant small cases', () => {
 	const m2 = float2x2(float2(1,2), float2(3,4));
-	assert(approx(m2.det(), -2, 1e-12), '2x2 det mismatch');
+	assert(real.approx(m2.det(), -2, 1e-12), '2x2 det mismatch');
 	const m3 = float3x3(float3(1,0,0), float3(0,2,0), float3(0,0,3));
-	assert(approx(m3.det(), 6, 1e-12), '3x3 det mismatch');
+	assert(real.approx(m3.det(), 6, 1e-12), '3x3 det mismatch');
 });
 
 

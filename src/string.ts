@@ -1,15 +1,20 @@
 import { Operators } from './core';
-import Num, { isAlmostInteger } from './num';
+import real from './real';
+import integer from './integer';
+
+// Helper type to infer T from return types (avoids issues with permissive argument types like `param`)
+type InferOpsType<O> = O extends { from(n: number): infer T } ? T : never;
 
 //-----------------------------------------------------------------------------
 // output
 //-----------------------------------------------------------------------------
 
-type FractionOptions = false | { chars?: Record<number, Record<number, string>>; superSub?: boolean };
+export type FractionOptions = { fracChars?: Record<number, Record<number, string>>; fracSuperSub?: boolean };
 
-type ConstOptions = {
-	fractions?: FractionOptions;
-	radicals?: Record<number, string>;
+type ConstOptions = FractionOptions & {
+	fractions?: boolean;
+	radicals?: boolean;
+	radicalChars?: Record<number, string>;
 };
 
 const superscriptMap: Record<string, string> = {
@@ -78,32 +83,35 @@ export function fromSuperscript(input: string): string { return transformString(
 export function toSubscript(input: string):		string { return transformString(input, subscriptMap);}
 export function fromSubscript(input: string): 	string { return transformString(input, revSubscriptMap);}
 
-export function fractionString(num: number, den: number, chars = fractionChars, superSub = true): string {
+export function fractionString(num: number, den: number, opts?: FractionOptions): string {
 	return den === 1 ? num.toString()
-		: (chars && chars[den]?.[num])
-		|| (superSub ? toSuperscript(num.toString()) + '⁄' + toSubscript(den.toString())
+		: (opts?.fracChars && opts?.fracChars[den]?.[num])
+		|| (opts?.fracSuperSub ? toSuperscript(num.toString()) + '⁄' + toSubscript(den.toString())
 			: `${num}⁄${den}`
 		);
 }
 
-function radicalString(n: number, symbol: string, opts?: FractionOptions): string|undefined {
-	if (opts === false)
-		return isAlmostInteger(n) ? Math.round(n).toString() : undefined;
-	const [num, den] = Num.rationalApprox(n, 1000, 1e-8);
-	if (Math.abs(n - num / den) < 1e-10)
-		return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts?.chars, opts?.superSub);
-}
-
-
 export function outputNumber(n: number, opts?: ConstOptions): string {
-	if (!Number.isInteger(n)) {
-		const f = radicalString(n, '', opts?.fractions);
+
+	function radical(n: number, symbol: string): string|undefined {
+		if (opts?.fractions === false)
+			return integer.almost(n) ? Math.round(n).toString() : undefined;
+		const [num, den] = real.rationalApprox(n, 1000, 1e-8);
+		if (Math.abs(n - num / den) < 1e-10)
+			return (n < 0 ? '-' : '') + symbol + fractionString(num, den, opts);
+	}
+
+
+	if (!integer.is(n)) {
+		const f = radical(n, '');
 		if (f)
 			return f;
-		for (const [i, r] of Object.entries(opts?.radicals ?? radicalChars)) {
-			const rf = radicalString(n ** +i, r, opts?.fractions);
-			if (rf)
-				return rf;
+		if (opts?.radicals !== false) {
+			for (const [i, r] of Object.entries(opts?.radicalChars ?? radicalChars)) {
+				const rf = radical(n ** +i, r);
+				if (rf)
+					return rf;
+			}
 		}
 	}
 	return n.toString();
@@ -158,7 +166,8 @@ const knownSymbols: Record<string, string> = {
 	'∞': 'infinity',
 };
 
-export function parse<T>(ops: Operators<T>, s: string): T {
+export function parse<O extends Operators<any>>(ops: O, s: string): InferOpsType<O> {
+	type T = InferOpsType<O>;
 	let pos = 0;
 
 	function remainder() 			{ return s.slice(pos); }
@@ -289,6 +298,7 @@ export function parse<T>(ops: Operators<T>, s: string): T {
 
 	// parse power (right-associative)
 	function parsePower(): T {
+		skipSpaces();
 		const r = revRadical[peek()];
 		if (r) {
 			move(1);

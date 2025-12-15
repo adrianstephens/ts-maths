@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 
-import Num from './num';
+import integer from './integer';
 import Big from './big';
 
-const smallPrimes	= [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
-const MR64			= [2, 325, 9375, 28178, 450775, 9780504, 1795265022];
+const smallPrimes	= [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37] as integer[];
+const MR64			= [2, 325, 9375, 28178, 450775, 9780504, 1795265022] as integer[];
 
-export function isProbablePrime(n: number): boolean {
+export function isProbablePrime(n: integer): boolean {
 	if (n < 4n)
 		return n >= 2n;
 
@@ -21,60 +21,54 @@ export function isProbablePrime(n: number): boolean {
 }
 
 // probabilistic primality test with opportunistic factor extraction
-function MillerRabin(n: number): number {
+function MillerRabin(n: integer): integer {
 	// write n-1 as d * 2^s
-	let d = n - 1;
-	const s = 31 - Math.clz32(d & -d);
-	d >>= s;
-/*
-	let s = 0;
-	while ((d & 1) === 0) {
-		d >>= 1;
-		s++;
-	}
-*/
-	function tryWitness(a: number): number {
+	const t = n - 1;
+	const s = 31 - Math.clz32(t & -t);
+	const d = t >> s as integer;;
+	
+	function tryWitness(a: integer): integer {
 		// quick gcd check: if a shares a factor with n, return it
-		const factor = Num.gcd(a, n);
+		const factor = integer.gcd(a, n);
 		if (factor > 1 && factor < n)
 			return factor;
 
-		let x = Num.modPow(a, d, n);
+		let x = integer.modPow(a, d, n);
 		if (x === 1 || x === n - 1)
-			return 0;
+			return 0 as integer;
 
 		for (let r = 1; r < s; r++) {
 			const x0 = x;
-			x = (x * x) % n;
+			x = (x * x) % n as integer;
 			if (x === 1) {
 				// Found nontrivial square root: x is such that x^2 ≡ 1 (mod n) but x ≠ ±1
-				const factor = Num.gcd(x0 - 1, n);
+				const factor = integer.gcd(x0 - 1 as integer, n);
 				if (factor > 1 && factor < n)
 					return factor;
 				// try the other sign as well (rarely useful here, but harmless)
-				const factor2 = Num.gcd(x0 + 1, n);
+				const factor2 = integer.gcd(x0 + 1 as integer, n);
 				if (factor2 > 1 && factor2 < n)
 					return factor2;
 			}
 			if (x === n - 1)
-				return 0;
+				return 0 as integer;
 		}
-		return 1;	//not prime, no factor found
+		return 1 as integer;	//not prime, no factor found
 	}
 
 	for (const a of MR64) {
 		const f = tryWitness(a);
 		if (f)
-			return f;
+			return f as integer;
 	}
 
-	return 0;
+	return 0 as integer;
 }
 
 // find a factor of n using Pollard-Rho with Brent's cycle detection
-function pollardRhoBrent(n: number, f: (x: number) => number, y: number): number {
+function pollardRhoBrent(n: integer, f: (x: number) => number, y: number): integer {
 	const m		= 32;
-	let  y0		= y, x = y, g = 1;
+	let  y0		= y, x = y, g = 1 as integer;
 
 	for (let r = 1; g === 1 && r < 0x10000; r <<= 1) {
 		x = y;
@@ -87,15 +81,15 @@ function pollardRhoBrent(n: number, f: (x: number) => number, y: number): number
 				y = f(y);
 				q = (q * Math.abs(x - y)) % n;
 			}
-			g = Num.gcd(q, n);
+			g = integer.gcd(q as integer, n);
 		}
 	}
 
 	if (g === n) {
-		g = 1;
+		g = 1 as integer;
 		for (let attempts = 0; g === 1 && attempts < 4096; attempts++) {
 			y0 = f(y0);
-			g = Num.gcd(Math.abs(x - y0), n);
+			g = integer.gcd(Math.abs(x - y0) as integer, n);
 		}
 	}
 	return g === 1 ? n : g;
@@ -147,29 +141,29 @@ export function factorInt(n: number): number[] {
 	return out;
 }
 */
-export class factorisation extends Array<number> {
-	constructor(n: number | number[]) {
+export class factorisation extends Array<integer> {
+	constructor(n: integer | integer[]) {
 		if (Array.isArray(n)) {
 			super(...n);
 			return;
 		}
 		super();
-		n	= Math.abs(n);
+		n	= Math.abs(n) as integer;
 
 		for (const p of smallPrimes) {
 			let count = 0;
 			while (n % p === 0) {
-				n /= p;
+				n = n / p as integer;
 				count++;
 			}
 			if (count)
-				this[p] = count;
+				this[p] = count as integer;
 		}
 
 		if (n === 1)
 			return;
 
-		const stack: number[] = [n];
+		const stack: integer[] = [n];
 		while (stack.length) {
 			const m = stack.pop()!;
 			let factor = MillerRabin(m);
@@ -184,13 +178,13 @@ export class factorisation extends Array<number> {
 					}
 				}
 				if (factor < m) {
-					stack.push(factor, m / factor);
+					stack.push(factor, m / factor as integer);
 					continue;
 				}
 			}
 
 			// failed to factor further; treat as prime (probabilistic)
-			this[m] = (this[m] ?? 0) + 1;
+			this[m] = (this[m] ?? 0) + 1 as integer;
 		}
 	}
 
@@ -198,14 +192,14 @@ export class factorisation extends Array<number> {
 		return new factorisation(this);
 	}
 
-	*divisors(limit?: number): Generator<number> {
+	*divisors(limit?: number): Generator<integer> {
 		const factors = this;
 		const keys = Object.keys(this);
-		function* backtrack(i: number, current: number): Generator<number> {
+		function* backtrack(i: number, current: number): Generator<integer> {
 			if (limit && current > limit)
 				return;
 			if (i === keys.length) {
-				yield current;
+				yield current as integer;
 				return;
 			}
 			const p		= Number(keys[i]);
@@ -214,49 +208,49 @@ export class factorisation extends Array<number> {
 				yield* backtrack(i + 1, current);
 		}
 		if (keys.length === 0)
-			yield 1;
+			yield 1 as integer;
 		else
 			yield *backtrack(0, 1);
 	}
 
-	selfMul(other: factorisation|number): factorisation {
+	selfMul(other: factorisation|integer): factorisation {
 		if (typeof other === 'number') {
 			for (const i in this) {
 				const p = Number(i);
 				while (other % p === 0) {
 					++this[p];
-					other /= p;
+					other = other / p as integer;
 				}
 			}
 			other = new factorisation(other);
 		}
 		for (const p in other)
-			this[p] = (this[p] ?? 0) + other[p];
+			this[p] = (this[p] ?? 0) + other[p] as integer;
 		return this;
 	}
-	selfDiv(other: factorisation|number): factorisation {
+	selfDiv(other: factorisation|integer): factorisation {
 		if (typeof other === 'number') {
 			for (const i in this) {
 				const p = Number(i);
 				while (other % p === 0) {
 					--this[p];
-					other /= p;
+					other = other / p as integer;
 				}
 			}
 			other = new factorisation(other);
 		}
 		for (const p in other)
-			this[p] = (this[p] ?? 0) - other[p];
+			this[p] = (this[p] ?? 0) - other[p] as integer;
 		return this;
 	}
-	mul(other: factorisation|number): factorisation {
+	mul(other: factorisation|integer): factorisation {
 		return this.dup().selfMul(other);
 	}
-	div(other: factorisation|number): factorisation {
+	div(other: factorisation|integer): factorisation {
 		return this.dup().selfDiv(other);
 	}
-	pow(exp: number): factorisation {
-		return new factorisation(this.map(f => f * exp));
+	pow(exp: integer): factorisation {
+		return new factorisation(this.map(f => f * exp as integer));
 	}
 }
 

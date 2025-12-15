@@ -7,6 +7,7 @@ import { floatN, characteristic, eigenvalues, LUSolveBareissMulti, LUSolveBareis
 import { Blade } from './kvector';
 import { verticalArray, verticalStyles } from './string';
 export { floatN	} from './vector2';
+export { Blade	} from './kvector';
 
 // Core axis types
 export const E2	= ['x','y'] as const;

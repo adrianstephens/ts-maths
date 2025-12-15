@@ -5,7 +5,8 @@ import {
 	isScalar,	isScalarRational, isScalarExt,	asScalarT
 } from './core';
 
-import Num, {extent, asScalarExt, isNumber} from './num';
+import real, {extent, asScalarExt} from './real';
+import integer from './integer';
 import Big from './big';
 import Gen, {extentT} from './gen';
 
@@ -854,7 +855,7 @@ class polynomial implements Polynomial<number> {
 	}
 
 	content() {
-		return Num.gcd(...this.c);
+		return real.gcd(...this.c);
 	}
 	abs() {
 		return this.leadCoeff() < 0 ? new polynomial(this.c.map(v => -v)) : this;
@@ -1177,7 +1178,7 @@ class polynomialT<T extends ops<T>> implements Polynomial<T> {
 				return rationalRootsB(p2) as rationalRoots<T>;
 
 			} else if (arrayOf(this.c, v => isInstance(v, rational))) {
-				const m = Num.lcm(...this.c.map((v: rational) => v.den));
+				const m = integer.lcm(...this.c.map((v: rational) => v.den as integer));
 				const p2 = new polynomial(this.c.map((v: rational) => v.num * (m / v.den)));
 				return rationalRootsN(p2) as rationalRoots<T>;
 
@@ -1253,7 +1254,7 @@ class polynomialNT<T extends ops<T>> implements PolynomialN<T> {
 				return rationalRootsB(p2) as rationalRoots<T>;
 
 			} else if (arrayOf(this.c, v => isInstance(v, rational))) {
-				const m = Num.lcm(...this.c.map((v: rational) => v.den));
+				const m = integer.lcm(...this.c.map((v: rational) => v.den as integer));
 				const p2 = new polynomial([...this.c.map((v: rational) => v.num * (m / v.den)), m]);
 				return rationalRootsN(p2) as rationalRoots<T>;
 
@@ -1300,7 +1301,7 @@ class polynomialNT<T extends ops<T>> implements PolynomialN<T> {
 //-----------------------------------------------------------------------------
 
 export function polyGCD<T extends PolyNTypes>(A: Polynomial<T>, B: Polynomial<T>): Polynomial<T> {
-	return polyOf(A, isNumber)
+	return polyOf(A, real.is)
 		? Gen.gcd(A, B)
 		: polyGCDT(A as Polynomial<any>, B as Polynomial<any>) as Polynomial<T>;
 }
@@ -1335,7 +1336,7 @@ function subresultantPRST<T extends ops<T>>(A: Polynomial<T>, B: Polynomial<T>) 
 }
 
 export function squareFreeFactorization<T extends PolyNTypes>(f: Polynomial<T>): { factor: Polynomial<T>, multiplicity: number }[] {
-	return polyOf(f, isNumber)
+	return polyOf(f, real.is)
 		? squareFreeFactorizationN(f) as { factor: Polynomial<T>, multiplicity: number }[]
 		: squareFreeFactorizationT(f as Polynomial<any>);
 }
@@ -1445,7 +1446,7 @@ function sumTop2T<T extends scalar<T>>(zero: T, a: T[]) {
 
 function lagrangeImproved(c: number[]|complex[]): number {
 	const N = c.length;
-	if (arrayOf(c, isNumber))
+	if (arrayOf(c, real.is))
 		return sumTop2(c.map((c, i) => Math.pow(Math.abs(c), 1 / (N - i))));
 	return sumTop2(c.map((c, i) => Math.pow(c.abs(), 1 / (N - i))));
 }
@@ -1482,7 +1483,7 @@ function realBoundT<T extends scalar<T>>(k: polynomialNT<T>) {
 		sumTop2T(zero, terms.filter((x, i) => k.c[i].sign() < 0))
 	);
 /*
-	if (arrayOf(terms, isNumber)) {
+	if (arrayOf(terms, real.is)) {
 		return new extent(
 			-sumTop2(terms.filter((x, i) => (i % 2 == 0) === (k.c[i].sign() > 0))),
 			sumTop2(terms.filter((x, i) => k.c[i].sign() < 0))
@@ -1609,7 +1610,7 @@ export function multiplicityAt<T extends number | scalar<any>>(poly: Polynomial<
 		return 1;
 
 	let multiplicity = 0;
-	if (isNumber(x)) {
+	if (real.is(x)) {
 		const threshold = epsilon * Math.max(1, Math.abs(x));
 		while (poly.degree() >= 0 && Math.abs((poly as Polynomial<number>).evaluate(x)) < threshold) {
 			poly = poly.deriv();
@@ -1680,7 +1681,7 @@ function normPolyRealRoots(k: number[], epsilon: number): number[] {
 			
 				if (h < 0) {
 					//3 real roots
-					const	angle	= Math.atan2(Num.copySign(Math.sqrt(-h), g), g) / 3;
+					const	angle	= Math.atan2(real.copySign(Math.sqrt(-h), g), g) / 3;
 					const	c		= Math.cos(angle), s = Math.sin(angle);
 					const	rf		= Math.sqrt(f);
 					return [
@@ -2105,7 +2106,7 @@ function normPolyComplexRoots(k: number[], epsilon: number): complex[] {
 			
 				if (h < 0) {
 					//3 real roots
-					const	angle	= Math.atan2(Num.copySign(Math.sqrt(-h), g), g) / 3;
+					const	angle	= Math.atan2(real.copySign(Math.sqrt(-h), g), g) / 3;
 					const	c		= Math.cos(angle), s = Math.sin(angle);
 					const	rf		= Math.sqrt(f);
 					return	[
@@ -2494,14 +2495,14 @@ function rationalRootsN(p: polynomial): rational[] {
 		p.c = divRoot(p.c, 0)[0];
 
 	const r = p.c.map(c => rational.from(c));
-	const m = Num.lcm(...r.map(v => v.den));
+	const m = integer.lcm(...r.map(v => v.den as integer));
 	const p2 = new polynomial(r.map(v => v.num * (m / v.den)));
 
 	p = p2;
 
 	if (p.leadCoeff() === 1) {
 		const a0		= p.c[0];
-		const factors	= new factorisation(a0);
+		const factors	= new factorisation(a0 as integer);
 		const bound		= lagrangeImproved(p.c.slice(0, -1));
 
 		for (const x of factors.divisors(bound)) {
@@ -2521,8 +2522,8 @@ function rationalRootsN(p: polynomial): rational[] {
 
 	const roots: rational[] = roots0.map(r => rational(r));
 
-	const a0 = Math.abs(p.c[0]);
-	const an = Math.abs(p.leadCoeff());
+	const a0 = Math.abs(p.c[0]) as integer;
+	const an = Math.abs(p.leadCoeff()) as integer;
 
 	const pFactors	= new factorisation(a0);
 	const qFactors	= new factorisation(an);
@@ -2703,12 +2704,12 @@ export function sylvesterMatrix<T>(p: T[], q: T[], zero: T) {
 }
 
 export function resultant<T extends number | scalar<any>>(p: Polynomial<T>, q: Polynomial<T>): T {
-	return polyOf(p, isNumber)
+	return polyOf(p, real.is)
 		? resultantN(p as Polynomial<number>, q as Polynomial<number>) as T
 		: resultantT(p as Polynomial<scalar<any>>, q as Polynomial<scalar<any>>) as T;
 }
 export function discriminant<T extends number | scalar<any>>(p: Polynomial<T>) {
-	return polyOf(p, isNumber)
+	return polyOf(p, real.is)
 		? discriminantN(p as Polynomial<number>) as T
 		: discriminantT(p as Polynomial<scalar<any>>) as T;
 }

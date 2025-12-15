@@ -1,5 +1,5 @@
 import { test, assert,  approxArray } from './test';
-import { approx } from '../dist/core';
+import real from '../dist/real';
 import { vector, mat, E6, floatN, float3x3, float2, float2x2, float3, float4, float4x4 } from '../dist/vector';
 
 
@@ -35,7 +35,7 @@ test('eigen_2x2 - real distinct', () => {
 	const eigs = A.eigenvalues();
 	if (eigs.length !== 2) throw new Error('expected 2 eigenvalues');
 	const vals = eigs.map(e => e.r).sort((a,b) => a-b);
-	if (!(approx(vals[0],2) && approx(vals[1],3)))
+	if (!(real.approx(vals[0],2) && real.approx(vals[1],3)))
 		throw new Error('real distinct eigenvalues mismatch: ' + JSON.stringify(vals));
 });
 
@@ -53,7 +53,7 @@ test('eigen_3x3 - diag 1,2,3', () => {
 	const eigs = A.eigenvalues();
 	if (eigs.length !== 3) throw new Error('expected 3 eigenvalues');
 	const vals = eigs.map(e => e.r ?? 0).sort((a,b) => a-b);
-	if (!(approx(vals[0],1) && approx(vals[1],2) && approx(vals[2],3)))
+	if (!(real.approx(vals[0],1) && real.approx(vals[1],2) && real.approx(vals[2],3)))
 		throw new Error('3x3 diagonal eigenvalues mismatch: ' + JSON.stringify(vals));
 });
 
@@ -62,7 +62,7 @@ test('eigen_4x4 - diag 1..4', () => {
 	const eigs = A.eigenvalues();
 	if (eigs.length !== 4) throw new Error('expected 4 eigenvalues');
 	const vals = eigs.map(e => e.r).sort((a,b) => a-b);
-	if (!(approx(vals[0],1) && approx(vals[1],2) && approx(vals[2],3) && approx(vals[3],4)))
+	if (!(real.approx(vals[0],1) && real.approx(vals[1],2) && real.approx(vals[2],3) && real.approx(vals[3],4)))
 		throw new Error('4x4 diagonal eigenvalues mismatch: ' + JSON.stringify(vals));
 });
 
@@ -105,7 +105,7 @@ test('eigen_6x6_vector - diagonal', () => {
     const vals = eigs.map(e => e.r).sort((a, b) => a - b);
     const expected = diag.slice().sort((a, b) => a - b);
     for (let i = 0; i < 6; ++i)
-        assert(approx(vals[i], expected[i]), `eigen ${i} mismatch ${vals[i]} != ${expected[i]}`);
+        assert(real.approx(vals[i], expected[i]), `eigen ${i} mismatch ${vals[i]} != ${expected[i]}`);
 });
 
 function sortComplexList(arr: {r:number,i:number}[]) {
@@ -121,7 +121,7 @@ function assertEigenMultiset(eigs: {r:number,i:number}[], expected: {r:number,i:
     for (let i = 0; i < s1.length; ++i) {
         const [r1,i1] = s1[i];
         const [r2,i2] = s2[i];
-        assert(approx(r1, r2, tol) && approx(i1, i2, tol), `eigen ${i} mismatch (${r1},${i1}) != (${r2},${i2})`);
+        assert(real.approx(r1, r2, tol) && real.approx(i1, i2, tol), `eigen ${i} mismatch (${r1},${i1}) != (${r2},${i2})`);
     }
 }
 

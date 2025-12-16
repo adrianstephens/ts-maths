@@ -49,7 +49,7 @@
 			"label": "PACKAGE",
 			"command": "npm pack",
 			"problemMatcher": [],
-			"dependsOn": "npm: watch"
+			"dependsOn": "npm: build"
 		},
 		{
 			"label": "TEST",

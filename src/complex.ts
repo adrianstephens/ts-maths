@@ -2,7 +2,7 @@
 
 import { scalar, has } from "./core";
 import real from "./real";
-import { OperatorsBase } from "./gen";
+import gen from "./gen";
 
 class _complex {
 	constructor(public r: number, public i: number) {}
@@ -54,7 +54,7 @@ export const complex = Object.assign(
 	function (r: number, i = 0) {
 		return new _complex(r, i);
 	},
-	OperatorsBase(_complex),
+	gen.OperatorsBase(_complex),
 	{// statics
 	variable(name: string): complex | undefined {
 		switch (name) {

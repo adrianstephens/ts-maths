@@ -33,6 +33,49 @@ class _real implements scalarExt<_real> {
 	toString()					{ return this.value.toString(); }
 }
 
+class _extent {
+	static fromCentreExtent(centre: number, size: number) {
+		const half = size * 0.5;
+		return new _extent(centre - half, centre + half);
+	}
+	static from<U extends Iterable<number>>(items: U) {
+		const ext = new _extent;
+		for (const i of items)
+			ext.add(i);
+		return ext;
+	}
+	constructor(
+		public min	= Infinity,
+		public max	= -Infinity
+	) {}
+	extent() {
+		return this.max - this.min;
+	}
+	centre() {
+		return (this.min + this.max) * 0.5;
+	}
+	add(p: number) {
+		this.min = Math.min(this.min, p);
+		this.max = Math.max(this.max, p);
+	}
+	combine(b: _extent) {
+		this.min = Math.min(this.min, b.min);
+		this.max = Math.max(this.max, b.max);
+	}
+	encompasses(b: _extent) {
+		return this.min <= b.min && this.max >= b.max;
+	}
+	overlaps(b: _extent) {
+		return this.min <= b.max && this.max >= b.min;
+	}
+	contains(p: number) {
+		return this.min <= p && this.max >= p;
+	}
+	clamp(p: number) {
+		return Math.min(Math.max(p, this.min), this.max);
+	}
+}
+
 export const real = Object.assign(
 	function (value: number) {
 		return new _real(value);
@@ -92,6 +135,7 @@ export const real = Object.assign(
 	lcm(...x: number[]) {
 		return x.reduce((a, b) => (a / real.gcd(a, b)) * b, 1);
 	},
+
 	denominator(x: number, maxDen: number, eps = Number.EPSILON): integer {
 		x = Math.abs(x) % 1;
 		if (x <= eps)
@@ -154,12 +198,16 @@ export const real = Object.assign(
 		return out as integer[];
 	},
 
-
+	extent: _extent
 });
 
 real.prototype = _real.prototype;
 export type real = _real;
 export default real;
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export namespace real {
+	export type extent = _extent;
+}
 
 
 export function asScalar(x: number|scalar<any>): scalar<any> {
@@ -173,45 +221,4 @@ export function asScalarExt(x: number|scalarExt<any>): scalarExt<any> {
 	return x;
 }
 
-export class extent {
-	static fromCentreExtent(centre: number, size: number) {
-		const half = size * 0.5;
-		return new extent(centre - half, centre + half);
-	}
-	static from<U extends Iterable<number>>(items: U) {
-		const ext = new extent;
-		for (const i of items)
-			ext.add(i);
-		return ext;
-	}
-	constructor(
-		public min	= Infinity,
-		public max	= -Infinity
-	) {}
-	extent() {
-		return this.max - this.min;
-	}
-	centre() {
-		return (this.min + this.max) * 0.5;
-	}
-	add(p: number) {
-		this.min = Math.min(this.min, p);
-		this.max = Math.max(this.max, p);
-	}
-	combine(b: extent) {
-		this.min = Math.min(this.min, b.min);
-		this.max = Math.max(this.max, b.max);
-	}
-	encompasses(b: extent) {
-		return this.min <= b.min && this.max >= b.max;
-	}
-	overlaps(b: extent) {
-		return this.min <= b.max && this.max >= b.min;
-	}
-	contains(p: number) {
-		return this.min <= p && this.max >= p;
-	}
-	clamp(p: number) {
-		return Math.min(Math.max(p, this.min), this.max);
-	}
-}
+

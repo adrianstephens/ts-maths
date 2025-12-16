@@ -13,7 +13,8 @@ test('roots', () => {
 	let poly = Polynomial([1]);
 	for (let j = 1;  j < 20; ++j) {
 		poly = poly.mul(Polynomial([-j, 1]));
-		const rroots = poly.rationalRoots();
+		console.log(String(poly));
+		//const rroots = poly.rationalRoots();
 		const roots = poly.realRoots();
 		verify(roots, sequence(j, 1), makeApproxArray(toleranceForDegree(j)));
 	}
@@ -23,7 +24,8 @@ test('roots of rational', () => {
 	let poly = Polynomial([rational.from(1)]);
 	for (let j = 1;  j < 10; ++j) {
 		poly = poly.mul(Polynomial([rational.from(-j), rational.from(1)]));
-		const rroots = poly.rationalRoots();
+		//const rroots = poly.rationalRoots();
+		console.log(String(poly));
 		const roots = poly.realRoots();
 		verify(roots.map(r=>+r), sequence(j, 1), makeApproxArray(2e-7));
 	}
@@ -33,8 +35,19 @@ test('roots of big rational', () => {
 	let poly = Polynomial([rationalB.from(1)]);
 	for (let j = 1;  j < 6; ++j) {
 		poly = poly.mul(Polynomial([rationalB.from(-j), rationalB.from(1)]));
+		console.log(String(poly));
 		const roots = poly.realRoots();
 		verify(roots.map(r=>+r), sequence(j, 1), makeApproxArray(2e-7));
+	}
+});
+
+test('rational roots', () => {
+	let poly = Polynomial([1n]);
+	for (let j = 1; j < 20; ++j) {
+		poly = poly.mul(Polynomial([BigInt(-j), 8n]));
+		console.log(String(poly));
+		const roots = poly.rationalRoots();
+		verify(roots.map(r=>Number(r)), sequence(j, 0.125, 0.125), makeApproxArray(2e-7));
 	}
 });
 
@@ -60,13 +73,5 @@ test('roots of big', () => {
 	}
 });
 
-test('rational roots', () => {
-	let poly = Polynomial([1n]);
-	for (let j = 1; j < 20; ++j) {
-		poly = poly.mul(Polynomial([BigInt(-j), 8n]));
-		const roots = poly.rationalRoots();
-		verify(roots.map(r=>Number(r)), sequence(j, 0.125, 0.125), makeApproxArray(2e-7));
-	}
-});
 
 

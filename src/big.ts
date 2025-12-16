@@ -37,6 +37,54 @@ class _Big implements scalarExt<_Big> {
 	toString()						{ return this.value.toString(); }
 }
 
+
+class extentB {
+	static fromCentreExtent(centre: bigint, size: bigint) {
+		const half = size / 2n;
+		return new extentB(centre - half, centre + half);
+	}
+	static from<U extends Iterable<bigint>>(items: U) {
+		let ext;// = new extentT<T>;
+		for (const i of items) {
+			if (!ext)
+				ext = new extentB(i, i);
+			else
+				ext.add(i);
+		}
+		return ext;
+	}
+	constructor(
+		public min: bigint,
+		public max: bigint
+	) {}
+	extent() {
+		return this.max - this.min;
+	}
+	centre() {
+		return (this.min + this.max) / 2n;
+	}
+	add(p: bigint) {
+		this.min = Big.min(this.min, p);
+		this.max = Big.max(this.max, p);
+	}
+	combine(b: extentB) {
+		this.min = Big.min(this.min, b.min);
+		this.max = Big.max(this.max, b.max);
+	}
+	encompasses(b: extentB) {
+		return this.min <= b.min && this.max >= b.max;
+	}
+	overlaps(b: extentB) {
+		return this.min <= b.max && this.max >= b.min;
+	}
+	contains(p: bigint) {
+		return this.min <= p && this.max >= p;
+	}
+	clamp(p: bigint) {
+		return Big.min(Big.max(p, this.min), this.max);
+	}
+}
+
 export const Big = Object.assign(
 	function (value: bigint) {
 		return new _Big(value);
@@ -190,12 +238,17 @@ export const Big = Object.assign(
 		}
 
 		return log;
-	}
+	},
+	extent: extentB
 });
 
 Big.prototype = _Big.prototype;
 export type Big = _Big;
 export default Big;
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export namespace Big {
+	export type extent = extentB;
+}
 
 function highestSetB(x: bigint): number {
 	let s = 0;
@@ -220,50 +273,3 @@ function highestSetB(x: bigint): number {
 	return 1n << BigInt(b) <= x ? s + b : s + b - 1;
 }
 
-
-export class extentB {
-	static fromCentreExtent(centre: bigint, size: bigint) {
-		const half = size / 2n;
-		return new extentB(centre - half, centre + half);
-	}
-	static from<U extends Iterable<bigint>>(items: U) {
-		let ext;// = new extentT<T>;
-		for (const i of items) {
-			if (!ext)
-				ext = new extentB(i, i);
-			else
-				ext.add(i);
-		}
-		return ext;
-	}
-	constructor(
-		public min: bigint,
-		public max: bigint
-	) {}
-	extent() {
-		return this.max - this.min;
-	}
-	centre() {
-		return (this.min + this.max) / 2n;
-	}
-	add(p: bigint) {
-		this.min = Big.min(this.min, p);
-		this.max = Big.max(this.max, p);
-	}
-	combine(b: extentB) {
-		this.min = Big.min(this.min, b.min);
-		this.max = Big.max(this.max, b.max);
-	}
-	encompasses(b: extentB) {
-		return this.min <= b.min && this.max >= b.max;
-	}
-	overlaps(b: extentB) {
-		return this.min <= b.max && this.max >= b.min;
-	}
-	contains(p: bigint) {
-		return this.min <= p && this.max >= p;
-	}
-	clamp(p: bigint) {
-		return Big.min(Big.max(p, this.min), this.max);
-	}
-}

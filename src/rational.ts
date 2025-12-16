@@ -1,7 +1,7 @@
 import { Operators, scalarRational, lazySlice } from "./core";
 import real from './real';
 import Big from './big';
-import Gen, {OperatorsBase} from './gen';
+import Gen from './gen';
 import { FractionOptions, fractionString } from "./string";
 
 //-----------------------------------------------------------------------------
@@ -66,7 +66,7 @@ export const rational: ((num: number, den?: number) => rational) & Operators<rat
 		const g = real.gcd(num, den);
 		return new _rational(num / g, den / g);
 	},
-	OperatorsBase(_rational),
+	Gen.OperatorsBase(_rational),
 	{// statics
 	variable(_name: string): undefined			{},
 	rpow(a: rational, n: number, d: number)		{ if (d === 1) return a.ipow(n); throw new Error("invalid"); },
@@ -135,7 +135,7 @@ class _rationalB {
 	mag():	 	number		{ return Big.divToReal(Big.abs(this.num), this.den); }
 
 	set(b: rationalB):	rationalB	{ this.num = b.num; this.den = b.den; return this; }
-	scale(b: number|bigint):	rationalB	{ return rationalB(this.num * BigInt(b), this.den); }
+	scale(b: number|bigint):	rationalB	{ return typeof b === 'bigint' ?  rationalB(this.num * b, this.den) : this.mul(rationalB.from(b)); }
 	mul(b: rationalB):	rationalB	{ return rationalB(this.num * b.num, this.den * b.den); }
 	add(b: rationalB):	rationalB	{ return rationalB(this.num * b.den + b.num * this.den, this.den * b.den); }
 	sub(b: rationalB):	rationalB	{ return rationalB(this.num * b.den - b.num * this.den, this.den * b.den); }

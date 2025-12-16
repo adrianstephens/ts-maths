@@ -1,5 +1,8 @@
+import real from "../dist/real";
+
 export interface Equal<T> {
 	eq(b: T): boolean;
+	approx?(b: T, tol: number): boolean;
 }
 type Testable<T> = T extends (string | number | boolean | null | undefined) 
 	? T 
@@ -13,8 +16,8 @@ export function expect<T>(v: Testable<T>, description?: string) {
 			//if (!success)
 			//	console.log(`fail: expected ${v2}, got ${v}`);
 		},
-		toBeCloseTo(v2: number, tol = 1e-8) {
-			const success = typeof v === 'number' && Math.abs(v - v2) <= tol;
+		toBeCloseTo(v2: T, tol = 1e-8) {
+			const success = typeof v === 'object' && v ? v.approx?.(v2, tol) : real.approx(v as number, v2 as number, tol);
 			console.log(`${success ? '✓' : '✗'}: ${description ? description + ' ' : ''}${v} ≈ ${v2}`);
 		},
 		check(test: (v: T) => boolean) {

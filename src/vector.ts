@@ -1,12 +1,14 @@
 /* eslint-disable no-restricted-syntax */
+/* eslint-disable @typescript-eslint/no-namespace */
+
 import {ops, scalar, scalarExt, has} from './core';
 import Gen from './gen';
 import complex from './complex';
 import { Polynomial, PolynomialN } from './polynomial';
-import { floatN, characteristic, eigenvalues, LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';
+import { LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './bareiss';
 import { Blade } from './kvector';
 import { verticalArray, verticalStyles } from './string';
-export { floatN	} from './vector2';
+
 export { Blade	} from './kvector';
 
 // Core axis types
@@ -201,7 +203,7 @@ export class vecImp<E extends string> implements vops<vector<E>, number> {
 	[Symbol.for("debug.description")]() { return this.toString(); }
 }
 
-export function vecClass<E extends string, S>() {
+function vecClass<E extends string, S>() {
 	return vecImp as unknown as new (v: vec<number, E>) => S;
 }
 
@@ -209,19 +211,16 @@ export function vecClass<E extends string, S>() {
 // general vector type over T
 //-----------------------------------------------------------------------------
 
-export interface vscalar<C extends vscalar<C, S>, S=number> extends scalar<C, S> {
-	sqrt(): 	C;
-	recip():	C;
-}
+export type vscalar<C extends vscalar<C, S>, S=number> = scalar<C, S> & has<'sqrt'> & has<'recip'>;
 
 export function vectorT<T extends vscalar<T>, E extends string>(e: readonly E[], ...v: T[]) {
 	return (new vecImpT<T, E>(vec(e, ...v))) as vector<E, T>;
 }
 
-function _cross2T<T extends vscalar<T>>(a: T[], b: T[]): T {
+function _cross2T<T extends ops<T>>(a: T[], b: T[]): T {
 	return a[0].mul(b[1]).sub(a[1].mul(b[0]));
 }
-function _cross3T<T extends vscalar<T>>(a: T[], b: T[]): T[] {
+function _cross3T<T extends ops<T>>(a: T[], b: T[]): T[] {
 	return [
 		a[1].mul(b[2]).sub(a[2].mul(b[1])),
 		a[2].mul(b[0]).sub(a[0].mul(b[2])),
@@ -263,13 +262,14 @@ export class vecImpT<T extends vscalar<T>, E extends string> implements vops<vec
 		return this.create(...comps.map((c, j) => (j === i ? one : zero).sub(x.mul(c))));
 	}
 
-	lensq() 					{ return this.dot(this as vector<E, T>); }
-	len() 						{ return this.lensq().sqrt(); }
-	mag()						{ return this.len().mag(); }
-	selfScale(b: T) 			{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].mul(b); }
-	selfMul(b: vector<E, T>) 	{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].mul(b[k]); }
-	selfAdd(b: vector<E, T>) 	{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].add(b[k]); }
-	selfSub(b: vector<E, T>) 	{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].sub(b[k]); }
+	lensq() 				{ return this.dot(this as vector<E, T>); }
+	len() 					{ return this.lensq().sqrt(); }
+	mag()					{ return this.len().mag(); }
+	selfScale(b: T) 		{ const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].mul(b); }
+	selfMul(b: vector<E, T>) { const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].mul(b[k]); }
+	selfAdd(b: vector<E, T>) { const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].add(b[k]); }
+	selfSub(b: vector<E, T>) { const v = this.asVec(); for (const k of this.keys()) v[k] = v[k].sub(b[k]); }
+
 	clamp(min: vector<E, T>, max: vector<E, T>) 	{ return this.max(min).min(max); }
 
 	cross(b: vector<E, T>) {
@@ -283,9 +283,111 @@ export class vecImpT<T extends vscalar<T>, E extends string> implements vops<vec
 	toString() 				{ return '('+this._values.join(', ')+')'; }
 	[Symbol.for("debug.description")]() { return this.toString(); }
 }
-
+/*
 export function vecClassT<T extends vscalar<T>, E extends string, S>() {
 	return vecImpT<T, E> as unknown as new (v: vec<T, E>) => S;
+}
+*/
+//-----------------------------------------------------------------------------
+// floatN -- Numeric vector of arbitrary length with basic vector operations
+//-----------------------------------------------------------------------------
+
+export class floatN extends Array<number> implements vops<floatN, number> {
+	constructor(...args: number[]) {
+		if (args.length === 1) {
+			super();
+			this.push(args[0]);
+		} else {
+			super(...args);
+		}
+	}
+	create(...args: number[]): floatN {
+		return new floatN(...args);
+	}
+	get _values(): number[] { return this; }
+
+	static from<T extends Iterable<number> | ArrayLike<number>>(input: T, mapFn?: (v: number, i: number) => number, thisArg?: any): floatN {
+		const a = Array.from(input as any, mapFn as any, thisArg);
+		Object.setPrototypeOf(a, floatN.prototype);
+		return a as floatN;
+	}
+	static zeros(n: number) {
+		return new floatN(...Array(n).fill(0));
+	}
+	static fromArray(v: number[]) {
+		return new floatN(...v);
+	}
+	static fromVec(v: vec<number, string>) {
+		return this.fromArray(Object.values(v));
+	}
+
+	dup() 					{ return floatN.fromArray(this); }
+	neg() 					{ return floatN.fromArray(this.map(x => -x)); }
+	abs() 					{ return floatN.fromArray(this.map(x => Math.abs(x))); }
+	scale(b: number) 		{ return floatN.fromArray(this.map(x => x * b)); }
+	mul(b: floatN) 			{ return floatN.fromArray(this.map((x, i) => x * b[i])); }
+	div(b: floatN) 			{ return floatN.fromArray(this.map((x, i) => x / b[i])); }
+	add(b: floatN) 			{ return floatN.fromArray(this.map((x, i) => x + b[i])); }
+	sub(b: floatN) 			{ return floatN.fromArray(this.map((x, i) => x - b[i])); }
+	min(b: floatN) 			{ return floatN.fromArray(this.map((x, i) => Math.min(x, b[i]))); }
+	max(b: floatN) 			{ return floatN.fromArray(this.map((x, i) => Math.max(x, b[i]))); }
+	eq(b: floatN) 			{ return this.length === b.length && this.every((v, i) => v === b[i]); }
+	dot(b: floatN) 			{ return this.reduce((acc, v, i) => acc + v * b[i], 0); }
+	perp() 					{
+		const i = this.reduce((minI, c, k) => Math.abs(c) < Math.abs(this[minI]) ? k : minI, 0);
+		const x = this[i] / this.lensq();
+		return this.create(...this.map((c, j) => (j === i ? 1 : 0) - x * c));
+	}
+
+	lensq() 				{ return this.dot(this); }
+	len() 					{ return Math.sqrt(this.lensq()); }
+	mag()					{ return this.len(); }
+	selfScale(b: number) 	{ for (const i in this) this[i] *= b; }
+	selfMul(b: floatN) 		{ for (const i in this) this[i] *= b[i]; }
+	selfAdd(b: floatN) 		{ for (const i in this) this[i] += b[i]; }
+	selfSub(b: floatN) 		{ for (const i in this) this[i] -= b[i]; }
+	clamp(min: floatN, max: floatN) 	{ return this.max(min).min(max); }
+
+	toString() 				{ return '('+this.join(', ')+')'; }
+	[Symbol.for("debug.description")]() { return this.toString(); }
+}
+
+
+function mulN(A: floatN[], b: floatN): floatN {
+	const r	= A[0].scale(b[0]);
+	for (let i = 1; i < A.length; i++) {
+		const a = A[i].scale(b[i]);
+		if (a.length > r.length)
+			r.push(...Array(a.length - r.length).fill(0));
+		r.selfAdd(a);
+	}
+	return r;
+}
+
+function matmulN(A: floatN[], B: floatN[]): floatN[] {
+	return B.map(b => mulN(A, b));
+}
+
+//-----------------------------------------------------------------------------
+// Modified Gram-Schmidt. Returns Q (array of floatNs) and R (numeric m x m upper-triangular)
+//-----------------------------------------------------------------------------
+
+function QR(cols: floatN[]) {
+	const n = cols.length;
+	const Q: floatN[] = [];
+	const R = cols.map((v, j) => {
+		const Rj: number[] = [];
+		for (let i = 0; i < j; ++i) {
+			const rij = Q[i].dot(v);
+			Rj[i] = rij;
+			v.selfSub(Q[i].scale(rij));
+		}
+		const norm = v.len();
+		Rj[j] = norm;
+		Q[j] = norm ? v.scale(1 / norm) : floatN.zeros(n);
+		return floatN.fromArray(Rj);
+	});
+	return { Q, R };
 }
 
 //-----------------------------------------------------------------------------
@@ -375,6 +477,118 @@ class matImp<C extends vops<C>, R extends string> {
 		return '('+this.columns().join(', ')+')';
 	}
 	[Symbol.for("debug.description")]() { return this.toString(true); }
+}
+
+function characteristic(A: floatN[]): PolynomialN<number> {
+	const n = A.length;
+
+	function trace() {
+		let trace = 0;
+		for (let i = 0; i < n; ++i)
+			trace += B_cols[i][i];
+		return trace;
+	}
+
+	const B_cols = A.map(col => col.dup());
+	const I_cols = Array.from({length: n}, (_, i) => floatN.from({length: n}, (_, j):number => i === j ? 1 : 0));
+
+	const coeffs: number[] = [];
+
+	for (let k = 1; k < n; ++k) {
+		const ck	= -trace() / k;
+		coeffs.push(ck);
+
+		for (let i = 0; i < n; i++)
+			B_cols[i] = mulN(A, B_cols[i].add(I_cols[i].scale(ck)));
+	}
+	coeffs.push(-trace() / n);
+	coeffs.reverse();
+	return PolynomialN(coeffs);
+}
+
+
+// Basic QR-based eigensolver (returns array of complex eigenvalues).
+export function eigenvalues(A: floatN[]): complex[] {
+	const n = A.length;
+
+	// For small matrices (<= 5) prefer the polynomial solver (uses closed-form/Aberth)
+	if (n <= 5) {
+		const roots = characteristic(A).allRoots();
+		return roots.map(r => typeof r === 'number' ? complex(r, 0) : complex(r.r, r.i));
+	}
+
+	const	tol = 1e-12;
+	const	maxIter = Math.max(1000, 100 * n);
+	const	eigs: complex[] = [];
+	const	cols = A.map(c => c.dup());
+
+	let		m = n;
+	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		// Check deflation by looking at entry (m-1, m-2)
+		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
+			eigs.push(complex(d, 0));
+			m -= 1;
+			continue;
+		}
+
+		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
+		const tr	= a + d;
+		const det	= a * d - b * c;
+		const disc	= tr * tr - 4 * det;
+		let mu: number;
+		if (disc >= 0) {
+			const s = Math.sqrt(disc);
+			const mu1 = 0.5 * (tr + s);
+			const mu2 = 0.5 * (tr - s);
+			mu = Math.abs(mu1 - d) < Math.abs(mu2 - d) ? mu1 : mu2;
+		} else {
+			mu = tr * 0.5;
+		}
+
+		// Build truncated columns for top m x m block and apply shift
+		const ScolsTrunc = cols.slice(0, m).map(c => new floatN(...Object.values(c).slice(0, m)));
+		for (let j = 0; j < m; ++j)
+			ScolsTrunc[j][j] -= mu;
+
+		// QR decompose truncated S
+		const { Q, R } = QR(ScolsTrunc);
+		const RQ = matmulN(R, Q);
+
+		// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
+		for (let j = 0; j < m; ++j) {
+			for (let i = 0; i < m; ++i)
+				cols[j][i] = RQ[j][i] + (i === j ? mu : 0);
+		}
+	}
+
+	// If not fully converged, extract remaining eigenvalues from trailing blocks
+	while (m > 1) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
+			eigs.push(complex(cols[m - 1][m - 1], 0));
+			m -= 1;
+			continue;
+		}
+		// take 2x2 block - delegate to polynomial solver for correctness
+		const roots = PolynomialN([a * d - b * c, -(a + d)]).allRoots();
+		eigs.push(...roots);
+		m -= 2;
+	}
+
+	if (m === 1)
+		eigs.push(complex((cols[0])[0], 0));
+
+	// eigenvalues collected bottom-up; reverse to have original order
+	return eigs.reverse();
 }
 
 class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> implements matOps<C, R> {
@@ -603,35 +817,7 @@ class _float2 extends vecClass<E2, float2>() {
 	atan2() 			{ return Math.atan2(this.y, this.x); }
 }
 
-export const float2 = Object.assign(
-	function(x: number, y: number) {
-		return new _float2({x, y}) as unknown as float2;
-	}, {
-	// statics
-	zero() {
-		return float2(0, 0);
-	},
-	cossin(angle: number) {
-		return float2(Math.cos(angle), Math.sin(angle));
-	},
-	translate(z: float2) {
-		return float2x3(float2(1, 0), float2(0, 1), z);
-	},
-	scale(s: {x: number, y: number}|number) {
-		if (typeof s === 'number')
-			s = float2(s, s);
-		return float2x2(float2(s.x, 0), float2(0, s.y));
-	},
-	rotate(t: number) {
-		const s = Math.sin(t);
-		const c = Math.cos(t);
-		return float2x2(float2(c, s), float2(-s, c));
-	}
-});
-Object.defineProperties(_float2.prototype, Object.fromEntries(make_swizzles2(E2, float2)));
-float2.prototype = _float2.prototype;
-
-export class extent2 extends extentV<float2> {
+class extent2 extends extentV<float2> {
 	static fromCentreExtent(centre: float2, size: float2) {
 		const half = size.scale(0.5);
 		return new extent2(centre.sub(half), centre.add(half));
@@ -658,6 +844,38 @@ export class extent2 extends extentV<float2> {
 	contains(b: float2) {
 		return this.min.x <= b.x && this.max.x >= b.x && this.min.y <= b.y && this.max.y >= b.y;
 	}
+}
+
+export const float2 = Object.assign(
+	function(x: number, y: number) {
+		return new _float2({x, y}) as unknown as float2;
+	}, {
+	// statics
+	zero() {
+		return float2(0, 0);
+	},
+	cossin(angle: number) {
+		return float2(Math.cos(angle), Math.sin(angle));
+	},
+	translate(z: float2) {
+		return float2x3(float2(1, 0), float2(0, 1), z);
+	},
+	scale(s: {x: number, y: number}|number) {
+		if (typeof s === 'number')
+			s = float2(s, s);
+		return float2x2(float2(s.x, 0), float2(0, s.y));
+	},
+	rotate(t: number) {
+		const s = Math.sin(t);
+		const c = Math.cos(t);
+		return float2x2(float2(c, s), float2(-s, c));
+	},
+	extent: extent2
+});
+Object.defineProperties(_float2.prototype, Object.fromEntries(make_swizzles2(E2, float2)));
+float2.prototype = _float2.prototype;
+export namespace float2 {
+	export type extent = extent2;
 }
 
 export function sincos_half(sc: float2) {
@@ -765,6 +983,7 @@ class _float3 extends vecClass<E3, float3>() {
 		return float3(this.x * a, s + this.y * a, -this.y);
 	}
 }
+
 export const float3 = Object.assign(
 	function(x: number, y: number, z: number) {
 		return new _float3({x, y, z}) as unknown as float3;
@@ -781,17 +1000,19 @@ export const float3 = Object.assign(
 			s = float3(s, s, s);
 		return float3x3(float3(s.x, 0, 0), float3(0, s.y, 0), float3(0, 0, s.z));
 	},
+	extent: class extends extentV<float3> {
+		constructor(
+			min = float3(Infinity, Infinity, Infinity),
+			max = float3(-Infinity, -Infinity, -Infinity),
+		) {
+			super(min, max);
+		}
+	}
 });
 Object.defineProperties(_float3.prototype, Object.fromEntries(make_swizzles3(E3, float2, float3)));
 float3.prototype = _float3.prototype;
-
-export class extent3 extends extentV<float3> {
-	constructor(
-		min = float3(Infinity, Infinity, Infinity),
-		max = float3(-Infinity, -Infinity, -Infinity),
-	) {
-		super(min, max);
-	}
+export namespace float3 {
+	export type extent = typeof float3.extent;
 }
 
 // float3x3
@@ -886,9 +1107,20 @@ export const float4 = Object.assign(
 			s = float4(s, s, s, s);
 		return float4x4(float4(s.x, 0, 0, 0), float4(0, s.y, 0, 0), float4(0, 0, s.z, 0), float4(0, 0, 0, s.w));
 	},
+	extent: class extends extentV<float4> {
+		constructor(
+			min = float4(Infinity, Infinity, Infinity, Infinity),
+			max = float4(-Infinity, -Infinity, -Infinity, -Infinity),
+		) {
+			super(min, max);
+		}
+	}
 });
 Object.defineProperties(_float4.prototype, Object.fromEntries(make_swizzles4(E4, float2, float3, float4)));
 float4.prototype = _float4.prototype;
+export namespace float4 {
+	export type extent = typeof float4.extent;
+}
 
 export type float4x4 = mat<float4, E4>;
 export const float4x4 = Object.assign(

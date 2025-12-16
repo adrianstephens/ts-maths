@@ -5,16 +5,16 @@ import {
 	isScalar,	isScalarRational, isScalarExt,	asScalarT
 } from './core';
 
-import real, {extent, asScalarExt} from './real';
+import real, {asScalarExt} from './real';
 import integer from './integer';
 import Big from './big';
-import Gen, {extentT} from './gen';
+import Gen from './gen';
 
 import { toSuperscript } from './string';
 import { factorisation, factorisationB } from './prime';
 import complex, { complexT } from './complex';
 import rational, { rationalB } from './rational';
-import { LUDecomposeBareiss, LUDecomposeBareissT } from './vector2';
+import { LUDecomposeBareiss, LUDecomposeBareissT } from './bareiss';
 
 const sqrt3	= Math.sqrt(3);
 const defaultEpsilon = 1e-9;
@@ -271,7 +271,7 @@ function sparseEvaluate(c: number[], x: number, monomial: boolean): number {
         result += c[i] * xpow;
     }
 	if (monomial) {
-		const exp1 = c.length - 1;
+		const exp1 = c.length;
         while (exp < exp1) {
             xpow *= x;
 			++exp;
@@ -311,7 +311,7 @@ function sparseEvaluateT<T extends ops<T>>(c: T[], x: T, monomial: boolean): T {
 		result = result.add(c[exp1].mul(xpow));
 	}
 	if (monomial) {
-		const exp1 = c.length - 1;
+		const exp1 = c.length;
 		while (exp < exp1) {
 			xpow = xpow.mul(x);
 			++exp;
@@ -335,7 +335,7 @@ function sparseEvaluateNT<T extends ops<T> & has<'from'>>(c: number[], x: T, mon
         result = result.add(xpow.scale(c[i]));
     }
 	if (monomial) {
-		const exp1 = c.length - 1;
+		const exp1 = c.length;
         while (exp < exp1) {
 			xpow = xpow.mul(x);
 			++exp;
@@ -943,9 +943,10 @@ class polynomialN implements PolynomialN<number> {
 		return x.map(x => halley(this, d1, d2, x, count));
 	}
 	toString(debug = false) {
-		return this.c.map((coef, i) =>
-			(coef < 0 ? ' - ' : ' + ') + coefficientString(Math.abs(coef), i, debug)
-		).reverse().join('');
+		return	this.degree() === 0 ? '1'
+			:	coefficientString(1, this.degree(), debug) + this.c.map((coef, i) =>
+					(coef < 0 ? ' - ' : ' + ') + coefficientString(Math.abs(coef), i, debug)
+			).reverse().join('');
 	}
 	[Symbol.for("debug.description")]() { return this.toString(true); }
 }
@@ -1462,11 +1463,11 @@ function lagrangeImprovedT<T extends scalarExt<T>>(c: T[]|complexT<T>[]) {
 	return sumTop2T(zero, c.map((c, i) => c.abs().rpow(1, (N - i))));
 }
 
-function realBound(c: number[]): extent {
+function realBound(c: number[]): real.extent {
 	const N = c.length;
 	const terms = c.map((c, i) => Math.pow(Math.abs(c), 1 / (N - i)));
 
-	return new extent(
+	return new real.extent(
 		-sumTop2(terms.filter((x, i) => (i % 2 == 0) === (c[i] > 0))),
 		sumTop2(terms.filter((x, i) => c[i] < 0))
 	);
@@ -1478,7 +1479,7 @@ function realBoundT<T extends scalar<T>>(k: polynomialNT<T>) {
 
 	const zero = terms[0].from(0);
 
-	return new extentT(
+	return new Gen.extent(
 		sumTop2T(zero, terms.filter((x, i) => (i % 2 == 0) === (k.c[i].sign() > 0))).neg(),
 		sumTop2T(zero, terms.filter((x, i) => k.c[i].sign() < 0))
 	);
@@ -1491,7 +1492,7 @@ function realBoundT<T extends scalar<T>>(k: polynomialNT<T>) {
 	} else if (arrayO<scalar<any>>(terms)) {
 		const zero = terms[0].from(0);
 
-		return new extentT(
+		return new Gen.extent(
 			sumTop2T(zero, terms.filter((x, i) => (i % 2 == 0) === (k.c[i].sign() > 0))).neg(),
 			sumTop2T(zero, terms.filter((x, i) => k.c[i].sign() < 0))
 		);
@@ -1589,7 +1590,7 @@ function halleyT<T extends ops<T>>(p: polynomialT<T>|polynomialNT<T>, d1:polynom
 }
 
 //	adjust intervals to guarantee convergence of halley's method by using roots of further derivatives
-function adjust_roots(dpoly: polynomial|polynomialN, extents: extent[]) {
+function adjust_roots(dpoly: polynomial|polynomialN, extents: real.extent[]) {
 	const	rootsd	= dpoly.realRoots();
 	for (const ext of extents) {
 		for (const r of rootsd) {
@@ -1756,7 +1757,7 @@ function normPolyRealRoots(k: number[], epsilon: number): number[] {
 							ranges[0].max = r1[0];
 						} else {
 							ranges[0].max = r1[0];
-							ranges.push(new extent(r1[1], bounds.max));
+							ranges.push(new real.extent(r1[1], bounds.max));
 						}
 					}
 
@@ -1900,7 +1901,7 @@ function normPolyRealRootsT<T extends scalarExt<T>>(k: T[], epsilon: T): T[] {
 function sturmIsolateIntervals(pN: polynomialN) {
 	const n = pN.degree();
 	if (n === 0)
-		return [] as extent[];
+		return [] as real.extent[];
 
 	const seq: polynomial[] = [];
 	let p0 = new polynomial([...pN.c, 1]);
@@ -1948,7 +1949,7 @@ function sturmIsolateIntervals(pN: polynomialN) {
 	let count = countRootsInInterval(lower, upper);
 
 	const stack: [number, number, number][] = [];
-	const intervals: extent[] = [];
+	const intervals: real.extent[] = [];
 
 	for (;;) {
 		while (count > 1) {
@@ -1961,7 +1962,7 @@ function sturmIsolateIntervals(pN: polynomialN) {
 		}
 
 		if (count === 1)
-			intervals.push(new extent(lower, upper));
+			intervals.push(new real.extent(lower, upper));
 
 		if (stack.length == 0)
 			break;
@@ -1971,14 +1972,14 @@ function sturmIsolateIntervals(pN: polynomialN) {
 	return intervals;
 }
 
-function sturmIsolateIntervalsT<T extends scalar<T>>(pN: polynomialNT<T>, epsilon: T): extentT<T>[] {
+function sturmIsolateIntervalsT<T extends scalar<T>>(pN: polynomialNT<T>, epsilon: T): Gen.extent<T>[] {
 	const n = pN.degree();
 	if (n === 0)
 		return [];
 
 	if (n === 1) {
 		const root = pN.c[0].neg();
-		return [new extentT(root, root)];
+		return [new Gen.extent(root, root)];
 	}
 
 	// Build Sturm sequence
@@ -2031,7 +2032,7 @@ function sturmIsolateIntervalsT<T extends scalar<T>>(pN: polynomialNT<T>, epsilo
 	let count = countRootsInInterval(lower, upper);
 
 	const stack: [T, T, number][] = [];
-	const intervals: extentT<T>[] = [];
+	const intervals: Gen.extent<T>[] = [];
 
 	for (;;) {
 		while (count > 1) {
@@ -2045,7 +2046,7 @@ function sturmIsolateIntervalsT<T extends scalar<T>>(pN: polynomialNT<T>, epsilo
 		}
 
 		if (count === 1)
-			intervals.push(new extentT(lower, upper));
+			intervals.push(new Gen.extent(lower, upper));
 				
 		if (stack.length == 0)
 			break;
@@ -2586,11 +2587,15 @@ function rationalRootsNB(p: polynomialB): bigint[] {
 // modifies p to remove found roots
 function rationalRootsB(p: polynomialB): rationalB[] {
 	const roots: rationalB[] = [];
+	
 	if (p.c[0] === 0n)
 		roots.push(rationalB.from(0n))                                  ;
 
 	while (p.c[0] === 0n)
 		p.c = divRootB(p.c, 0n)[0];
+
+	if (p.degree() === 0)
+		return roots;
 
 	const a0 = Big.abs(p.c[0]);
 	const an = Big.abs(p.leadCoeff());

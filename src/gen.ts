@@ -4,56 +4,51 @@ import {Operators, ops, scalar, scalarRational, scalarExt, has, has0, Immutable,
 // Generics
 //-----------------------------------------------------------------------------
 
-export function OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T) {
-	const con		= _con as any;
-	const proto		= con.prototype as Record<string, any>;
-	
-	const r: Partial<Operators<T>> = {
-		func: (name: string, args: T[]) => {
-			const staticFn = con[name];
-			if (typeof staticFn === 'function')
-				return staticFn.apply(con, args as any);
-
-			const protoFn = proto[name];
-			if (typeof protoFn === 'function')
-				return protoFn.apply(args[0], (args as any).slice(1));
-
-			return undefined;
+class extentT<T extends has<'lt'>> {
+	static fromCentreExtent<T extends scalar<T>>(centre: T, size: T) {
+		const half = size.scale(0.5);
+		return new extentT(centre.sub(half), centre.add(half));
+	}
+	static from<T extends scalar<T>, U extends Iterable<T>>(items: U) {
+		let ext;// = new extentT<T>;
+		for (const i of items) {
+			if (!ext)
+				ext = new extentT(i, i);
+			else
+				ext.add(i);
 		}
-	};
-
-	// guaranteed by the ops constraint
-	r.dup = (a: T) => a.dup();
-	r.neg = (a: T) => a.neg();
-	r.scale = (a: T, b: number) => a.scale(b);
-	r.add = (a: T, b: T) =>	a.add(b);
-	r.sub = (a: T, b: T) => a.sub(b);
-	r.mul = (a: T, b: T) =>	a.mul(b);
-	r.div = (a: T, b: T) =>	a.div(b);
-
-	// static or prototype 'from'
-	if (typeof con.from === 'function')
-		r.from = (n: number) => con.from(n);
-	else if (typeof proto.from === 'function')
-		r.from = (n: number) => proto.from(n);
-
-	// include prototype-backed binary ops only when present
-	if ('eq' in proto)
-		r.eq = (a: T, b: T) => (a as any).eq(b);
-	if ('lt' in proto)
-		r.lt = (a: T, b: T) => (a as any).lt(b);
-	if ('pow' in proto)
-		r.pow = (a: T, b: T) =>	(a as any).pow(b);
-
-	if ('rpow' in proto)
-		r.rpow = (a: T, n: number, d: number) => (a as any).rpow(n, d);
-
-	r.ipow = 'ipow' in proto
-		? (a: T, b: number) => (a as any).ipow(b)
-		: (a: T, b: number) => Gen.ipow(a, b);
-
-
-	return r as unknown as Pick<Operators<T>, (keyof Operators<T> & keyof T) | 'func' | 'ipow'>;
+		return ext;
+	}
+	constructor(
+		public min:T,
+		public max:T
+	) {}
+	extent() {
+		return this.max.sub(this.min);
+	}
+	centre() {
+		return this.min.add(this.max).scale(0.5);
+	}
+	add(p: T) {
+		this.min = Gen.min(this.min, p);
+		this.max = Gen.max(this.max, p);
+	}
+	combine(b: extentT<T>) {
+		this.min = Gen.min(this.min, b.min);
+		this.max = Gen.max(this.max, b.max);
+	}
+	encompasses(b: extentT<T>) {
+		return !b.min.lt(this.min) && !this.max.lt(b.max);
+	}
+	overlaps(b: extentT<T>) {
+		return !b.max.lt(this.min) && !this.max.lt(b.min);
+	}
+	contains(p: T) {
+		return !p.lt(this.min) && !this.max.lt(p);
+	}
+	clamp(p: T) {
+		return Gen.min(Gen.max(p, this.min), this.max);
+	}
 }
 
 export type canDenominator = Pick<scalarExt<any>, 'from'|'divmod'|'recip'|'lt'>;
@@ -196,54 +191,67 @@ export const Gen = {
 			exp >>= 1;
 		}
 		return result!;
-	}
+	},
+
+	OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T) {
+		const con		= _con as any;
+		const proto		= con.prototype as Record<string, any>;
+		
+		const r: Partial<Operators<T>> = {
+			func: (name: string, args: T[]) => {
+				const staticFn = con[name];
+				if (typeof staticFn === 'function')
+					return staticFn.apply(con, args as any);
+
+				const protoFn = proto[name];
+				if (typeof protoFn === 'function')
+					return protoFn.apply(args[0], (args as any).slice(1));
+
+				return undefined;
+			}
+		};
+
+		// guaranteed by the ops constraint
+		r.dup = (a: T) => a.dup();
+		r.neg = (a: T) => a.neg();
+		r.scale = (a: T, b: number) => a.scale(b);
+		r.add = (a: T, b: T) =>	a.add(b);
+		r.sub = (a: T, b: T) => a.sub(b);
+		r.mul = (a: T, b: T) =>	a.mul(b);
+		r.div = (a: T, b: T) =>	a.div(b);
+
+		// static or prototype 'from'
+		if (typeof con.from === 'function')
+			r.from = (n: number) => con.from(n);
+		else if (typeof proto.from === 'function')
+			r.from = (n: number) => proto.from(n);
+
+		// include prototype-backed binary ops only when present
+		if ('eq' in proto)
+			r.eq = (a: T, b: T) => (a as any).eq(b);
+		if ('lt' in proto)
+			r.lt = (a: T, b: T) => (a as any).lt(b);
+		if ('pow' in proto)
+			r.pow = (a: T, b: T) =>	(a as any).pow(b);
+
+		if ('rpow' in proto)
+			r.rpow = (a: T, n: number, d: number) => (a as any).rpow(n, d);
+
+		r.ipow = 'ipow' in proto
+			? (a: T, b: number) => (a as any).ipow(b)
+			: (a: T, b: number) => Gen.ipow(a, b);
+
+
+		return r as unknown as Pick<Operators<T>, (keyof Operators<T> & keyof T) | 'func' | 'ipow'>;
+	},
+
+	extent: extentT,
 };
 
 export default Gen;
-
-export class extentT<T extends has<'lt'>> {
-	static fromCentreExtent<T extends scalar<T>>(centre: T, size: T) {
-		const half = size.scale(0.5);
-		return new extentT(centre.sub(half), centre.add(half));
-	}
-	static from<T extends scalar<T>, U extends Iterable<T>>(items: U) {
-		let ext;// = new extentT<T>;
-		for (const i of items) {
-			if (!ext)
-				ext = new extentT(i, i);
-			else
-				ext.add(i);
-		}
-		return ext;
-	}
-	constructor(
-		public min:T,
-		public max:T
-	) {}
-	extent() {
-		return this.max.sub(this.min);
-	}
-	centre() {
-		return this.min.add(this.max).scale(0.5);
-	}
-	add(p: T) {
-		this.min = Gen.min(this.min, p);
-		this.max = Gen.max(this.max, p);
-	}
-	combine(b: extentT<T>) {
-		this.min = Gen.min(this.min, b.min);
-		this.max = Gen.max(this.max, b.max);
-	}
-	encompasses(b: extentT<T>) {
-		return !b.min.lt(this.min) && !this.max.lt(b.max);
-	}
-	overlaps(b: extentT<T>) {
-		return !b.max.lt(this.min) && !this.max.lt(b.min);
-	}
-	contains(p: T) {
-		return !p.lt(this.min) && !this.max.lt(p);
-	}
-	clamp(p: T) {
-		return Gen.min(Gen.max(p, this.min), this.max);
-	}
+// eslint-disable-next-line @typescript-eslint/no-namespace
+export namespace Gen {
+	export type extent<T extends has<'lt'>> = extentT<T>;
 }
+
+

@@ -25,7 +25,7 @@ npm install @isopodlabs/maths
 ### Vectors
 
 ```typescript
-import { float2, float3 } from '@isopodlabs/maths';
+import { float2, float3 } from '@isopodlabs/maths/vector';
 
 const a = float2(1, 2);
 const b = float3(3, 4, 5);
@@ -39,7 +39,7 @@ const swiz = b.xy;                   // float2(3, 4)
 ### Complex Numbers
 
 ```typescript
-import { complex } from '@isopodlabs/maths';
+import complex from '@isopodlabs/maths/complex';
 
 const z1 = complex(3, 4);           // 3 + 4i
 const z2 = complex(1, -1);          // 1 - i
@@ -55,9 +55,9 @@ const sin_z = complex.sin(z1);
 ### Polynomials
 
 ```typescript
-import { Polynomial } from '@isopodlabs/maths';
+import { Polynomial } from '@isopodlabs/maths/polynomial';
 
-const p = new Polynomial([1, 0, -2]); // x^2 - 2
+const p = Polynomial([1, 0, -2]); // x^2 - 2
 const roots = p.realRoots();          // [sqrt(2), -sqrt(2)]
 const value = p.evaluate(3);          // 7
 const deriv = p.deriv();              // 2x

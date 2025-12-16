@@ -8,7 +8,6 @@ import {
 	mid, normalise, project, reflect, lerp, approx_equal, safeNormalise,
 	sincos_half, max_circle_point,
 	matmul,
-	extent2, extent3,
 	vector, E6,
 	mat,
 	ColumnType,
@@ -136,10 +135,10 @@ test('float4x4.basis edge cases and orthonormality', () => {
 });
 
 test('extent2 and extent3 basic operations', () => {
-	const e2 = new extent2(float2(0,0), float2(2,2));
+	const e2 = new float2.extent(float2(0,0), float2(2,2));
 	assert(e2.contains(float2(1,1)), 'extent2 should contain point inside');
 	assert(!e2.contains(float2(3,3)), 'extent2 should not contain outside point');
-	const e3 = new extent3(float3(0,0,0), float3(1,1,1));
+	const e3 = new float3.extent(float3(0,0,0), float3(1,1,1));
 	expect(e3.centre()).toEqual(mid(float3(0,0,0), float3(1,1,1)));
 });
 

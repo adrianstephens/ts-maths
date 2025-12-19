@@ -6,9 +6,7 @@ function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number,
 		const f			= F(t);
 		if (Math.abs(f) < tol)
 			break;
-		const f_prime	= F_prime(t);
-		const delta		= f / f_prime;
-		t -= delta;
+		t -= f / F_prime(t);
 		//if (Math.abs(delta) < tol)
 		//	break;
 	}

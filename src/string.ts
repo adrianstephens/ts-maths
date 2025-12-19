@@ -58,11 +58,11 @@ export const fractionChars: Record<number, Record<number, string>> = {
 export const radicalChars: Record<number, string> = {'2': '√', '3': '∛', '4': '∜'};
 
 function buildReverseMap(map: Record<string, string>): Record<string, string> {
-	return Object.entries(map).reduce((acc, [k, v]) => {
+	return Object.entries(map).reduce<Record<string, string>>((acc, [k, v]) => {
 		if (v.length === 1 && !acc[v])
 			acc[v] = k;
 		return acc;
-	}, {} as Record<string, string>);
+	}, {});
 }
 
 const revFractionChars = Object.entries(fractionChars).reduce((acc, [den, numMap]) => {
@@ -243,10 +243,10 @@ export function parse<O extends Operators<any>>(ops: O, s: string): InferOpsType
 
 		// parenthesized
 		if (skip('(')) {
-			const expr = parseExpression();
+			const _expr = parseExpression();
 			skipSpaces();
 			expect(')');
-			return expr;
+			return _expr;
 		}
 
 		// identifier or function
@@ -256,7 +256,7 @@ export function parse<O extends Operators<any>>(ops: O, s: string): InferOpsType
 
 			// function call
 			if (skip('(')) {
-				const savepos = pos - 1;
+				const _savepos = pos - 1;
 				skipSpaces();
 				const args: T[] = [];
 				if (!skip(')')) {
@@ -276,7 +276,7 @@ export function parse<O extends Operators<any>>(ops: O, s: string): InferOpsType
 					const v = ops.variable(id);
 					if (v !== undefined) {
 						if (args.length === 1)
-							pos = savepos;
+							pos = _savepos;
 						return v;
 					}
 				}
@@ -312,8 +312,7 @@ export function parse<O extends Operators<any>>(ops: O, s: string): InferOpsType
 			const m = reNumber.exec(fromSuperscript(sup[0]));
 			if (!m)
 				throw new Error(`Invalid superscript: ${sup[0]}`);
-			const pow = m[3] ? rational(+m[3], +fromSubscript(m[4])) : ops.from(parseFloat(m[0]));
-			left = ops.pow(left, pow);
+			left = ops.pow(left, m[3] ? rational(+m[3], +fromSubscript(m[4])) : ops.from(parseFloat(m[0])));
 		}
 		while (skipSpaces(), skip('^'))
 			left = ops.pow(left, parsePower());

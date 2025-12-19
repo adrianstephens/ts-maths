@@ -27,6 +27,7 @@ export default tslint.config(
 		rules: {
 
 			'custom/custom-control-block-style': 'error',
+			'custom/no-single-use-local': 'warn',
 			"semi": ["error", "always"],
 			"no-empty": "off",
 			"@typescript-eslint/no-duplicate-enum-values": "off",
@@ -45,6 +46,9 @@ export default tslint.config(
 			"@typescript-eslint/no-empty-function": "off",
 			"@typescript-eslint/consistent-indexed-object-style": "off",
 			"@typescript-eslint/consistent-type-definitions": "off",
+			//"@typescript-eslint/no-unnecessary-type-assertion": "error",
+			"@typescript-eslint/consistent-type-assertions": ["error", { "assertionStyle": "as", "objectLiteralTypeAssertions": "allow" }],
+			"@typescript-eslint/ban-ts-comment": "error",
 			"no-restricted-syntax": [
 				"error",
 				{

@@ -13,7 +13,9 @@ export function hasStatic(x: any, f: string) {
 	return undefined;
 }
 export function arrayOf<U>(arr: any[], g: (x: any) => x is U): arr is U[] {
-	return arr.length ? g(arr[0]) : false;
+	for (const i in arr)
+		return g(arr[i]);
+	return false;
 }
 
 // Transform method type to free function type

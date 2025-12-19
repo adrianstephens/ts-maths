@@ -51,6 +51,11 @@
 			"require": "./dist/polynomial.js",
 			"import": "./esm/polynomial.js"
 		},
+		"./bareiss": {
+			"types": "./dist/bareiss.d.ts",
+			"require": "./dist/bareiss.js",
+			"import": "./esm/bareiss.js"
+		},
 		"./mvpolynomial": {
 			"types": "./dist/mvpolynomial.d.ts",
 			"require": "./dist/mvpolynomial.js",
@@ -126,5 +131,8 @@
 		"ts-patch": "^3.3.0",
 		"typescript-eslint": "^8.26.0"
 	},
-	"version": "1.0.0"
+	"version": "1.0.0",
+	"dependencies": {
+		"source-map": "^0.7.6"
+	}
 }

@@ -71,7 +71,6 @@ export function LUSolveBareissMulti(A: number[][], X: number[][], perm?: number[
 	return X;
 }
 
-/*
 // Multi-RHS version: solve A^T * X = B where B is an array of RHS columns (each length N).
 export function LUSolveBareissTransposeMulti(A: number[][], X: number[][], perm?: number[]) {
 	const N = A.length;
@@ -111,7 +110,7 @@ export function LUSolveBareissTransposeMulti(A: number[][], X: number[][], perm?
 	}
 	return X;
 }
-*/
+
 export function LUDecomposeBareissT<T extends scalar<T>>(A: T[][], pivot = true) {
 	const	N		= A.length;
 	const	perm	= Array.from({ length: N }, (_, i) => i);
@@ -181,9 +180,9 @@ export function LUSolveBareissMultiT<T extends scalar<T> & has<'recip'>>(A: T[][
 	}
 	return X;
 }
-/*
+
 // Multi-RHS version: solve A^T * X = B where B is an array of RHS columns (each length N).
-export function LUSolveBareissTransposeMultiT<T extends vscalar<T>>(A: T[][], X: T[][], perm?: number[]) {
+export function LUSolveBareissTransposeMultiT<T extends scalar<T> & has<'recip'>>(A: T[][], X: T[][], perm?: number[]) {
 	const N = A.length;
 	const R = X.length;
 	const zero = A[0][0].from(0), one = A[0][0].from(1);
@@ -221,4 +220,77 @@ export function LUSolveBareissTransposeMultiT<T extends vscalar<T>>(A: T[][], X:
 	}
 	return X;
 }
-*/
+
+// Solve rectangular system A * x = B for exact scalar types T.
+// A is m x n, B is array of column vectors length m (column-major): B.length === R, B[r].length === m
+// Returns array of column vectors length n (one column per RHS) when a unique solution exists (full column rank and consistent), otherwise undefined.
+export function solveRectangularBareissT<T extends scalar<T> & has<'recip'>>(A: T[][], B: T[][]): T[][] | undefined {
+	const m = A.length;
+	if (m === 0)
+		return;
+
+	const n = A[0].length;
+	if (A.some(row => row.length !== n) || B.some(row => row.length !== m))
+		return undefined;
+
+	const R = B.length;
+	const zero = A[0][0].from(0);
+
+	// augmented matrix m x (n+R)
+	A = Array.from({ length: m }, (_, i) =>
+		Array.from({ length: n + R }, (_, j) => j < n ? A[i][j] : B[j - n][i])
+	);
+
+	let row = 0;
+	const pivotCol: number[] = [];
+	for (let col = 0; col < n && row < m; col++) {
+		let pivot = -1;
+		for (let r = row; r < m; r++) {
+			if (A[r][col].sign() !== 0) {
+				pivot = r;
+				break;
+			}
+		}
+		if (pivot !== -1) {
+			if (pivot !== row)
+				[A[row], A[pivot]] = [A[pivot], A[row]];
+
+			const piv = A[row][col];
+			for (let j = col; j < n + R; j++)
+				A[row][j] = A[row][j].div(piv);
+
+			for (let r = 0; r < m; r++) {
+				if (r !== row) {
+					const factor = A[r][col];
+					if (factor.sign() !== 0) {
+						for (let j = col; j < n + R; j++)
+							A[r][j] = A[r][j].sub(A[row][j].mul(factor));
+					}
+				}
+			}
+			pivotCol.push(col);
+			row++;
+		}
+	}
+
+	const rank = pivotCol.length;
+	for (let r = rank; r < m; r++) {
+		if (A[r].some(i => i.sign() === 0)) {
+			for (let rr = 0; rr < R; rr++) {
+				if (A[r][n + rr].sign() !== 0)
+					return undefined;
+			}
+		}
+	}
+	if (rank !== n)
+		return undefined;
+
+	const sol = Array.from({ length: R }, () => Array.from({ length: n }, () => zero));
+	for (let idx = 0; idx < pivotCol.length; idx++) {
+		const c = pivotCol[idx];
+		for (let rr = 0; rr < R; rr++)
+			sol[rr][c] = A[idx][n + rr];
+	}
+	return sol;
+}
+

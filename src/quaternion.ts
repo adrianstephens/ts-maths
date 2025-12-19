@@ -51,9 +51,8 @@ class _quat {
 		const w0 = this.v.w;
 
 		const v1 = v.scale(w0).sub(v0.cross(v));
-		const w1 = v0.dot(v);
 
-		return v0.scale(w1).add(v1.scale(w0)).add(v1.cross(v0));
+		return v0.scale(v0.dot(v)).add(v1.scale(w0)).add(v1.cross(v0));
 	}
 
 	toString()	{ return this.v.toString(); }
@@ -73,8 +72,8 @@ export const quaternion = Object.assign(
 		const	v		= q.v.xyz;
 		const	vlen	= v.len();
 		const	qnorm	= q.v.len();
-		const	scale	= vlen > 0 ? Math.acos(q.v.w / qnorm) / vlen : 0;
-		return quaternion(concat(v.scale(scale), Math.log(qnorm)));
+		const	_scale	= vlen > 0 ? Math.acos(q.v.w / qnorm) / vlen : 0;
+		return quaternion(concat(v.scale(_scale), Math.log(qnorm)));
 	},
 });
 
@@ -108,29 +107,24 @@ class _unitQuat extends _quat {
 
 	toAxisAngle(): { axis: float3, angle: number } {
 		// q = (p, w) where p is vector part and w scalar part
-		const p = this.v.xyz;
 		const w = this.v.w;
-		const angle = 2 * Math.acos(w);
 		const s = Math.sqrt(1 - w * w);
 		if (s < 1e-12) {
 			// angle is approximately 0, return arbitrary axis
 			return { axis: float3(1, 0, 0), angle: 0 };
 		}
-		return { axis: p.scale(1 / s), angle };
+		return { axis: this.v.xyz.scale(1 / s), angle: 2 * Math.acos(w) };
 	}
 
 	toEulerZYX(): float3 {
 		// Use standard quaternion -> ZYX (yaw-pitch-roll) conversion.
 		// q = (x,y,z,w)
 		const x = this.v.x, y = this.v.y, z = this.v.z, w = this.v.w;
-		// roll (X)
-		const rx = Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y));
-		// pitch (Y) -- use asin of the sine term and clamp for numerical safety
-		const sy = 2 * (w * y - z * x);
-		const ry = Math.asin(Math.max(-1, Math.min(1, sy)));
-		// yaw (Z)
-		const rz = Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
-		return float3(rx, ry, rz);
+		return float3(
+			Math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y)),		// roll (X)
+			Math.asin(Math.max(-1, Math.min(1, 2 * (w * y - z * x)))),		// pitch (Y) -- use asin of the sine term and clamp for numerical safety
+			Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))		// yaw (Z)
+		);
 	}
 }
 
@@ -190,14 +184,13 @@ export const unitQuaternion = Object.assign(
 	pow(q: unitQuaternion, y: number) {
 		const	t	= q.v.xyz.len();
 		const	s	= Math.sin(Math.asin(t) * y);
-		const	c	= Math.sqrt((1 - s) * (1 + s));
-		return q.create(concat(q.v.xyz.scale(t ? s / t : 1), c));
+		return q.create(concat(q.v.xyz.scale(t ? s / t : 1), Math.sqrt((1 - s) * (1 + s))));
 	},
 	log(q: unitQuaternion): quaternion {
 		const	v		= q.v.xyz;
 		const	vlen	= v.len();
-		const	scale	= vlen > 0 ? Math.acos(q.v.w / vlen) / vlen : 0;
-		return quaternion(concat(v.scale(scale), 0));
+		const	_scale	= vlen > 0 ? Math.acos(q.v.w / vlen) / vlen : 0;
+		return quaternion(concat(v.scale(_scale), 0));
 	},
 
 	slerp(a: unitQuaternion, b: unitQuaternion, t: number) : unitQuaternion {

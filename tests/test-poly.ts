@@ -9,6 +9,26 @@ function toleranceForDegree(deg: number, offset = -55, scale = 2.5) {
 }
 
 
+test('sparse', () => {
+	function makePoly(i: number, gap: number) {
+		return Polynomial([-i, ...Array.from({length: gap - 1}, () => 0), 1]);
+	}
+	function testGap(gap: number) {
+		let poly = Polynomial([1]);
+		for (let j = 1; j < 5; ++j) {
+			poly = poly.mul(makePoly(j, gap));
+			console.log(String(poly));
+			const roots = poly.realRoots();
+			const expected = gap % 2 ? sequence(j, 1) : [...sequence(j, -1, -1).reverse(), ...sequence(j, 1)];
+			verify(roots.map(r=>+r), expected, makeApproxArray(2e-7));
+		}
+	}
+	testGap(2);
+	testGap(3);
+	testGap(4);
+	testGap(10);
+});
+
 test('roots', () => {
 	let poly = Polynomial([1]);
 	for (let j = 1;  j < 20; ++j) {
@@ -21,9 +41,9 @@ test('roots', () => {
 });
 
 test('roots of rational', () => {
-	let poly = Polynomial([rational.from(1)]);
+	let poly = Polynomial([rational(1)]);
 	for (let j = 1;  j < 10; ++j) {
-		poly = poly.mul(Polynomial([rational.from(-j), rational.from(1)]));
+		poly = poly.mul(Polynomial([rational(-j), rational(1)]));
 		//const rroots = poly.rationalRoots();
 		console.log(String(poly));
 		const roots = poly.realRoots();

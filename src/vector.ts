@@ -160,8 +160,8 @@ export class vecImp<E extends string> implements vops<vector<E>, number> {
 	private asVec()		{ return this as vec<number, E>; }
 
 	create(...args: number[]): vector<E> {
-		const ctor = this.constructor as new (v: vec<number, E>) => vector<E>;
-  		return new ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, args[i]])) as vec<number, E>);
+		const _ctor = this.constructor as new (v: vec<number, E>) => vector<E>;
+  		return new _ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, args[i]])) as vec<number, E>);
 	}
 	get _values(): number[]	{ return Object.values(this) as number[]; }
 
@@ -237,8 +237,8 @@ export class vecImpT<T extends vscalar<T>, E extends string> implements vops<vec
 	private asVec()		{ return this as vec<T, E>; }
 
 	create(...args: T[]): vector<E, T> {
-		const ctor = this.constructor as new (v: vec<T, E>) => vector<E, T>;
-  		return new ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, args[i]])) as vec<T, E>);
+		const _ctor = this.constructor as new (v: vec<T, E>) => vector<E, T>;
+  		return new _ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, args[i]])) as vec<T, E>);
 	}
 
 	get _values() : T[]		{ return Object.values(this) as T[]; }
@@ -419,12 +419,12 @@ class matImp<C extends vops<C>, R extends string> {
 		Object.assign(this, cols);
 	}
 	create(...cols: C[]): this {
- 		const ctor = this.constructor as new (cols: vec<C, string>) => any;
-  		return new ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])));
+ 		const _ctor = this.constructor as new (cols: vec<C, string>) => any;
+  		return new _ctor(Object.fromEntries(Object.keys(this).map((k, i) => [k, cols[i]])));
 	}
 	create2(cols: vec<C, string>): mat<C, string> {
- 		const ctor = this.constructor as new (cols: vec<C, string>) => any;
-  		return new ctor(cols);
+ 		const _ctor = this.constructor as new (cols: vec<C, string>) => any;
+  		return new _ctor(cols);
 	}
 	columns(): C[] {
 		return Object.values(this) as C[];
@@ -512,10 +512,8 @@ export function eigenvalues(A: floatN[]): complex[] {
 	const n = A.length;
 
 	// For small matrices (<= 5) prefer the polynomial solver (uses closed-form/Aberth)
-	if (n <= 5) {
-		const roots = characteristic(A).allRoots();
-		return roots.map(r => typeof r === 'number' ? complex(r, 0) : complex(r.r, r.i));
-	}
+	if (n <= 5)
+		return characteristic(A).allRoots();
 
 	const	tol = 1e-12;
 	const	maxIter = Math.max(1000, 100 * n);
@@ -538,8 +536,7 @@ export function eigenvalues(A: floatN[]): complex[] {
 
 		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
 		const tr	= a + d;
-		const det	= a * d - b * c;
-		const disc	= tr * tr - 4 * det;
+		const disc	= tr * tr - 4 * (a * d - b * c);
 		let mu: number;
 		if (disc >= 0) {
 			const s = Math.sqrt(disc);
@@ -579,8 +576,7 @@ export function eigenvalues(A: floatN[]): complex[] {
 			continue;
 		}
 		// take 2x2 block - delegate to polynomial solver for correctness
-		const roots = PolynomialN([a * d - b * c, -(a + d)]).allRoots();
-		eigs.push(...roots);
+		eigs.push(...PolynomialN([a * d - b * c, -(a + d)]).allRoots());
 		m -= 2;
 	}
 
@@ -640,8 +636,7 @@ class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any
 		return (swaps & 1 ? A[n - 1][n - 1].neg() : A[n - 1][n - 1]) as scalarOf<C>;
 	}
 	trace(): scalarOf<C> {
-		const a = Object.values(this.x)[0];
-		let trace = a.from(0);
+		let trace = this.x._values[0].from(0);
 		for (const k of Object.keys(this))
 			trace = trace.add((this as any)[k][k]);
 		return trace as scalarOf<C>;
@@ -778,9 +773,8 @@ export function lerp<C extends vops<C>>(a: C, b: C, t: number) {
 }
 
 export function approx_equal<C extends vops<C>>(a: C, b: C, tol = 1e-9) {
-	const d = a.sub(b).abs();
 	const t = a.abs().max(b.abs()).scale(tol);
-	return t.max(d).eq(t);
+	return t.max(a.sub(b).abs()).eq(t);
 }
 
 export function safeNormalise<C extends vops<C>>(a: C): C | undefined {
@@ -887,11 +881,9 @@ export function sincos_half(sc: float2) {
 // returns point on unit circle where |M.v| is largest
 export function max_circle_point(m: float2x2) {
 	const d = m.x.dot(m.y);
-	if (d) {
-		const sc2 = normalise(float2(m.x.x * m.x.x + m.x.y * m.x.y - m.y.x * m.y.x - m.y.y * m.y.y, d * 2));
-		return sincos_half(sc2);
-	}
-	return float2(1, 0);
+	return d
+		? sincos_half(normalise(float2(m.x.x * m.x.x + m.x.y * m.x.y - m.y.x * m.y.x - m.y.y * m.y.y, d * 2)))
+		: float2(1, 0);
 }
 
 

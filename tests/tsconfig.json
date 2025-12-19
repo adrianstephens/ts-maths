@@ -9,6 +9,6 @@
 		},
 	},
 	"include": [
-		"*.ts", "../assistant/test-inverse-identity.ts", "../assistant/debug-inverse-3x3.ts", "../assistant/debug-inverse.ts", "../assistant/debug-pivot.ts", "../assistant/debug-trig.ts",
+		"*.ts"
 	]
 }

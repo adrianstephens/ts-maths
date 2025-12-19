@@ -120,10 +120,10 @@ function toString(k: number, n: number, components: any[]): string {
 	const terms: string[] = [];
 	let i = 0;
 	for (const basis of combinations(n, k)) {
-		const coeff = components[i++];
+		//const coeff = components[i++];
 		//if (coeff !== 0) {
 			const basisStr = basis.map(j => `e${toSubscript(String(j))}`).join('∧');
-			const coeffStr = String(coeff);
+			const coeffStr = String(components[i++]);
 			if (coeffStr.includes(' '))
 				terms.push(`(${coeffStr})${basisStr}`);
 			else

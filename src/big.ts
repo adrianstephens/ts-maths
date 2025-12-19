@@ -143,11 +143,10 @@ export const Big = Object.assign(
 		if (aa <= MAX_SAFE && bb <= MAX_SAFE)
 			return Number(a) / Number(b);
 
-		const sign = (a < 0n) !== (b < 0n) ? -1 : 1;
 		const shiftA = Math.max(0, highestSetB(aa) - 52);
 		const shiftB = Math.max(0, highestSetB(bb) - 52);
-
-		return sign * Number(aa >> BigInt(shiftA)) / Number(bb >> BigInt(shiftB)) * Math.pow(2, shiftA - shiftB);
+		const result = Number(aa >> BigInt(shiftA)) / Number(bb >> BigInt(shiftB)) * Math.pow(2, shiftA - shiftB);
+		return (a < 0n) !== (b < 0n) ? -result : result;
 	},
 	
 	modPow(base: bigint, exp: bigint, mod: bigint) {
@@ -207,8 +206,8 @@ export const Big = Object.assign(
 		const bb = BigInt(b);
 
 		while (k * 2 < resultBits) {
-			const xk = x >> BigInt((resultBits - k) * b - k);
-			y = (((b1 * y) << BigInt(k)) + xk / (y ** b1)) / bb;
+			const _xk = x >> BigInt((resultBits - k) * b - k);
+			y = (((b1 * y) << BigInt(k)) + _xk / (y ** b1)) / bb;
 			k <<= 1;
 		}
 

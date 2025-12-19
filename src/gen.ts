@@ -61,8 +61,8 @@ export const Gen = {
 	mul<T extends ops<T>>(a: T, b: T)	{ return a.mul(b); },
 	div<T extends ops<T>>(a: T, b: T)	{ return a.div(b); },
 
-	ipow<T extends ops<T>>(base: T, exp: number): T {
-		let result = exp & 1 ? base : undefined;
+	ipow<T extends has0<'mul'> & has0<'add'>>(base: T, exp: number, one?: T): T {
+		let result = exp & 1 ? base : one;
 		for (exp >>= 1; exp; exp >>= 1) {
 			base = base.mul(base);
 			if (exp & 1)
@@ -89,10 +89,10 @@ export const Gen = {
 		return a.lt(b) ? -1 : b.lt(a) ? 1 : 0;
 	},
 
-	gcd<T extends Pick<scalarExt<any>, 'sign'|'abs'> & hasProperty<'divmod', (b: T)=>any>>(...values: T[]): T {
+	gcd<T extends Pick<scalarExt<any>, 'sign'|'abs'|'dup'> & hasProperty<'divmod', (b: T)=>any>>(...values: T[]): T {
 		let a: T | undefined;
 		for (let b of values) {
-			b = b.abs();
+			b = b.dup().abs();
 			if (a && a.sign()) {
 				while (b.sign()) {
 					a.divmod(b);
@@ -105,7 +105,7 @@ export const Gen = {
 		return a!;
 	},
 
-	lcm<T extends Pick<scalarExt<any>, 'divmod'|'sign'|'abs'|'scale'>>(...values: T[]) {
+	lcm<T extends Pick<scalarExt<any>, 'divmod'|'sign'|'dup'|'abs'|'scale'>>(...values: T[]) {
 		let a: T | undefined;
 		for (const b of values)
 			a = a ? b.scale(Number(a.divmod(Gen.gcd(a, b)))) : b;
@@ -121,8 +121,7 @@ export const Gen = {
 		let k1 = 1n, k2 = 0n;
 		do {
 			x = x.recip();
-			const f = BigInt(x.divmod(one));
-			[k2, k1] = [k1, f * k1 + k2];
+			[k2, k1] = [k1, BigInt(x.divmod(one)) * k1 + k2];
 		} while ((!eps || eps.lt(x)) && k1 < maxDen);
 		return k1;
 	},

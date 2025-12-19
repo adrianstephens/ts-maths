@@ -268,8 +268,7 @@ export class MVPoly<T extends scalar<T>> {
 	}
 
 	toString() {
-		const terms = this.terms.map((t, j) => (j === 0 ? String(t.coef) : t.coef.sign() < 0 ? ` - ${t.coef.neg()}` : ` + ${t.coef}`) + String(t.mon)).join('');
-		return terms || '0';
+		return this.terms.map((t, j) => (j === 0 ? String(t.coef) : t.coef.sign() < 0 ? ` - ${t.coef.neg()}` : ` + ${t.coef}`) + String(t.mon)).join('') || '0';
 	}
 	
 }
@@ -285,14 +284,9 @@ function sPolynomial<T extends scalar<T>>(f: MVPoly<T>, g: MVPoly<T>, ordering: 
 	
 	const lcm = Monomial.lcm(ltf.mon, ltg.mon);
 	
-	const mf = lcm.div(ltf.mon)!;
-	const mg = lcm.div(ltg.mon)!;
-	
 	// Scale to cancel leading terms: (mf/cf)*f - (mg/cg)*g
-	const term1 = f.mulMono(mf).divCoef(ltg.coef);
-	const term2 = g.mulMono(mg).divCoef(ltg.coef);
-
-	return term1.sub(term2);
+	return f.mulMono(lcm.div(ltf.mon)!).divCoef(ltg.coef)
+		.sub(g.mulMono(lcm.div(ltg.mon)!).divCoef(ltg.coef));
 }
 
 //-----------------------------------------------------------------------------
@@ -344,13 +338,12 @@ export function groebnerBasis<T extends scalar<T>>(G: MVPoly<T>[], ordering = co
 		const ltf = f.leadingTerm(ordering);
 		if (!ltf)
 			return false;
-		const redundant = result.some((g, j) => {
+		return !result.some((g, j) => {
 			if (i === j)
 				return false;
 			const ltg = g.leadingTerm(ordering);
 			return ltg && ltg.mon.divides(ltf.mon);
 		});
-		return !redundant;
 	});
 	
 	// Final inter-reduction: reduce each polynomial using the others

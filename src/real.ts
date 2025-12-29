@@ -1,5 +1,5 @@
-import {Operators, scalar, scalarExt} from "./core";
-import {integer} from "./integer";
+import {Operators, scalar, scalarExt, isScalar, isScalarExt, ops1, hasop} from "./core";
+import integer from "./integer";
 
 //-----------------------------------------------------------------------------
 // number
@@ -132,6 +132,16 @@ export const real = Object.assign(
 		return a;
 	},
 
+	extendedGcd(a: number, b: number) {
+		let s0 = 1, s = 0, t0 = 0, t = 1;
+		while (b) {
+			const q	= Math.floor(a / b);
+			[a, b, s0, t0, s, t] = [b, a - b * q, s, t, s0 - s * q, t0 - t * q];
+		}
+		// a = gcd, and s0 * a + t0 * b = r0
+		return { g: a, x: s0, y: t0 };
+	},
+
 	lcm(...x: number[]) {
 		return x.reduce((a, b) => (a / real.gcd(a, b)) * b, 1);
 	},
@@ -210,15 +220,29 @@ export namespace real {
 }
 
 
-export function asScalar(x: number|scalar<any>): scalar<any> {
-	if (typeof x === 'number')
-		return real(x);
-	return x;
+export function asScalar(x: number|bigint|ops1<any>): scalar<any> {
+	if (typeof x === 'bigint' || typeof x === 'number')
+		return real(Number(x));
+	if (isScalar(x))
+		return x;
+	if (hasop('mag')(x))
+		 return asScalarExt(x.mag());
+		
+	throw new Error(`Not a scalar: ${x}`);
+//	if (typeof x === 'bigint')
+//		x = Number(x);
+//	return typeof x === 'number' ? real(x) : x;
 }
-export function asScalarExt(x: number|scalarExt<any>): scalarExt<any> {
-	if (typeof x === 'number')
-		return real(x);
-	return x;
+
+export function asScalarExt(x: number|bigint|ops1<any>): scalarExt<any> {
+	if (typeof x === 'bigint' || typeof x === 'number')
+		return real(Number(x));
+	if (isScalarExt(x))
+		return x;
+	if (hasop('mag')(x))
+		 return asScalarExt(x.mag());
+
+	throw new Error(`Not a scalar: ${x}`);
 }
 
 

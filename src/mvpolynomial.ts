@@ -214,10 +214,10 @@ export class MVPoly<T extends scalar<T>> {
 		return new MVPoly(this.terms.map(t => ({ coef: t.coef.mul(coef), mon: t.mon })));
 	}
 
-	mulPoly(b: MVPoly<T>): MVPoly<T> {
-		const result = new MVPoly<T>();
+	mul(b: MVPoly<T>): MVPoly<T> {
+		let result = new MVPoly<T>();
 		for (const tb of b.terms)
-			result.add(this.mulMono(tb.mon).mulCoef(tb.coef));
+			result = result.add(this.mulMono(tb.mon).mulCoef(tb.coef));
 		return result;
 	}
 
@@ -265,6 +265,18 @@ export class MVPoly<T extends scalar<T>> {
 		}
 		this.terms = remainder;
 		return quotients;
+	}
+	deriv(i: number) {
+		const result = new MVPoly<T>();
+		for (const t of this.terms) {
+			const p = t.mon[i];
+			if (p) {
+				const mon = new Monomial(...t.mon);
+				mon[i] = p - 1;
+				result.addTerm(mon, t.coef.scale(p));
+			}
+		}
+		return result;
 	}
 
 	toString() {

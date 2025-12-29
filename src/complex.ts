@@ -1,6 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 
-import { scalar, has } from "./core";
+import { scalar, hasop } from "./core";
 import real from "./real";
 import gen from "./gen";
 
@@ -106,7 +106,7 @@ complex.prototype	= _complex.prototype;
 export type complex	= _complex;
 export default complex;
 
-type scalarComplex<T extends scalar<T>> = scalar<T> & has<'sqrt'> & has<'rpow'>;
+export type scalarComplex<T extends scalar<T>> = scalar<T> & hasop<'sqrt'|'rpow'>;
 
 class _complexT<T extends scalarComplex<T>> {
 	constructor(public r: T, public i: T) {}

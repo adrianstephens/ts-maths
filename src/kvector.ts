@@ -21,7 +21,7 @@ export interface Blade<T> {
 export function Blade(...vectors: (number[] | vops<any, number>)[]): Blade<number>;
 export function Blade<T extends vscalar<T>>(...vectors: T[][] | vops<any, T>[]): Blade<T>;
 export function Blade(...vectors: any[]) {
-	switch (typeof vectors[0][0]) {
+	switch (typeof (vectors[0][0] ?? vectors[0]._values[0])) {
 		case 'number':
 			return BladeN.from(...vectors) as Blade<number>;
 		default:

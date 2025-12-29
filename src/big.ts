@@ -9,29 +9,29 @@ export function isBigInt(x: any): x is bigint {
 	return typeof x === 'bigint';
 }
 
-class _Big implements scalarExt<_Big> {
+class _Big implements scalarExt<_Big, number> {
 	constructor(public value: bigint) {}
-	dup(): 				Big			{ return Big(this.value); }
-	neg(): 				Big			{ return Big(-this.value); }
-	scale(b: number):	Big			{ return Big(this.value * BigInt(b)); }
-	add(b: Big):		Big			{ return Big(this.value + b.value); }
-	sub(b: Big):		Big			{ return Big(this.value - b.value); }
-	mul(b: Big):		Big			{ return Big(this.value * b.value); }
-	div(b: Big):		Big			{ return Big(this.value / b.value); }
-	mag():				number 		{ return Number(Big.abs(this.value)); }
+	dup(): 				big			{ return big(this.value); }
+	neg(): 				big			{ return big(-this.value); }
+	scale(b: number):	big			{ return big(this.value * BigInt(b)); }
+	add(b: big):		big			{ return big(this.value + b.value); }
+	sub(b: big):		big			{ return big(this.value - b.value); }
+	mul(b: big):		big			{ return big(this.value * b.value); }
+	div(b: big):		big			{ return big(this.value / b.value); }
+	mag():				number 		{ return Number(big.abs(this.value)); }
 
-	from(n: number | bigint)		{ return Big(BigInt(n)); }
-	ipow(n: number):	Big			{ return Big(this.value ** BigInt(n)); }
-	rpow(n: number, d:number):	Big	{ return Big(Big.rpow(this.value, n, d)); }
-	npow(n: number):	Big			{ return Big(Big.npow(this.value, n)); }
-	sqrt():				Big			{ return Big(Big.root(this.value, 2)); }
+	from(n: number | bigint)		{ return big(BigInt(n)); }
+	ipow(n: number):	big			{ return big(this.value ** BigInt(n)); }
+	rpow(n: number, d:number):	big	{ return big(big.rpow(this.value, n, d)); }
+	npow(n: number):	big			{ return big(big.npow(this.value, n)); }
+	sqrt():				big			{ return big(big.root(this.value, 2)); }
 
-	abs():				Big			{ return Big(Big.abs(this.value)); }
-	sign():				number		{ return Big.sign(this.value); }
-	recip():			Big			{ return Big(1n / this.value); }
-	divmod(b: Big):		number		{ const q = this.value / b.value; this.value -= q * b.value; return Number(q); }
-	lt(b: Big):			boolean		{ return this.value < b.value; }
-	eq(b: Big):			boolean		{ return this.value === b.value; }
+	abs():				big			{ return big(big.abs(this.value)); }
+	sign():				number		{ return big.sign(this.value); }
+	recip():			big			{ return big(1n / this.value); }
+	divmod(b: big):		number		{ const q = this.value / b.value; this.value -= q * b.value; return Number(q); }
+	lt(b: big):			boolean		{ return this.value < b.value; }
+	eq(b: big):			boolean		{ return this.value === b.value; }
 
 	valueOf():			number		{ return Number(this.value); }
 	toString()						{ return this.value.toString(); }
@@ -64,12 +64,12 @@ class extentB {
 		return (this.min + this.max) / 2n;
 	}
 	add(p: bigint) {
-		this.min = Big.min(this.min, p);
-		this.max = Big.max(this.max, p);
+		this.min = big.min(this.min, p);
+		this.max = big.max(this.max, p);
 	}
 	combine(b: extentB) {
-		this.min = Big.min(this.min, b.min);
-		this.max = Big.max(this.max, b.max);
+		this.min = big.min(this.min, b.min);
+		this.max = big.max(this.max, b.max);
 	}
 	encompasses(b: extentB) {
 		return this.min <= b.min && this.max >= b.max;
@@ -81,11 +81,11 @@ class extentB {
 		return this.min <= p && this.max >= p;
 	}
 	clamp(p: bigint) {
-		return Big.min(Big.max(p, this.min), this.max);
+		return big.min(big.max(p, this.min), this.max);
 	}
 }
 
-export const Big = Object.assign(
+export const big = Object.assign(
 	function (value: bigint) {
 		return new _Big(value);
 	}, {
@@ -100,11 +100,13 @@ export const Big = Object.assign(
 	mul(a, b) 			{ return a * b; },
 	div(a, b) 			{ return a / b; },
 	ipow(a, b) 			{ return a ** BigInt(b); },
-	rpow(x, n, d)		{ return Big.root(x ** BigInt(n), d); },
+	rpow(x, n, d)		{ return big.root(x ** BigInt(n), d); },
 	pow(a, b) 			{ return a ** b; },
 	eq(a, b) 			{ return a === b; },
 	lt(a, b) 			{ return a < b; },
 	} as Operators<bigint>, {
+
+	is(x: any): x is bigint		{ return typeof x === 'bigint'; },
 
 	shift(x: bigint, n: bigint)	{ return n > 0 ? x << n : x >> -n; },
 	sign(a: bigint) 			{ return a === 0n ? 0 : a < 0n ? -1 : 1; },
@@ -124,9 +126,19 @@ export const Big = Object.assign(
 		}
 		return a;
 	},
+	
+	extendedGcd(a: bigint, b: bigint) {
+		let s0 = 1n, s = 0n, t0 = 0n, t = 1n;
+		while (b) {
+			const q	= a / b;
+			[a, b, s0, t0, s, t] = [b, a - b * q, s, t, s0 - s * q, t0 - t * q];
+		}
+		// a = gcd, and s0 * a + t0 * b = r0
+		return { g: a, x: s0, y: t0 };
+	},
 
 	lcm(...x: bigint[]) {
-		return x.reduce((a, b) => (a / Big.gcd(a, b)) * b, 1n);
+		return x.reduce((a, b) => (a / big.gcd(a, b)) * b, 1n);
 	},
 
 	divToReal(a: bigint, b: bigint) {
@@ -135,8 +147,8 @@ export const Big = Object.assign(
 		if (a === 0n)
 			return 0;
 
-		const aa = Big.abs(a);
-		const bb = Big.abs(b);
+		const aa = big.abs(a);
+		const bb = big.abs(b);
 
 		// If both fit in safe integer range, do the fast exact conversion
 		const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
@@ -165,7 +177,7 @@ export const Big = Object.assign(
 		const d = real.denominator(n, 100);
 		if (d === 0)
 			throw new Error('Big.npow: exponent not representable as rational');
-		return Big.root(x ** BigInt(n * d), d);
+		return big.root(x ** BigInt(n * d), d);
 	},
 
 	random(bits: number) {
@@ -241,11 +253,11 @@ export const Big = Object.assign(
 	extent: extentB
 });
 
-Big.prototype = _Big.prototype;
-export type Big = _Big;
-export default Big;
+big.prototype = _Big.prototype;
+export type big = _Big;
+export default big;
 // eslint-disable-next-line @typescript-eslint/no-namespace
-export namespace Big {
+export namespace big {
 	export type extent = extentB;
 }
 

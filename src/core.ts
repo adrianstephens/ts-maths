@@ -44,7 +44,6 @@ export interface Operators<T> {
 //	npow(a: T, n: number): T;
 }
 
-
 export function Type<T>(operators: Operators<T>) {
 	return class Ops implements ops<Ops> {
 		constructor(public value: T) {}
@@ -79,15 +78,72 @@ export function Type<T>(operators: Operators<T>) {
 	};
 }
 
-
-export interface ops<C extends ops<C, S>, S=number> {
+export interface allOps<C, S=number> {
+	//group
 	dup():				C;
 	neg(): 				C;
 	scale(b: S):		C;
 	add(b: C): 			C;
 	sub(b: C): 			C;
+
+	//ring
 	mul(b: C):			C;
 	div(b: C):			C;
+
+	mag():				number | scalarExt<any>;
+
+	//scalar
+	from(n: number | bigint):	C;
+	ipow(n: number):	C;
+	abs():				C;
+	sign():				number;
+	eq(b: C):			boolean;
+	lt(b: C):			boolean;
+	valueOf():			number | bigint;
+
+	//roots
+	sqrt(): 			C;
+	recip():			C;
+	rpow(n: number, d: number):	C;
+	npow(n: number):	C;
+	divmod(this: C, b: C):	number | bigint;
+
+	min(b: C):			C;
+	max(b: C):			C;
+}
+
+export type hasop<K extends keyof allOps<any>, T = any, S = number> = Pick<allOps<T, S>, K>;
+export function hasop<K extends keyof allOps<any>>(f: K) {
+	return (x: any): x is hasop<K> => f in x;
+}
+export function hasopT<T, K extends keyof allOps<any>>(f: K) {
+	return (x: T): x is (T & hasop<K>) => f in (x as any);
+}
+
+export type divmodto<T, R = any> = hasProperty<'divmod', (b: T)=>R>
+
+export interface ops0<C, S=number> extends hasop<'dup'|'neg'|'scale'|'add'|'sub', C, S> {};
+export interface ops1<C, S=number> extends ops0<C,S>, hasop<'mul'|'div', C, S> {};
+//export interface ops<C, S=number> extends ops1<C,S>, hasop<'mag', C, S> {};
+export type ops<C, S=number> = ops1<C,S>;
+export interface scalar<C, S=number> extends ops<C, S>, hasop<'from'|'ipow'|'abs'|'sign'|'eq'|'lt'|'valueOf', C, S> {};
+export interface scalarExt<C, S=number> extends scalar<C, S>, hasop<'sqrt'|'recip'|'rpow'|'npow'|'divmod', C, S> {};
+
+/*
+//group
+export interface ops0<C extends ops0<C, S>, S=number> {
+	dup():				C;
+	neg(): 				C;
+	scale(b: S):		C;
+	add(b: C): 			C;
+	sub(b: C): 			C;
+}
+
+export interface ops1<C extends ops1<C, S>, S=number> extends ops0<C, S>{
+	mul(b: C):			C;
+	div(b: C):			C;
+}
+export interface ops<C extends ops<C, S>, S=number> extends ops1<C, S>{
 	mag():				number | scalarExt<any>;
 }
 
@@ -111,18 +167,18 @@ export interface scalarPow<C extends scalarPow<C>> extends scalar<C> {
 export interface scalarExt<C extends scalarExt<C>> extends scalarPow<C> {
 	divmod(this: C, b: C):	number | bigint;
 }
-
-export type scalarRational<T extends scalar<T>> = scalar<T> & has<'divmod'> & has<'recip'>;
+*/
 export type Immutable<T> = Omit<T, 'divmod'>;
 
-export type has0<K extends keyof scalarExt<any>> = Pick<scalarExt<any>, K>;
+//export type has0<K extends keyof scalarExt<any>> = Pick<scalarExt<any>, K>;
+export type has0<K extends keyof allOps<any>> = Pick<allOps<any>, K>;
 export function has0<K extends keyof scalarExt<any>>(f: K) {
 	return (x: object): x is has0<K> => f in x;
 }
 
-export type has<K extends keyof scalarExt<any>> = ops<any> & Pick<scalarExt<any>, K>;
+export type has<K extends keyof scalarExt<any>> = ops1<any> & Pick<scalarExt<any>, K>;
 export function has<K extends keyof scalarExt<any>>(f: K) {
-	return (x: ops<any>): x is has<K> => f in x;
+	return (x: ops1<any>): x is has<K> => f in x;
 }
 
 export type hasFree<K extends keyof scalarExt<any>> = {[P in K]: AsFreeFunction<scalarExt<any>, K> };
@@ -130,13 +186,10 @@ export function hasFree<K extends keyof scalarExt<any>>(f: K) {
 	return (x: object): x is hasFree<K> => f in x;
 }
 
-export function isScalar(x: ops<any>): x is scalar<any> {
+export function isScalar(x: ops1<any>): x is scalar<any> {
 	return 'lt' in x;
 }
-export function isScalarRational(x: ops<any>): x is scalarRational<any> {
-	return 'divmod' in x;
-}
-export function isScalarExt(x: ops<any>): x is scalarExt<any> {
+export function isScalarExt(x: ops1<any>): x is scalarExt<any> {
 	return 'rpow' in x && 'divmod' in x;
 }
 
@@ -151,6 +204,10 @@ export function asScalarT<T extends scalarExt<T>>(from: T, x: number|T): T {
 
 export function compare<T extends number|bigint|string>(a: T, b: T): number {
 	return a < b ? -1 : a > b ? 1 : 0;
+}
+
+export function sign<T extends number|bigint>(a: T): number {
+	return a < 0 ? -1 : a > 0 ? 1 : 0;
 }
 
 export function* lazySlice<T>(arr: T[], start?: number, end?: number): Generator<T> {

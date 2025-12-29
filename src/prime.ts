@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-this-alias */
 
 import integer from './integer';
-import Big from './big';
+import big from './big';
 
 const smallPrimes	= [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37] as integer[];
 const MR64			= [2, 325, 9375, 28178, 450775, 9780504, 1795265022] as integer[];
@@ -262,7 +262,7 @@ function makeWitnesses(n: bigint, rounds = 12): Iterable<bigint> {
 	const bits = n.toString(2).length;
 	return (function*() {
 		for (let i = 0; i < rounds; i++)
-			yield Big.random(bits) % (n - 3n) + 2n;
+			yield big.random(bits) % (n - 3n) + 2n;
 	})();
 }
 
@@ -313,11 +313,11 @@ function MillerRabinB(n: bigint, witnesses: Iterable<bigint>): bigint {
 
 	function tryWitness(a: bigint): bigint {
 		// quick gcd check: if a shares a factor with n, return it
-		const factor = Big.gcd(a, n);
+		const factor = big.gcd(a, n);
 		if (factor > 1n && factor < n)
 			return factor;
 
-		let x = Big.modPow(a, d, n);
+		let x = big.modPow(a, d, n);
 		if (x === 1n || x === n - 1n)
 			return 0n;
 
@@ -326,11 +326,11 @@ function MillerRabinB(n: bigint, witnesses: Iterable<bigint>): bigint {
 			x = (x * x) % n;
 			if (x === 1n) {
 				// Found nontrivial square root: x is such that x^2 ≡ 1 (mod n) but x ≠ ±1
-				const factor = Big.gcd(x0 - 1n, n);
+				const factor = big.gcd(x0 - 1n, n);
 				if (factor > 1n && factor < n)
 					return factor;
 				// try the other sign as well (rarely useful here, but harmless)
-				const factor2 = Big.gcd(x0 + 1n, n);
+				const factor2 = big.gcd(x0 + 1n, n);
 				if (factor2 > 1n && factor2 < n)
 					return factor2;
 			}
@@ -376,9 +376,9 @@ function pollardRhoBrentB(n: bigint, f: (x: bigint) => bigint, y: bigint): bigin
 			let q = 1n;
 			for (let i = 0; i < m && i < r - k; i++) {
 				y = f(y);
-				q = (q * Big.abs(x - y)) % n;
+				q = (q * big.abs(x - y)) % n;
 			}
-			g = Big.gcd(q, n);
+			g = big.gcd(q, n);
 		}
 	}
 
@@ -386,7 +386,7 @@ function pollardRhoBrentB(n: bigint, f: (x: bigint) => bigint, y: bigint): bigin
 		g = 1n;
 		for (let attempts = 0; g === 1n && attempts < 4096; attempts++) {
 			y0 = f(y0);
-			g = Big.gcd(Big.abs(x - y0), n);
+			g = big.gcd(big.abs(x - y0), n);
 		}
 	}
 	return g === 1n ? n : g;
@@ -447,7 +447,7 @@ export class factorisationB extends Map<bigint, number> {
 			return;
 		}
 		super();
-		n	= Big.abs(n);
+		n	= big.abs(n);
 
 		for (const i of smallPrimes) {
 			const	p		= BigInt(i);
@@ -471,10 +471,10 @@ export class factorisationB extends Map<bigint, number> {
 				if (factor === 1n) {
 					const bits	= m.toString(2).length;
 					for (let attempt = 0; attempt < 10; attempt++) {
-						const c	= Big.random(bits) % (m - 1n) + 1n;
+						const c	= big.random(bits) % (m - 1n) + 1n;
 						//factor	= pollardRhoOnce(m, c);
 						// f(x) = x^2 + c mod n
-						factor	= pollardRhoBrentB(m, (x: bigint) => (x * x + c) % m, Big.random(bits) % m);
+						factor	= pollardRhoBrentB(m, (x: bigint) => (x * x + c) % m, big.random(bits) % m);
 						if (factor < m)
 							break;
 					}

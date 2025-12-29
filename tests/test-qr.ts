@@ -53,7 +53,7 @@ test('eigen_3x3 - diag 1,2,3', () => {
 	const eigs = A.eigenvalues();
 	if (eigs.length !== 3) throw new Error('expected 3 eigenvalues');
 	const vals = eigs.map(e => e.r ?? 0).sort((a,b) => a-b);
-	if (!(real.approx(vals[0],1) && real.approx(vals[1],2) && real.approx(vals[2],3)))
+	if (!(real.approx(vals[0],1,1e-8) && real.approx(vals[1],2,1e-8) && real.approx(vals[2],3,1e-8)))
 		throw new Error('3x3 diagonal eigenvalues mismatch: ' + JSON.stringify(vals));
 });
 

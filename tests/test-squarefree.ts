@@ -1,5 +1,5 @@
 import { Polynomial } from '../src/polynomial';
-import { squareFreeFactorization, polyGCD } from '../src/polynomial2';
+import { squareFreeFactorization, polyGCD } from '../src/factors';
 
 function fail(msg: string, ...rest: any[]) {
   console.error(msg, ...rest);

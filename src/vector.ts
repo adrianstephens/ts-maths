@@ -2,10 +2,13 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 
 import {ops, scalar, scalarExt, has} from './core';
-import Gen from './gen';
+import gen from './gen';
 import complex from './complex';
 import { Polynomial, PolynomialN } from './polynomial';
-import { LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT } from './bareiss';
+import {
+	characteristicN, characteristicT,
+	LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT
+} from './bareiss';
 import { Blade } from './kvector';
 import { verticalArray, verticalStyles } from './string';
 
@@ -109,10 +112,18 @@ function make_swizzles4<T, T2, T3, T4>(fields: readonly string[], make2: (x: T, 
 //-----------------------------------------------------------------------------
 
 export interface vops<C extends vops<C, S>, S = any> extends ops<C, S> {
+//export interface vops<C extends vops<C, S>, S = any> extends ops<C, S> {
 	create(...args: S[]): C;
 	_values:			S[];
 
 	dup():				C;
+	neg(): 				C;
+	scale(b: S):		C;
+	add(b: C): 			C;
+	sub(b: C): 			C;
+	mul(b: C):			C;
+	div(b: C):			C;
+
 	abs():				C;
 	min(b: C):			C;
 	max(b: C):			C;
@@ -250,9 +261,9 @@ export class vecImpT<T extends vscalar<T>, E extends string> implements vops<vec
 	div(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => v.div(b[k]))); }
 	add(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => v.add(b[k]))); }
 	sub(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => v.sub(b[k]))); }
-	min(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => Gen.min(v, b[k]))); }
-	max(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => Gen.max(v, b[k]))); }
-	eq(b: vector<E, T>) 	{ return this.entries().every(([k, v]) => Gen.compare(v, b[k]) === 0); }
+	min(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => gen.min(v, b[k]))); }
+	max(b: vector<E, T>) 	{ return this.create(...this.entries().map(([k, v]) => gen.max(v, b[k]))); }
+	eq(b: vector<E, T>) 	{ return this.entries().every(([k, v]) => gen.compare(v, b[k]) === 0); }
 	dot(b: vector<E, T>) 	{ return this.entries().reduce((acc, [k, v]) => acc.add(v.mul(b[k])), this._values[0].from(0)); }
 	perp() 					{
 		const comps = this._values;
@@ -407,7 +418,7 @@ export interface matOps<C extends vops<C, any>, R extends string, S = scalarOf<C
 	mul0(v: vec<S, string>, col: string):	C;
 	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, vecKeys<M2, C>>;
 	trace():						S;
-	characteristic():				PolynomialN<number>;
+	characteristic():				PolynomialN<S>;
 	eigenvalues():					complex[];
 }
 
@@ -479,46 +490,18 @@ class matImp<C extends vops<C>, R extends string> {
 	[Symbol.for("debug.description")]() { return this.toString(true); }
 }
 
-function characteristic(A: floatN[]): PolynomialN<number> {
-	const n = A.length;
-
-	function trace() {
-		let trace = 0;
-		for (let i = 0; i < n; ++i)
-			trace += B_cols[i][i];
-		return trace;
-	}
-
-	const B_cols = A.map(col => col.dup());
-	const I_cols = Array.from({length: n}, (_, i) => floatN.from({length: n}, (_, j):number => i === j ? 1 : 0));
-
-	const coeffs: number[] = [];
-
-	for (let k = 1; k < n; ++k) {
-		const ck	= -trace() / k;
-		coeffs.push(ck);
-
-		for (let i = 0; i < n; i++)
-			B_cols[i] = mulN(A, B_cols[i].add(I_cols[i].scale(ck)));
-	}
-	coeffs.push(-trace() / n);
-	coeffs.reverse();
-	return PolynomialN(coeffs);
-}
-
-
 // Basic QR-based eigensolver (returns array of complex eigenvalues).
-export function eigenvalues(A: floatN[]): complex[] {
+export function eigenvalues(A: number[][]): complex[] {
 	const n = A.length;
 
 	// For small matrices (<= 5) prefer the polynomial solver (uses closed-form/Aberth)
 	if (n <= 5)
-		return characteristic(A).allRoots();
+		return PolynomialN(characteristicN(A)).allRoots();
 
 	const	tol = 1e-12;
 	const	maxIter = Math.max(1000, 100 * n);
 	const	eigs: complex[] = [];
-	const	cols = A.map(c => c.dup());
+	const	cols = A.map(c => c.slice());
 
 	let		m = n;
 	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
@@ -609,12 +592,12 @@ class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> i
 			trace += (this as any)[k][k];
 		return trace as scalarOf<C>;
 	}
-	characteristic(): PolynomialN<number> {
-		return characteristic(this.columns().map(col => floatN.fromArray(col._values)));
+	characteristic(): PolynomialN<scalarOf<C>> {
+		return PolynomialN(characteristicN(this.columns().map(col => col._values))) as any;
 	}
 
 	eigenvalues(): complex[] {
-		return eigenvalues(this.columns().map(col => floatN.fromArray(col._values)));
+		return eigenvalues(this.columns().map(col => col._values));
 	}
 }
 
@@ -641,8 +624,8 @@ class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any
 			trace = trace.add((this as any)[k][k]);
 		return trace as scalarOf<C>;
 	}
-	characteristic(): PolynomialN<number> {
-		return PolynomialN([0]);//new polynomialN([]);
+	characteristic(): PolynomialN<scalarOf<C>> {
+		return PolynomialN(characteristicT(this.columns().map(col => col._values))) as any;
 	}
 	eigenvalues(): complex[] {
 		return [];
@@ -1002,7 +985,6 @@ export const float3 = Object.assign(
 	}
 });
 Object.defineProperties(_float3.prototype, Object.fromEntries(make_swizzles3(E3, float2, float3)));
-float3.prototype = _float3.prototype;
 export namespace float3 {
 	export type extent = typeof float3.extent;
 }
@@ -1052,6 +1034,7 @@ export const float3x4 = Object.assign(
 		return float3x4(float3(1,0,0), float3(0,1,0), float3(0,0,1), float3(0,0,0));
 	},
 });
+float3x4.prototype = _float3x4.prototype;
 float3x4.prototype = _float3x4.prototype;
 
 function mulAffine3x4(a: float3x4, b: float3x4|float3x3): float3x4 {
@@ -1109,7 +1092,6 @@ export const float4 = Object.assign(
 	}
 });
 Object.defineProperties(_float4.prototype, Object.fromEntries(make_swizzles4(E4, float2, float3, float4)));
-float4.prototype = _float4.prototype;
 export namespace float4 {
 	export type extent = typeof float4.extent;
 }

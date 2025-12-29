@@ -1,4 +1,4 @@
-import {vops} from './vector';
+import {ops, hasop} from './core';
 
 interface WithZero<T> {
 	zero(): T;
@@ -47,15 +47,16 @@ export class statistics1 {
 	}
 }
 
+type statsOps<T> = ops<T> & hasop<'min'|'max'>
 
-export class statistics<T extends vops<T>> {
+export class statistics<T extends statsOps<T>> {
 	sum:	T;
 	sum2:	T;
 	min:	T;
 	max:	T;
 	count	= 0;
 
-	static from<T extends vops<T>, U extends Iterable<T>>(items: U, Type?: WithZero<T>) {
+	static from<T extends statsOps<T>, U extends Iterable<T>>(items: U, Type?: WithZero<T>) {
 		if (!Type) {
 			const first = items[Symbol.iterator]().next();
 			if (first.done)
@@ -83,8 +84,8 @@ export class statistics<T extends vops<T>> {
 			this.min = this.min.min(v);
 			this.max = this.max.max(v);
 		}
-		this.sum.selfAdd(v);
-		this.sum2.selfAdd(v.mul(v));
+		this.sum	= this.sum.add(v);
+		this.sum2	= this.sum2.add(v.mul(v));
 		this.count++;
 		return this;
 	}

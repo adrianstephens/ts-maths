@@ -1,0 +1,77 @@
+import { scalar, hasop } from "./core";
+declare class _complex {
+    r: number;
+    i: number;
+    constructor(r: number, i: number);
+    from(b: number): _complex;
+    dup(): complex;
+    neg(): complex;
+    conj(): complex;
+    recip(): complex;
+    magSq(): number;
+    mag(): number;
+    abs(): number;
+    arg(): number;
+    scale(b: number): complex;
+    mul(b: complex): complex;
+    add(b: complex): complex;
+    sub(b: complex): complex;
+    div(b: complex): complex;
+    npow(b: number): complex;
+    rpow(n: number, d: number): complex;
+    pow(b: complex): complex;
+    eq(b: complex): boolean;
+    approx(b: complex, eps?: number): boolean;
+    sqrt(): _complex;
+    toString(): string;
+}
+export declare const complex: ((r: number, i?: number) => _complex) & Pick<import("./core").Operators<_complex>, "dup" | "neg" | "scale" | "add" | "sub" | "mul" | "div" | "from" | "ipow" | "eq" | "rpow" | "func" | "pow"> & {
+    variable(name: string): complex | undefined;
+    lt: (a: complex, b: complex) => boolean;
+    fromPolar(r: number, t: number): _complex;
+    zero(): _complex;
+    re(a: complex): _complex;
+    im(a: complex): _complex;
+    sqrt(a: complex | number): _complex;
+    ln(a: complex): _complex;
+    exp(a: complex): _complex;
+    sin(a: complex): _complex;
+    cos(a: complex): _complex;
+    tan(a: complex): _complex;
+    sinh(a: complex): _complex;
+    cosh(a: complex): _complex;
+    tanh(a: complex): _complex;
+    conjugatePair(c: complex): _complex[];
+};
+export type complex = _complex;
+export default complex;
+export type scalarComplex<T extends scalar<T>> = scalar<T> & hasop<'sqrt' | 'rpow'>;
+declare class _complexT<T extends scalarComplex<T>> {
+    r: T;
+    i: T;
+    constructor(r: T, i: T);
+    dup(): _complexT<T>;
+    neg(): _complexT<T>;
+    conj(): _complexT<T>;
+    recip(): _complexT<T>;
+    magSq(): T;
+    mag(): any;
+    abs(): any;
+    scale(b: number): _complexT<T>;
+    rscale(b: T): _complexT<T>;
+    mul(b: complexT<T>): _complexT<T>;
+    add(b: complexT<T>): _complexT<T>;
+    sub(b: complexT<T>): _complexT<T>;
+    div(b: complexT<T>): _complexT<T>;
+    arg(): number;
+    sqrt(): _complexT<any>;
+    npow(n: number): _complexT<any>;
+    rpow(n: number, d: number): _complexT<any>;
+    toString(): string;
+}
+export declare const complexT: (<T extends scalarComplex<T>>(r: T, i: T) => _complexT<T>) & {
+    zero(): _complex;
+    fromPolar<T extends scalarComplex<T>>(r: T, t: number): _complexT<T>;
+    conjugatePair<T extends scalarComplex<T>>(c: complexT<T>): complexT<T>[];
+};
+export type complexT<T extends scalarComplex<T>> = _complexT<T>;

@@ -1,4 +1,4 @@
-import {Operators, ops, scalar, scalarRational, scalarExt, has, has0, Immutable, hasProperty} from "./core";
+import {Operators, ops1, scalar, scalarExt, has, has0, hasop, divmodto, Immutable, hasProperty} from "./core";
 
 //-----------------------------------------------------------------------------
 // Generics
@@ -30,12 +30,12 @@ class extentT<T extends has<'lt'>> {
 		return this.min.add(this.max).scale(0.5);
 	}
 	add(p: T) {
-		this.min = Gen.min(this.min, p);
-		this.max = Gen.max(this.max, p);
+		this.min = gen.min(this.min, p);
+		this.max = gen.max(this.max, p);
 	}
 	combine(b: extentT<T>) {
-		this.min = Gen.min(this.min, b.min);
-		this.max = Gen.max(this.max, b.max);
+		this.min = gen.min(this.min, b.min);
+		this.max = gen.max(this.max, b.max);
 	}
 	encompasses(b: extentT<T>) {
 		return !b.min.lt(this.min) && !this.max.lt(b.max);
@@ -47,21 +47,23 @@ class extentT<T extends has<'lt'>> {
 		return !p.lt(this.min) && !this.max.lt(p);
 	}
 	clamp(p: T) {
-		return Gen.min(Gen.max(p, this.min), this.max);
+		return gen.min(gen.max(p, this.min), this.max);
 	}
 }
 
-export type canDenominator = Pick<scalarExt<any>, 'from'|'divmod'|'recip'|'lt'>;
+export type canDenominator = Pick<scalarExt<any>, 'from'|'recip'|'lt'> & divmodto<any>;
 
-export const Gen = {
-	dup<T extends ops<T>>(a: T) 		{ return a.dup(); },
-	neg<T extends ops<T>>(a: T) 		{ return a.neg(); },
-	add<T extends ops<T>>(a: T, b: T)	{ return a.add(b); },
-	sub<T extends ops<T>>(a: T, b: T)	{ return a.sub(b); },
-	mul<T extends ops<T>>(a: T, b: T)	{ return a.mul(b); },
-	div<T extends ops<T>>(a: T, b: T)	{ return a.div(b); },
+export type GenTypes = number | bigint | ops1<any, any>;
 
-	ipow<T extends has0<'mul'> & has0<'add'>>(base: T, exp: number, one?: T): T {
+export const gen = {
+	dup<T extends GenTypes>(a: T) 		{ return typeof a === 'object' ? a.dup() : a; },
+	neg<T extends GenTypes>(a: T) 		{ return typeof a === 'object' ? a.neg() : -a; },
+	add<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.add(b) : (a as number) + (b as number); },
+	sub<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.sub(b) : (a as number) - (b as number); },
+	mul<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.mul(b) : (a as number) * (b as number); },
+	div<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.div(b) : (a as number) / (b as number); },
+
+	ipow<T extends has0<'mul'>>(base: T, exp: number, one?: T): T {
 		let result = exp & 1 ? base : one;
 		for (exp >>= 1; exp; exp >>= 1) {
 			base = base.mul(base);
@@ -89,12 +91,12 @@ export const Gen = {
 		return a.lt(b) ? -1 : b.lt(a) ? 1 : 0;
 	},
 
-	gcd<T extends Pick<scalarExt<any>, 'sign'|'abs'|'dup'> & hasProperty<'divmod', (b: T)=>any>>(...values: T[]): T {
+	gcd<T extends Pick<scalarExt<any>, 'sign'|'abs'|'dup'> & divmodto<any>>(...values: T[]): T {
 		let a: T | undefined;
 		for (let b of values) {
 			b = b.dup().abs();
-			if (a && a.sign()) {
-				while (b.sign()) {
+			if (a && a.sign() !== 0) {
+				while (b.sign() !== 0) {
 					a.divmod(b);
 					[a, b] = [b, a];
 				}
@@ -105,10 +107,21 @@ export const Gen = {
 		return a!;
 	},
 
+	extendedGcd<T extends has<'scale'|'sign'|'abs'|'dup'> & divmodto<any>>(a: T, b: T, one: T) {
+		let s0 = one, s = one.scale(0), t0 = s, t = one;
+		while (b.sign() !== 0) {
+			const q	= a.divmod(b);
+			[a, b, s0, t0, s, t] = [b, a, s, t, s0.sub(s.mul(q)), t0.sub(t.mul(q))];
+		}
+		// x * a + y * b = g
+		return { g: a, x: s0, y: t0 };
+	},
+
+
 	lcm<T extends Pick<scalarExt<any>, 'divmod'|'sign'|'dup'|'abs'|'scale'>>(...values: T[]) {
 		let a: T | undefined;
 		for (const b of values)
-			a = a ? b.scale(Number(a.divmod(Gen.gcd(a, b)))) : b;
+			a = a ? b.scale(Number(a.divmod(gen.gcd(a, b)))) : b;
 		return a!;
 	},
 
@@ -129,17 +142,16 @@ export const Gen = {
 	commonDenominator<T extends canDenominator & has0<'scale'>>(numbers: T[], maxDen = 1000n, eps?: T) {
 		let scale = 1n;
 		for (const n of numbers) {
-			scale *= Gen.denominator(n.scale(Number(scale)), maxDen, eps);
+			scale *= gen.denominator(n.scale(Number(scale)), maxDen, eps);
 			if (scale > maxDen)
 				return 0;
 		}
 		return scale;
 	},
 
-	rationalApprox<T extends scalar<T> & canDenominator>(x: Immutable<T>, maxDen: bigint, eps?: T): [bigint, bigint] {
-		const den = this.denominator(x.dup(), maxDen, eps);
-		return [BigInt(x.dup().divmod(x.from(den))), den];
-/*
+	rationalApprox<T extends canDenominator & has0<'dup'>>(x: Immutable<T>, maxDen: bigint, eps?: T): [bigint, bigint] {
+//		const den = this.denominator(x.dup(), maxDen, eps);
+//		return [BigInt(x.dup().divmod(x.from(den))), den];
 		const one = x.from(1);
 		let b = x.dup();
 		let h1 = BigInt(b.divmod(one)), h2 = 1n;
@@ -156,10 +168,9 @@ export const Gen = {
 			[h2, h1, k2, k1] = [h1, h1 * f + h2, k1, k1 * f + k2];
 		}
 		return [h1, k1];
-		*/
 	},
 	
-	continuedFractionT<T extends scalarRational<T>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
+	continuedFractionT<T extends canDenominator & has0<'dup'|'sign'|'abs'|'add'>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
 		const out: (bigint|number)[] = [];
 		const one = x.from(1);
 
@@ -178,7 +189,7 @@ export const Gen = {
 		return out;
 	},
 
-	modPow<T extends has<'divmod'>>(base: T, exp: number, mod: T): T {
+	modPow<T extends hasop<'mul'> & divmodto<any>>(base: T, exp: number, mod: T): T {
 		let result: T | undefined;
 		while (exp) {
 			base.divmod(mod);
@@ -192,7 +203,7 @@ export const Gen = {
 		return result!;
 	},
 
-	OperatorsBase<T extends ops<T>>(_con: new (...args: any[]) => T) {
+	OperatorsBase<T extends ops1<T>>(_con: new (...args: any[]) => T) {
 		const con		= _con as any;
 		const proto		= con.prototype as Record<string, any>;
 		
@@ -212,7 +223,7 @@ export const Gen = {
 
 		// guaranteed by the ops constraint
 		r.dup = (a: T) => a.dup();
-		r.neg = (a: T) => a.neg();
+//		r.neg = (a: T) => a.neg();
 		r.scale = (a: T, b: number) => a.scale(b);
 		r.add = (a: T, b: T) =>	a.add(b);
 		r.sub = (a: T, b: T) => a.sub(b);
@@ -238,7 +249,7 @@ export const Gen = {
 
 		r.ipow = 'ipow' in proto
 			? (a: T, b: number) => (a as any).ipow(b)
-			: (a: T, b: number) => Gen.ipow(a, b);
+			: (a: T, b: number) => gen.ipow(a, b);
 
 
 		return r as unknown as Pick<Operators<T>, (keyof Operators<T> & keyof T) | 'func' | 'ipow'>;
@@ -247,9 +258,76 @@ export const Gen = {
 	extent: extentT,
 };
 
-export default Gen;
+export abstract class Mod<T> {
+	constructor(public v: T) {}
+	abstract dup() 				: this;
+	abstract neg() 				: this;
+	abstract scale(n: number) 	: this;
+	abstract add(b: Mod<T>)		: this;
+	abstract sub(b: Mod<T>)		: this;
+	abstract mul(b: Mod<T>)		: this;
+	abstract div(b: Mod<T>)		: this;
+	abstract recip()	 		: this;
+	abstract from(n: number) 	: this;
+	abstract ipow(n: number)	: this;
+	abstract sign()	 			: number;
+	abstract eq(b: Mod<T>)		: boolean;
+	abstract toString() 		: string;
+}
+
+export type ModFactory<T> = (new (v: T) => Mod<T>) & {
+	wrap(p: T): Mod<T>;
+//	_create?(p: T): Mod<T>;
+};
+
+// Generic polynomial-modulo-(r) wrapper factory for base=Polynomial<number>
+export function ModFactory<T extends has<'sign' | 'abs' | 'dup' | 'from' | 'eq'> & divmodto<any>>(r: T) {
+	class M extends Mod<T> {
+		static wrap(p: T) {
+			p = p.dup();
+			p.divmod(r);
+			return new this(p);
+		}
+		static _create(p: T) {
+			return new this(p);
+		}
+		_create(p: T): this {
+			return new (this.constructor as any)(p);
+		}
+		wrap(p: T): this {
+			p = p.dup();
+			p.divmod(r);
+			return new (this.constructor as any)(p);
+		}
+		dup() { return this.wrap(this.v.dup()); }
+		neg() { return this.wrap(this.v.neg()); }
+		scale(n: number) { return this.wrap(this.v.scale(n)); }
+		add(b: M) { return this.wrap(this.v.add(b.v)); }
+		sub(b: M) { return this.wrap(this.v.sub(b.v)); }
+		mul(b: M) { return this.wrap(this.v.mul(b.v)); }
+		div(b: M) {	return this.mul(b.recip());	}
+		recip() {
+			const { g, x } = gen.extendedGcd(this.v.dup(), r.dup(), r.from(1)); // x * this + y * r = g
+			return this.wrap(x.div(g));
+			//throw new Error('Mod.recip: inverse does not exist');
+		}
+		from(n: number) { return this.wrap(this.v.from(n)); }
+		ipow(n: number): this {
+			if (n >= 0)
+				return this.wrap(gen.modPow(this.v, n, r));
+			return this.recip().ipow(-n);
+		}
+		// comparisons / sign
+		sign()		{ return this.v.sign(); }
+		eq(b: M)	{ return this.v.eq(b.v); }
+		toString()	{ return this.v.toString(); }
+	}
+	return M;
+}
+
+export default gen;
 // eslint-disable-next-line @typescript-eslint/no-namespace
-export namespace Gen {
+export namespace gen {
 	export type extent<T extends has<'lt'>> = extentT<T>;
 }
 

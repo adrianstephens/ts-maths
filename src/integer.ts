@@ -90,6 +90,16 @@ export const integer = {
 		return a;
 	},
 
+	extendedGcd(a: integer, b: integer) {
+		let s0 = 1, s = 0, t0 = 0, t = 1;
+		while (b) {
+			const q	= this.div(a, b);
+			[a, b, s0, t0, s, t] = [b, a - b * q as integer, s, t, s0 - s * q, t0 - t * q];
+		}
+		// a = gcd, and s0 * a + t0 * b = r0
+		return { g: a, x: s0 as integer, y: t0 as integer };
+	},
+
 	lcm(...x: integer[]) {
 		return x.reduce((a, b) => (a / integer.gcd(a, b)) * b as integer, 1 as integer);
 	},

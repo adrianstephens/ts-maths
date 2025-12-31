@@ -1,6 +1,6 @@
 
 export type hasProperty<K extends string, S> = { [P in K]: S };
-
+export type builtinNumber = number | bigint;
 
 export function isInstance<T>(x: any, i: (new (...args: any[]) => T) | ((...args: any[]) => T)): x is T {
 	return x instanceof i || x.prototype === i.prototype;
@@ -71,7 +71,7 @@ export function Type<T>(operators: Operators<T>) {
 		npow(n: number):	Ops	{ return new Ops(operators.pow(this.value, operators.from(n))); }
 
 		//ext
-//		divmod(b: Ops):		number | bigint;
+//		divmod(b: Ops):		builtinNumber;
 
 		toString(): string { return String(this.value); }
 		valueOf(): number { return Number(this.value); }	
@@ -93,20 +93,20 @@ export interface allOps<C, S=number> {
 	mag():				number | scalarExt<any>;
 
 	//scalar
-	from(n: number | bigint):	C;
+	from(n: builtinNumber):	C;
 	ipow(n: number):	C;
 	abs():				C;
 	sign():				number;
 	eq(b: C):			boolean;
 	lt(b: C):			boolean;
-	valueOf():			number | bigint;
+	valueOf():			builtinNumber;
 
 	//roots
 	sqrt(): 			C;
 	recip():			C;
 	rpow(n: number, d: number):	C;
 	npow(n: number):	C;
-	divmod(this: C, b: C):	number | bigint;
+	divmod(this: C, b: C):	builtinNumber;
 
 	min(b: C):			C;
 	max(b: C):			C;
@@ -206,7 +206,7 @@ export function compare<T extends number|bigint|string>(a: T, b: T): number {
 	return a < b ? -1 : a > b ? 1 : 0;
 }
 
-export function sign<T extends number|bigint>(a: T): number {
+export function sign<T extends builtinNumber>(a: T): number {
 	return a < 0 ? -1 : a > 0 ? 1 : 0;
 }
 

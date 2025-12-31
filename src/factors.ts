@@ -1,7 +1,7 @@
 /* eslint-disable custom/custom-control-block-style */
-import { scalar, hasop, isScalar } from './core';
+import { scalar, hasop, isScalar, ops1 } from './core';
 import { Polynomial, PolyTypes, PolyNTypes, coeffOps } from './polynomial';
-import { LUDecomposeBareiss, LUDecomposeBareissT, LUSolveBareissTransposeMultiT, solveRectangularBareiss, solveRectangularBareissT } from './bareiss';
+import { LUDecomposeBareiss, LUDecomposeBareissT, LUSolveBareissTransposeMultiT, solveRectangularBareiss, solveRectangularBareissT, matMulT, matPow, nullspaceColT, transpose, evaluateIntegerPolyAtMatrix, projectSubspace, characteristicT } from './linear';
 import real from './real';
 import integer from './integer';
 import rational, { rationalT, canMakeRational } from './rational';
@@ -16,33 +16,7 @@ type factorOps<T>	= coeffOps<T> & hasop<'recip'|'sign'|'from'>;
 type factorOps1<T>	= factorOps<T> & hasop<'lt'|'divmod'>;
 type factorType		= number | factorOps<any>;
 
-// Matrix multiply and trace helpers (rational arithmetic)
-function matMul<T extends factorOps<T>>(A: T[][], B: T[][]): T[][] {
-	const zero = A[0][0].scale(0);
-	const N = A.length;
-	const R = Array.from({ length: N }, () => Array.from({ length: N }, () => zero));
-	for (let i = 0; i < N; i++) {
-		for (let k = 0; k < N; k++) {
-			const aik = A[i][k];
-			if (aik) {
-				for (let j = 0; j < N; j++) {
-					const bkj = B[k][j];
-					if (bkj)
-						R[i][j] = R[i][j].add(aik.mul(bkj));
-				}
-			}
-		}
-	}
-	return R;
-}
-
-function traceMat<T extends factorOps<T>>(A: T[][]): T {
-	const N = A.length;
-	let s = A[0][0];
-	for (let i = 1; i < N; i++)
-		s = s.add(A[i][i]);
-	return s;
-}
+// linear algebra helpers are provided by ./linear
 
 
 export type PolyMod<T> = Mod<Polynomial<T>> & { degree(): number; shift1(): PolyMod<T>; };
@@ -99,8 +73,8 @@ function PolyModFactory<T>(r: Polynomial<T>): PolyModFactory<T> {
 		};
 		return M;
 	}
-
 }
+
 
 //-----------------------------------------------------------------------------
 //	PRS: Polynomial Remainder Sequence and GCD
@@ -222,17 +196,13 @@ function squareFreeFactorizationT<T extends coeffOps<T>>(f: Polynomial<T>) {
 // Helper: build matrix from column vectors `cols` and solve A * x = b for x.
 // Returns the solution vector `alpha` or null when no solution.
 function solveRelationFromCols<T extends factorType>(cols: T[][], m: number, n: number, zero: T): T[] | null {
-	if (real.is(cols[0][0])) {
-		const A = Array.from({ length: n }, (_, row) => Array.from({ length: m }, (_, col) => cols[col][row] ?? zero)) as unknown as number[][];
-		const B = [Array.from({ length: n }, (_, row) => cols[m][row] ?? zero)] as unknown as number[][];
-		const sol = solveRectangularBareiss(A, B);
-		return sol ? (sol[0] as unknown as T[]) : null;
-	} else {
-		const A = Array.from({ length: n }, (_, row) => Array.from({ length: m }, (_, col) => cols[col][row] ?? zero)) as unknown as any[][];
-		const B = [Array.from({ length: n }, (_, row) => cols[m][row] ?? zero)] as unknown as any[][];
-		const sol = solveRectangularBareissT(A, B);
-		return sol ? (sol[0] as unknown as T[]) : null;
-	}
+	const A = Array.from({ length: n }, (_, row) => Array.from({ length: m }, (_, col) => cols[col][row] ?? zero));
+	const B = [Array.from({ length: n }, (_, row) => cols[m][row] ?? zero)];
+
+	const sol = real.is(cols[0][0])
+		? solveRectangularBareiss(A as number[][], B as number[][])
+		: solveRectangularBareissT(A as any, B as any);
+	return sol ? sol[0] as T[] : null;
 }
 
 // Factor a square-free polynomial S over K into irreducible factors over K
@@ -366,10 +336,6 @@ export function factorOverK<T extends factorType>(f: Polynomial<T>): Factor<T>[]
 	return res;
 }
 
-//-----------------------------------------------------------------------------
-//  Factorization over extension field K = base T (e.g. Polynomial<number>/ (r) )
-//-----------------------------------------------------------------------------
-
 // K[ζ] helpers: types and small utilities to operate on polynomials in ζ whose coefficients are `Mod`-wrapped polynomials in t
 type PolyPolyR = Polynomial<Polynomial<rational>>;
 type KzMod = Polynomial<PolyMod<rational>>;
@@ -389,7 +355,7 @@ function syntheticDivideInKz(S: PolyPolyR, alphaKz: KzMod, ModZ: ModFactory<Poly
 
 	b[an] = aKzMod[an];
 	for (let k = an - 1; k >= 0; k--)
-		b[k] = aKzMod[k].add(b[k + 1].mul(alphaKzMod));
+		b[k] = aKzMod[k] ? aKzMod[k].add(b[k + 1].mul(alphaKzMod)) : b[k + 1].mul(alphaKzMod);
 
 	return { rem: b[0].v, quotArr: b.slice(1, an + 1).map(m => m.v) };
 }
@@ -412,310 +378,159 @@ function invertKz(elem: KzMod, ModZ: ModFactory<Polynomial<PolyMod<rational>>>, 
 	return sol ? Polynomial(sol[0]) : null;
 }
 
+// Compute E_i matrices for multiplication-by-t^i projected into subspace spanned by nsCols.
+function computeEis<T extends ops1<T> & hasop<'sign'|'from'|'mul'|'add'|'recip'>>(nsCols: T[][], dr: number, r: Polynomial<T>, zero: T, one: T) {
+	const N	= Math.max(...nsCols.map(i => i.length));
+	const m	= nsCols.length;
+	const E	= Array.from({ length: dr }, () => Array.from({ length: m }, () => Array.from({ length: m }, () => zero)));
+
+	const T_rows = Array.from({ length: N }, (_, row) => Array.from({ length: m }, (_, col) => nsCols[col][row] ?? zero));
+
+	for (let t = 0; t < dr; t++) {
+		const BT = Array.from({ length: N }, () => Array.from({ length: m }, () => zero));
+		for (let col = 0; col < m; col++) {
+			for (const c2 in nsCols[col]) {
+				const rem = Polynomial([one]).shift(+c2 % dr + t);
+				rem.divmod(r);
+
+				const bv		= nsCols[col][c2];
+				const baseRow	= Math.floor(+c2 / dr) * dr;
+				for (const ti in rem.c) {
+					const row	= baseRow + +ti;
+					BT[row][col] = BT[row][col].add(rem.c[ti].mul(bv));
+				}
+			}
+		}
+		for (let k = 0; k < m; k++) {
+			const sol2 = solveRectangularBareissT(T_rows, [BT.map(rw => rw[k])]);
+			if (sol2) {
+				const xcol = sol2[0];
+				for (let i = 0; i < m; i++)
+					E[t][i][k] = xcol[i];
+			}
+		}
+	}
+	return E;
+}
+
 // Q-linear deterministic factorisation: treat A = K[x]/(S) as a Q-vector space with basis { t^i x^j } and compute the minimal polynomial of multiplication-by-x over Q using exact rational arithmetic
 // Returns array of irreducible factors.
 // Return type: either a polynomial factor over K or an extension description
-type FactorQOut = PolyPolyR | { ext: { alpha: KzMod; pCoeffs: number[]; quotient: KzMod[] } };
+type FactorExt	= { alpha: KzMod; pCoeffs: number[] };
+type FactorQOut	= PolyPolyR | FactorExt;
 
-function factorSquareFreeOverK_Q(S: PolyPolyR, r: Polynomial<rational>): FactorQOut[] {
+function factorSquareFreeOverK_Q(S: PolyPolyR, R: Polynomial<rational>): FactorQOut[] {
 	// Deterministic Q-linear splitter: build exact multiplication-by-x matrix over Q on basis { t^i x^j } and compute its characteristic polynomial exactly
 	// Use that polynomial's factors to derive gcds with S and split S over K
 
-	let		n	= S.degree();
-	const	dr	= r.degree();
-	if (n <= 1 || dr <= 0)
+	let		s	= S.degree();
+	const	r	= R.degree();
+	if (s <= 1 || r <= 0)
 		return [S.dup()];
 
-	const Mod = PolyModFactory(r);
+	const Mod = PolyModFactory(R);
 
 	// Basis size
-	const N = n * dr;
+	const N = s * r;
 
 	const q0 = rational.from(0);
 	const q1 = rational.from(1);
 
 	const ScoeffsMod = S.c.map(i => Mod.wrap(i));
-	while (n >= 0 && (ScoeffsMod[n].degree() < 0))
-		n--;
-	if (n < 0)
+	while (s >= 0 && ScoeffsMod[s].degree() < 0)
+		s--;
+	if (s < 0)
 		return [S.dup()];
 
-	ScoeffsMod.length = n + 1;
-	const Slead = ScoeffsMod[n];
-	if (!Slead || Slead.degree() < 0)
-		return [S.dup()];
+	const invLeadMod = ScoeffsMod[s].recip();
+	if (!invLeadMod)
+		throw new Error('Non-invertible leading coefficient in S when constructing multiplication matrix');
+
+	ScoeffsMod.length = s;
 
 	// Build multiplication matrix M (rows x cols) initialized to zero
 	const M = Array.from({ length: N }, () => Array.from({ length: N }, () => q0));
 
-	// diagnostic helper removed
-
 	// For each basis element t^i x^j (col = j*dr + i) compute x * (t^i x^j)
-	const invLeadMod = Slead.recip();
-	if (!invLeadMod)
-		throw new Error('Non-invertible leading coefficient in S when constructing multiplication matrix');
+	for (let j = 0; j < s - 1; j++) {
+		const base = j * r;
+		for (let i = 0; i < r; i++)
+			M[base + i][base + r + i] = q1;	// x * t^i x^j = t^i x^{j+1}
+	}
 
-	for (let j = 0; j < n; j++) {
-		for (let i = 0; i < dr; i++) {
-			const col = j * dr + i;
-			const nextJ = j + 1;
-			if (nextJ < n) {
-				// x * t^i x^j = t^i x^{j+1}
-				M[nextJ * dr + i][col] = q1;
-				continue;
-			}
-			// x^{n} reduction: x^n = - Slead^{-1} * sum_{k=0..n-1} Scoeffs[k] x^k
-			for (let k = 0; k < n; k++) {
-				const ck = ScoeffsMod[k];
-				if (ck) {
-					// multiply by t^i and reduce mod r
-					const shifted = ck.mul(invLeadMod).neg().v.shift(i);
-					shifted.divmod(r); // mutates shifted to be the remainder
-					const rem = shifted;
-					for (let ti = 0; ti < rem.c.length; ti++) {
-						const rawCoeff = rem.c[ti];
-						if (rawCoeff) {
-							const row = k * dr + ti;
-							M[row][col] = M[row][col].add(rawCoeff);
-						}
-					}
-				}
+	for (let i = 0; i < r; i++) {
+		const col = (s - 1) * r + i;
+		// x^{n} reduction: x^n = - Slead^{-1} * sum_{k=0..n-1} Scoeffs[k] x^k
+		for (const k in ScoeffsMod) {
+			const rem = ScoeffsMod[k].mul(invLeadMod).neg().v.shift(i);
+			rem.divmod(R);
+
+			const rowbase = +k * r;
+			for (const ti in rem.c) {
+				const row = rowbase + +ti;;
+				M[col][row] = M[col][row].add(rem.c[ti]);
 			}
 		}
 	}
 
-	// Compute traces of powers: trace(M^k) for k=1..N
-	const traces: rational[] = [];
-	let P = M.map(rw => rw.slice());
-	for (let k = 1; k <= N; k++) {
-		traces[k] = traceMat(P);
-		if (k < N)
-			P = matMul(P, M);
-	}
-
-	// Faddeev–LeVerrier: compute characteristic polynomial coefficients a1..aN
-	const a = Array.from({ length: N + 1 }, () => rational.from(0));
-	for (let k = 1; k <= N; k++) {
-		let sum = traces[k];
-		for (let i = 1; i <= k - 1; i++)
-			sum = sum.add(a[i].mul(traces[k - i]));
-		a[k] = sum.neg().div(rational.from(k));
-	}
-
+	const achar		= characteristicT(M);
 	// Clear denominators to obtain integer polynomial for factoring
-	const dens		= a.slice(1).map(x => x.den);
-	const lcmDen	= dens.length ? real.lcm(...dens) : 1;
-	// Build integer coefficient array for characteristic polynomial
-	// Faddeev–LeVerrier gives a[1..N] for polynomial x^N + a1*x^{N-1} + ... + aN
-	const intCoeffs = Array.from({ length: N + 1 }, () => 0);
-	intCoeffs[N] = 1; // leading coefficient for x^N
-	for (let k = 1; k <= N; k++)
-		intCoeffs[N - k] = a[k].num * (lcmDen / a[k].den);		// place a[k] at power x^{N-k}
-
-	const factors = squareFreeFactorization(Polynomial(intCoeffs));
-	// integer characteristic polynomial computed
+	const lcmDen	= real.lcm(...achar.map(x => x.den));
+	const factors	= squareFreeFactorization(Polynomial([...achar.map(ak => ak.num * (lcmDen / ak.den)), lcmDen]));
 
 	// Try adjoin-root extraction: for each integer factor p(x) of the characteristic polynomial, adjoin a root ζ of p and attempt to find α ∈ K[ζ] with x - α | S in K[ζ][x].
-
-	// Helpers: evaluate integer polynomial at rational matrix, nullspace over Q, matrix power
-	function evaluatePolyAtMatrix(poly: number[], Mmat: rational[][]): rational[][] {
-		const size = Mmat.length;
-		const zero = rational.from(0);
-		const Pmat = Array.from({ length: size }, (_, i) => Array.from({ length: size }, (_, j) => i === j ? rational.from(poly[0] ?? 0) : zero));
-		if (poly.length > 1) {
-			let Mpow = Mmat.map(rw => rw.slice());
-			for (const k in poly) {
-				if (+k === 0)
-					continue;
-				const ck = rational.from(poly[k]);
-				for (let i = 0; i < size; i++)
-					for (let j = 0; j < size; j++)
-						Pmat[i][j] = Pmat[i][j].add(Mpow[i][j].mul(ck));
-				if (+k + 1 < poly.length)
-					Mpow = matMul(Mpow, Mmat);
-			}
-		}
-		return Pmat;
-	}
-
-	function nullspaceRational(Aorig: rational[][]): rational[][] {
-		const A = Aorig.map(rw => rw.slice());
-		const rows = A.length; const cols = A[0].length;
-		const pivots: number[] = [];
-		let r0 = 0;
-		for (let c = 0; c < cols && r0 < rows; c++) {
-			let piv = r0;
-			while (piv < rows && A[piv][c].num === 0)
-				piv++;
-			if (piv === rows)
-				continue;
-			if (piv !== r0)
-				[A[r0], A[piv]] = [A[piv], A[r0]];
-			pivots.push(c);
-			for (let i = r0 + 1; i < rows; i++) {
-				if (A[i][c].num) {
-					const factor = A[i][c].div(A[r0][c]);
-					for (let j = c; j < cols; j++)
-						A[i][j] = A[i][j].sub(factor.mul(A[r0][j]));
-				}
-			}
-			r0++;
-		}
-
-		// pivot info collected
-		const pivotSet = new Set(pivots);
-		const freeCols: number[] = [];
-		for (let j = 0; j < cols; j++)
-			if (!pivotSet.has(j))
-				freeCols.push(j);
-
-		const basis: rational[][] = [];
-		for (const fc of freeCols) {
-			const x: rational[] = Array.from({ length: cols }, () => rational.from(0));
-			x[fc] = rational.from(1);
-			for (let pi = pivots.length - 1; pi >= 0; pi--) {
-				const pc = pivots[pi];
-				const rowIdx = pi;
-				let sum = rational.from(0);
-				for (let j = pc + 1; j < cols; j++)
-					if (A[rowIdx][j].num !== 0 && x[j].num !== 0)
-						sum = sum.add(A[rowIdx][j].mul(x[j]));
-
-				if (A[rowIdx][pc].num === 0)
-					throw new Error('unexpected zero pivot in nullspace');
-				x[pc] = sum.neg().div(A[rowIdx][pc]);
-			}
-			basis.push(x);
-		}
-		return basis;
-	}
-
-	function matPow(A: rational[][], e: number): rational[][] {
-		const N = A.length;
-		// identity
-		let R: rational[][] = Array.from({ length: N }, (_, i) => Array.from({ length: N }, (_, j) => i === j ? rational.from(1) : rational.from(0)));
-		if (e === 0)
-			return R;
-		let B = A.map(rw => rw.slice());
-		while (e > 0) {
-			if (e & 1)
-				R = matMul(R, B);
-			e >>= 1;
-			if (e)
-				B = matMul(B, B);
-		}
-		return R;
-	}
 
 	// Try each integer factor
 	for (const fac of factors) {
 		const d = fac.factor.degree();
-		if (d <= 0) continue;
-		const P = evaluatePolyAtMatrix(fac.factor.c, M);
-		// P evaluated for factor
-		const ns = nullspaceRational(P);
+		if (d <= 0)
+			continue;
+
+		const P = evaluateIntegerPolyAtMatrix(fac.factor.c, M, rational.from);
+		// compute nullspace on row-major view
+		const ns = nullspaceColT(P);
 		if (!ns || ns.length === 0)
 			continue;
 
 		// build T_rows from basis ns
-		const m = ns.length;
-		const Nsize = M.length;
-		const q0 = rational.from(0);
-		const T_rows = Array.from({ length: Nsize }, (_, row) => Array.from({ length: m }, (_, col) => ns[col][row] ?? q0));
+		// compute M_sub = T^{-1} M T (use shared helper which handles column-major M)
+		const M_sub = projectSubspace(M, ns, q0);
 
-		// compute M_sub = T^{-1} M T
-		const M_sub = Array.from({ length: m }, () => Array.from({ length: m }, () => q0));
-		for (let j = 0; j < m; j++) {
-			const w = Array.from({ length: Nsize }, () => q0);
-			for (let row = 0; row < Nsize; row++) {
-				let sum = q0;
-				for (let col = 0; col < Nsize; col++) {
-					const mv = M[row][col];
-					if (mv.num === 0) continue;
-					const bv = ns[j][col] ?? q0;
-					if (bv.num === 0) continue;
-					sum = sum.add(mv.mul(bv));
-				}
-				w[row] = sum;
-			}
-			const sol = solveRectangularBareissT<rational>(T_rows, [w]);
-			if (!sol)
-				continue;
-			const ccol = sol[0];
-			for (let i = 0; i < m; i++) M_sub[i][j] = ccol[i];
-		}
-
-		// build E_i = T^{-1} * (multiplication-by-t^i) * T for i=0..dr-1
-		const E: rational[][][] = Array.from({ length: dr }, () => Array.from({ length: m }, () => Array.from({ length: m }, () => q0)));
-		for (let i_t = 0; i_t < dr; i_t++) {
-			// BT = B_{t^i} * T
-			const BT: rational[][] = Array.from({ length: Nsize }, () => Array.from({ length: m }, () => q0));
-			for (let colj = 0; colj < m; colj++) {
-				for (let c2 = 0; c2 < Nsize; c2++) {
-					const j2 = Math.floor(c2 / dr);
-					const i2 = c2 % dr;
-					const arrPoly = Array.from({ length: Math.max(i2 + i_t + 1, dr) }, () => rational.from(0));
-					arrPoly[i2 + i_t] = rational.from(1);
-					const rem = (() => { const _p = Polynomial(arrPoly); _p.divmod(r); return _p; })();
-					const bv = ns[colj][c2] ?? q0;
-					if (bv.num === 0) continue;
-					const baseRow = j2 * dr;
-					for (let ti = 0; ti < dr; ti++) {
-						const rowIdx = baseRow + ti;
-						const coeff = rem.c[ti] ?? q0;
-						if (coeff.num === 0) continue;
-						BT[rowIdx][colj] = BT[rowIdx][colj].add(coeff.mul(bv));
-					}
-				}
-			}
-			// solve T * x = BT_col
-			for (let k = 0; k < m; k++) {
-				const sol2 = solveRectangularBareissT<rational>(T_rows, [BT.map(rw => rw[k])]);
-				if (sol2) {
-					const xcol = sol2[0];
-					for (let i = 0; i < m; i++)
-						E[i_t][i][k] = xcol[i];
-				}
-			}
-		}
+		// build E_i = T^{-1} * (multiplication-by-t^i) * T for i=0..dr-1 (centralized helper)
+		const E = computeEis(ns, r, R, q0, q1);
 
 		// compute M_sub powers
 		const Mpow = Array.from({ length: d }, (_, u) => matPow(M_sub, u));
 
 		// build F_{u,i} = Mpow[u] * E[i]
 		const Fmats = Array.from({ length: d }, (_, u) =>
-			Array.from({ length: dr }, (_, i_t) => matMul(Mpow[u], E[i_t]))
+			Array.from({ length: r }, (_, i_t) => matMulT(Mpow[u], E[i_t]))
 		);
 
 		// Build linear system: unknowns count = d * dr
-		const eqRows: rational[][] = [];
-		const eqB: rational[] = [];
+		const eqRows:	rational[][] = [];
+		const eqB:		rational[] = [];
+		const m		= ns.length;
 		for (let p = 0; p < m; p++) {
 			for (let q = 0; q < m; q++) {
-				const row: rational[] = Array.from({ length: d * dr }, () => q0);
+				const row: rational[] = Array.from({ length: d * r }, () => q0);
 				for (let u = 0; u < d; u++) {
-					for (let i_t = 0; i_t < dr; i_t++)
-						row[u * dr + i_t] = Fmats[u][i_t][p][q];
+					for (let i_t = 0; i_t < r; i_t++)
+						row[u * r + i_t] = Fmats[u][i_t][p][q];
 				}
 				eqRows.push(row);
 				eqB.push(M_sub[p][q]);
 			}
 		}
 		const solA = solveRectangularBareissT<rational>(eqRows, [eqB]);
-		if (!solA) continue;
+		if (!solA)
+			continue;
+
 		const solVec = solA[0];
 		// reconstruct alpha as array of length d of Polynomial<rational> (coeffs in t)
-		const alphaArr = Array.from({ length: d }, () => Polynomial<rational>([]));
-		for (let u = 0; u < d; u++) {
-			const coeffs = Array.from({ length: dr }, () => rational.from(0));
-			for (let i_t = 0; i_t < dr; i_t++) coeffs[i_t] = solVec[u * dr + i_t] ?? rational.from(0);
-			const Pcoeff = Polynomial(coeffs);
-			Pcoeff.divmod(r);
-			alphaArr[u] = Pcoeff;
-		}
+		const alphaKz		= Polynomial(Array.from({length: d}, (_, u) => Mod.wrap(Polynomial(Array.from({length: r}, (_, i) => solVec[u * r + i])))));
 		const pCoeffsInt	= fac.factor.c.map(v => Math.round(v));
 		const ModZ			= ModFactory(Polynomial(pCoeffsInt.map(ci => Mod.wrap(Polynomial([rational.from(ci)])))));
-		const alphaKz		= Polynomial(alphaArr.map(p => Mod.wrap(p)));
 		const { rem, quotArr } = syntheticDivideInKz(S, alphaKz, ModZ, Mod);
 
 		// check remainder zero
@@ -743,15 +558,15 @@ function factorSquareFreeOverK_Q(S: PolyPolyR, r: Polynomial<rational>): FactorQ
 			}
 		}
 		if (!allInK)
-			return [{ ext: { alpha: alphaKz, pCoeffs: pCoeffsInt, quotient: quotArr } }];
+			return [{ alpha: alphaKz, pCoeffs: pCoeffsInt }];
 
 		let alphaInK = true;
 		for (let u = 1; alphaInK && u < d; u++)
-			alphaInK = alphaArr[u].degree() < 0;
+			alphaInK = alphaKz.c[u].v.degree() < 0;
 
 		if (alphaInK) {
-			return factorSquareFreeOverK_Q(Polynomial(quotArr.map(pz => pz.c[0].v)), r)
-				.concat(factorSquareFreeOverK_Q(Polynomial([alphaArr[0].neg(), Polynomial([rational.from(1)])]), r));
+			return factorSquareFreeOverK_Q(Polynomial(quotArr.map(pz => pz.c[0].v)), R)
+				.concat(factorSquareFreeOverK_Q(Polynomial([alphaKz.c[0].v.neg(), Polynomial([rational.from(1)])]), R));
 		}
 	}
 
@@ -767,14 +582,17 @@ function factorSquareFreeOverK_Q(S: PolyPolyR, r: Polynomial<rational>): FactorQ
 // Partial Rothstein–Trager pipeline
 // Returns R(t), its square-free factors, and for each factor the gcd D vs (N - t D') with coefficients reduced modulo the factor so they live in Q[t]/(r(t))
 
-interface FactorGCD<T> extends Factor<T> {
-	gcd: Polynomial<Polynomial<rational>>;
-	// when gcd only exists after adjoining a root, gcdExt describes the extension root
-	gcdExt?: { alpha: KzMod; pCoeffs: number[]; quotient: KzMod[] };
+export interface FactorGCD<T> extends Factor<T> {
+	gcd: Polynomial<Polynomial<rational>> | FactorExt;
 }
 
+export interface PartialResult<T> {
+	R?:			Polynomial<T>;
+	factors:	Factor<T>[];
+	gcds:		FactorGCD<T>[];
+}
 
-export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial<Polynomial<T>>, D: Polynomial<Polynomial<T>>) {
+export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial<Polynomial<T>>, D: Polynomial<Polynomial<T>>): PartialResult<T> {
 	const zero		= N.leadCoeff().scale(0);
 	const results: FactorGCD<T>[] = [];
 
@@ -782,7 +600,6 @@ export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial
 	// Q(x,t) = N(x) - t * D'(x)  => coefficient at x^i is Ni(t) - t * Dd_i(t)
 	const Q			= Polynomial(Array.from({ length: Math.max(N.c.length, Dd.c.length) }, (_, i) => (N.c[i] ?? zero).sub((Dd.c[i] ?? zero).shift(1))));
 	const R			= resultant(D, Q);
-	// Q and resultant R computed
 
 	// Special-case when resultant is identically zero: resultant 0 => R has no square-free factors but D and Q may still have a non-trivial gcd for all t
 	// Detect that case and record the gcd so downstream residue extraction can handle it
@@ -792,7 +609,7 @@ export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial
 			results.push({
 				factor:			Polynomial<T>([]),
 				multiplicity:	1,
-				gcd:			G.map(c => Polynomial(c.c.map(t => rational.from(t))))
+				gcd:			G.map(c => c.map(t => rational.from(t)))
 			});
 		return { R, factors: [], gcds: results };
 	}
@@ -800,7 +617,7 @@ export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial
 	const factors	= squareFreeFactorization(R);
 
 	// build polynomials in x with inner coeffs polynomials in t
-	const D1 = Polynomial(D.c.map(c => Polynomial(c.c.map(t => rational.from(t)))));
+	const D1 = D.map(c => c.map(t => rational.from(t)));
 
 	for (const fac of factors) {
 		const r		= fac.factor;
@@ -813,19 +630,16 @@ export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial
 			Q.map(c => mod.wrap(c))
 		);
 
-		const G1 = G.map(c => Polynomial(c.v.c.map(t => rational.from(t))));
-		const r1 = r.map(c => rational.from(c));
+		const G1 = G.map(c => c.v.map(rational.from));
+		const r1 = r.map(rational.from);
 		const sf = squareFreeFactorization(G1);
-		type GFactorAny = { factor?: PolyPolyR; ext?: { alpha: KzMod; pCoeffs: number[]; quotient: KzMod[] }; multiplicity: number };
+		type GFactorAny = { factor: FactorQOut; multiplicity: number };
 		const GfactorsAny: GFactorAny[] = [];
+
 		for (const item of sf) {
 			const pieces = factorSquareFreeOverK_Q(item.factor, r1);
-			for (const p of pieces) {
-				if ((p as any).ext)
-					GfactorsAny.push({ ext: (p as any).ext, multiplicity: item.multiplicity });
-				else
-					GfactorsAny.push({ factor: p as PolyPolyR, multiplicity: item.multiplicity });
-			}
+			for (const p of pieces)
+				GfactorsAny.push({ factor: p, multiplicity: item.multiplicity });
 		}
 
 		if (GfactorsAny.length === 0) {
@@ -834,22 +648,14 @@ export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial
 			// If that yields nontrivial factors, use them; otherwise fall back to recording the raw gcd we computed.
 			const Dfactors = factorSquareFreeOverK_Q(D1, r1);
 			if (Dfactors.length > 0) {
-				for (const df of Dfactors) {
-					if ((df as any).ext)
-						results.push({ factor: r.dup(), multiplicity: fac.multiplicity, gcd: Polynomial<Polynomial<rational>>([]), gcdExt: (df as any).ext });
-					else
-						results.push({ factor: r.dup(), multiplicity: fac.multiplicity, gcd: df as PolyPolyR });
-				}
+				for (const df of Dfactors)
+					results.push({ factor: r.dup(), multiplicity: fac.multiplicity, gcd: df });
 			} else {
 				results.push({ factor: r.dup(), multiplicity: fac.multiplicity, gcd: G1 });
 			}
 		} else {
-			for (const gf of GfactorsAny) {
-				if (gf.ext)
-					results.push({ factor: r.dup(), multiplicity: fac.multiplicity * gf.multiplicity, gcd: Polynomial<Polynomial<rational>>([]), gcdExt: gf.ext });
-				else if (gf.factor)
-					results.push({ factor: r.dup(), multiplicity: fac.multiplicity * gf.multiplicity, gcd: gf.factor });
-			}
+			for (const gf of GfactorsAny)
+				results.push({ factor: r.dup(), multiplicity: fac.multiplicity * gf.multiplicity, gcd: gf.factor });
 		}
 	}
 
@@ -860,21 +666,21 @@ export function rothsteinPartial<T extends number|factorOps1<any>>(N: Polynomial
 // This is a heuristic: evaluate at sample t-values u where r(u) != 0, factor numeric polynomials,and attempt to interpolate factor coefficients back to polynomials in t of degree < deg(r)
 
 // Extract residues for linear gcd factors only.
-interface Residue<T> extends Factor<T> {
+export interface Residue<T> extends Factor<T> {
 	residue?:	Polynomial<rational>;
 	residueK?:	Polynomial<PolyMod<rational>>;
 }
 
-export function rothsteinResidues<T extends canMakeRational>(N: Polynomial<Polynomial<T>>, D: Polynomial<Polynomial<T>>, gcds: FactorGCD<T>[]): Residue<T>[] {
+export function rothsteinResidues<T extends (canMakeRational & PolyTypes)>(N: Polynomial<Polynomial<T>>, D: Polynomial<Polynomial<T>>, gcds: FactorGCD<T>[]): Residue<T>[] {
 	// Inputs are polynomials in x whose coefficients are polynomials in t (Polynomial<Polynomial<T>>).
 	const logs: Residue<T>[] = [];
 
-	const N1		= Polynomial(N.c.map(c => Polynomial(c.c.map(rational.from))));
-	const Dd		= Polynomial(D.c.map(c => Polynomial(c.c.map(rational.from)))).deriv();
+	const N1		= N.map(c => c.map(rational.from));
+	const Dd		= D.map(c => c.map(rational.from)).deriv();
 
 	for (const ginfo of gcds) {
 		const G = ginfo.gcd; // Polynomial whose coefficients are inner polynomials in t
-		if (!G || G.degree() < 1)
+		if ('alpha' in G)
 			continue;
 
 		// inner coefficient structure for G collected when needed
@@ -884,81 +690,73 @@ export function rothsteinResidues<T extends canMakeRational>(N: Polynomial<Polyn
 		const bInner = G.c[0];
 
 		// Global gcd case (resultant zero placeholder): handle without Mod wrapper
-		if (ginfo.factor.degree() < 0) {
-			if (G.degree() === 1 && aInner && aInner.degree() === 0 && aInner.c[0]) {
-				const x0 = bInner.scale(-1).rscale(aInner.c[0]);
-				const e = Dd.evaluate(x0);
-				if (e.degree() === 0 && e.c[0])
-					logs.push({ factor: ginfo.factor.dup(), residue: N1.evaluate(x0).rscale(e.c[0]), multiplicity: ginfo.multiplicity });
+		if (!ginfo.factor || ginfo.factor.degree() < 0) {
+			if (G.degree() === 1 && aInner?.degree() === 0 && aInner.c[0]) {
+				const x0 = bInner && bInner.neg().rscale(aInner.c[0]);
+				const den = x0 ? Dd.c[0] : Dd.evaluate(x0);
+				if (den.degree() === 0 && den.c[0])
+					logs.push({ factor: Polynomial<T>([]), residue: (x0 ? N1.evaluate(x0) : N1.c[0]).rscale(den.c[0]), multiplicity: ginfo.multiplicity });
 			}
 			continue;
 		}
 
 		const r		= ginfo.factor;
-		const r1	= Polynomial(r.c.map(rational.from));
+		const r1	= r.map(rational.from);
 		const ModLocal = PolyModFactory(r1);
 		const DdMod	= Dd.map(c => ModLocal.wrap(c));
 		const Nmod	= N1.map(c => ModLocal.wrap(c));
+
+		function putLog(x?: PolyMod<rational>) {
+			const invDen	= (x ? DdMod.evaluate(x) : DdMod.c[0]).recip();
+			if (invDen)
+				logs.push({ factor: r.dup(), residue: (x ? Nmod.evaluate(x) : Nmod.c[0]).mul(invDen).v, multiplicity: ginfo.multiplicity });
+		}
+
+		function putLogK(x: KzMod, coeffs: number[]) {
+			const ModZ		= ModFactory(Polynomial(coeffs.map(ci => ModLocal.wrap(Polynomial([rational.from(ci)])))));
+			const invDen	= invertKz(evaluateAtKz(Dd, x, ModZ, ModLocal), ModZ, coeffs.length - 1, ModLocal);
+			if (invDen)
+				logs.push({ factor: r.dup(), residueK: evaluateAtKz(N1, x, ModZ, ModLocal).mul(invDen), multiplicity: ginfo.multiplicity });
+		}
 
 		// If gcd is linear we can directly compute residue in K; otherwise
 		// attempt to factor G further using the Q-linear splitter to find extension roots.
 		if (G.degree() === 1) {
 			const invA = aInner && ModLocal.wrap(aInner).recip();
-			if (invA) {
-				const x0		= ModLocal.wrap(bInner).neg().mul(invA);
-				const invDen	= DdMod.evaluate(x0);
-				if (invDen)
-					logs.push({ factor: r.dup(), residue: Nmod.evaluate(x0).mul(invDen).v, multiplicity: ginfo.multiplicity });
-			}
+			if (invA)
+				putLog(bInner && ModLocal.wrap(bInner).neg().mul(invA));
 
 		} else {
 			// Attempt adjoin-root splitting of G over K to obtain residues in extensions
 			const parts = factorSquareFreeOverK_Q(G, r1);
 
 			// If splitter returned the same irreducible integer polynomial, treat as no split and use const-coeff fallback
-			const partsLooksSame = parts && parts.length === 1 && !(parts[0] as any).ext && (parts[0] as PolyPolyR).toString() === G.toString();
-			if (parts && parts.length && !partsLooksSame) {
+			if (parts && parts.length && !(parts.length === 1 && !('alpha' in parts[0]) && parts[0].eq(G))) {
 				for (const part of parts) {
-					if ((part as any).ext) {
-						const ext		= (part as any).ext as { alpha: KzMod; pCoeffs: number[]; quotient: KzMod[] };
-						const ModZ		= ModFactory(Polynomial(ext.pCoeffs.map(ci => ModLocal.wrap(Polynomial([rational.from(ci)])))));
-						const invDen	= invertKz(evaluateAtKz(Dd, ext.alpha, ModZ, ModLocal), ModZ, ext.pCoeffs.length - 1, ModLocal);
-						if (invDen)
-							logs.push({ factor: r.dup(), residueK: evaluateAtKz(N1, ext.alpha, ModZ, ModLocal).mul(invDen), multiplicity: ginfo.multiplicity });
-					} else {
-						const pf = part as PolyPolyR;
-						if (pf.degree() === 1) {
-							const invA = pf.c[1] && ModLocal.wrap(pf.c[1]).recip();
-							if (invA) {
-								const x0		= ModLocal.wrap(pf.c[0]).neg().mul(invA);
-								const invDen	= DdMod.evaluate(x0).recip();
-								if (invDen)
-									logs.push({ factor: r.dup(), residue: Nmod.evaluate(x0).mul(invDen).v, multiplicity: ginfo.multiplicity });
-							}
-						}
+					if ('alpha' in part) {
+						putLogK(part.alpha, part.pCoeffs);
+					} else if (part.degree() === 1) {
+						const invA = part.c[1] && ModLocal.wrap(part.c[1]).recip();
+						if (invA)
+							putLog(ModLocal.wrap(part.c[0]).neg().mul(invA));
 					}
 				}
+
 			} else {
 				// If splitter returned nothing interesting, but G has constant (t-free) coefficients, we can adjoin a root ζ of the integer polynomial G and evaluate residues in Q(ζ)
 				let allConst = true;
 				const coeffNums: number[] = [];
 				for (const i in G.c) {
 					const ci = G.c[i];
-					if (ci.degree() >= 0) {
-						if (ci.degree() > 0 || ci.c[0].den !== 1) {
-							allConst = false;
-							break;
-						}
-						coeffNums[i] = ci.c[0].num;
+					if (ci.degree() > 0) {
+						allConst = false;
+						break;
 					}
+					if (ci.degree() === 0)
+						coeffNums[i] = +ci.c[0];
 				}
-				if (allConst) {
-					const alpha		= Polynomial(Array.from({ length: coeffNums.length }, (_, i) => ModLocal.wrap(Polynomial([rational.from(i === 1 ? 1 : 0)]))));
-					const ModZ		= ModFactory(Polynomial(coeffNums.map(ci => ModLocal.wrap(Polynomial([rational.from(ci)])))));
-					const invDen	= invertKz(evaluateAtKz(Dd, alpha, ModZ, ModLocal), ModZ, coeffNums.length - 1, ModLocal);
-					if (invDen)
-						logs.push({ factor: r.dup(), residueK: evaluateAtKz(N1, alpha, ModZ, ModLocal).mul(invDen), multiplicity: ginfo.multiplicity });
-				}
+				if (allConst)
+					putLogK(Polynomial([ModLocal.wrap(Polynomial([rational.from(1)]))]).shift(1), coeffNums);
 			}
 		}
 	}

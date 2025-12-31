@@ -16,7 +16,9 @@ import rational, { rationalB, canMakeRationalOps, canMakeRational} from './ratio
 import { toSuperscript } from './string';
 import { factorisation, factorisationB } from './prime';
 
-export {PolyMod, partialFractionsT, partialPower, hermiteReduce, squareFreeFactorization, factorOverK, rothsteinPartial, rothsteinResidues, resultant, sylvesterMatrix} from './factors';
+export {PolyMod, Factor, FactorGCD, Residue,
+	partialFractionsT, partialPower, hermiteReduce, squareFreeFactorization, factorOverK, rothsteinPartial, rothsteinResidues, resultant, sylvesterMatrix
+} from './factors';
 
 const sqrt3	= Math.sqrt(3);
 const defaultEpsilon = 1e-9;
@@ -83,6 +85,13 @@ export interface Polynomial<C> extends PolynomialN<C> {
 	normalise(epsilon?: number):	PolynomialN<normalized<C>>;
 	map<U extends PolyTypes>(func: (c: C, i: number) => U): Polynomial<U>;
 	toString(x?: string, debug?: boolean): string;
+}
+
+function sparseClean<T>(a: T[]) {
+	for (const i in a)
+		if (!a[i])
+			delete a[i];
+	return a;
 }
 
 // Overloads to ensure numeric literal arrays like `[-1, 1]` resolve to `Polynomial<number>`
@@ -197,7 +206,7 @@ function arrayEq<T extends number|bigint>(a: T[], b: T[]) {
 			return false;
 	}
 	for (const i in b) {
-		if (a[i] === undefined)
+		if (b[i] && !a[i])
 			return false;
 	}
 	return true;
@@ -1002,7 +1011,7 @@ class polynomial implements Polynomial<number> {
 		return x.map(x => halley(this, d1, d2, x, count));
 	}
 	map<U extends PolyTypes>(func: (c: number, i: number) => U): Polynomial<U> {
-		return Polynomial(this.c.map((c, i) => func(c, i)));
+		return Polynomial(sparseClean(this.c.map((c, i) => func(c, i))));
 	}
 
 	toString(x = 'x', debug = false) {
@@ -1189,7 +1198,7 @@ class polynomialB implements Polynomial<bigint> {
 		return this.normalise().refine_roots(x, count);
 	}
 	map<U extends PolyTypes>(func: (c: bigint, i: number) => U): Polynomial<U> {
-		return Polynomial(this.c.map((c, i) => func(c, i)));
+		return Polynomial(sparseClean(this.c.map((c, i) => func(c, i))));
 	}
 
 	toString(x = 'x', debug = false) {
@@ -1349,7 +1358,7 @@ class polynomialT<T extends coeffOps<T>> implements Polynomial<T> {
 		return this.normalise().allRoots!(epsilon) as any;// as complexRoots<T>;
 	}
 	map<U extends PolyTypes>(func: (c: T, i: number) => U): Polynomial<U> {
-		return Polynomial(this.c.map((c, i) => func(c, i)));
+		return Polynomial(sparseClean(this.c.map((c, i) => func(c, i))));
 	}
 
 	refine_roots(x: realRoots<T>, count = 1): realRoots<T> {

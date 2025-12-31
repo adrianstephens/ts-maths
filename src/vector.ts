@@ -8,7 +8,7 @@ import { Polynomial, PolynomialN } from './polynomial';
 import {
 	characteristicN, characteristicT,
 	LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT
-} from './bareiss';
+} from './linear';
 import { Blade } from './kvector';
 import { verticalArray, verticalStyles } from './string';
 

@@ -51,10 +51,10 @@
 			"require": "./dist/polynomial.js",
 			"import": "./esm/polynomial.js"
 		},
-		"./bareiss": {
-			"types": "./dist/bareiss.d.ts",
-			"require": "./dist/bareiss.js",
-			"import": "./esm/bareiss.js"
+		"./linear": {
+			"types": "./dist/linear.d.ts",
+			"require": "./dist/linear.js",
+			"import": "./esm/linear.js"
 		},
 		"./mvpolynomial": {
 			"types": "./dist/mvpolynomial.d.ts",

@@ -260,6 +260,7 @@ export const gen = {
 
 export abstract class Mod<T> {
 	constructor(public v: T) {}
+	abstract getMod() 			: T;
 	abstract dup() 				: this;
 	abstract neg() 				: this;
 	abstract scale(n: number) 	: this;
@@ -288,24 +289,24 @@ export function ModFactory<T extends has<'sign' | 'abs' | 'dup' | 'from' | 'eq'>
 			p.divmod(r);
 			return new this(p);
 		}
-		static _create(p: T) {
-			return new this(p);
-		}
-		_create(p: T): this {
-			return new (this.constructor as any)(p);
-		}
+		static getMod() 	{ return r; }
+		static _create(p: T){ return new this(p); }
+
+		getMod() 			{ return r; }
+		_create(p: T): this { return new (this.constructor as any)(p); }
+
 		wrap(p: T): this {
 			p = p.dup();
 			p.divmod(r);
 			return new (this.constructor as any)(p);
 		}
-		dup() { return this.wrap(this.v.dup()); }
-		neg() { return this.wrap(this.v.neg()); }
-		scale(n: number) { return this.wrap(this.v.scale(n)); }
-		add(b: M) { return this.wrap(this.v.add(b.v)); }
-		sub(b: M) { return this.wrap(this.v.sub(b.v)); }
-		mul(b: M) { return this.wrap(this.v.mul(b.v)); }
-		div(b: M) {	return this.mul(b.recip());	}
+		dup() 				{ return this.wrap(this.v.dup()); }
+		neg()				{ return this.wrap(this.v.neg()); }
+		scale(n: number)	{ return this.wrap(this.v.scale(n)); }
+		add(b: M)			{ return this.wrap(this.v.add(b.v)); }
+		sub(b: M)			{ return this.wrap(this.v.sub(b.v)); }
+		mul(b: M)			{ return this.wrap(this.v.mul(b.v)); }
+		div(b: M)			{ return this.mul(b.recip()); }
 		recip() {
 			const { g, x } = gen.extendedGcd(this.v.dup(), r.dup(), r.from(1)); // x * this + y * r = g
 			return this.wrap(x.div(g));

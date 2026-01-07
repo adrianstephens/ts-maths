@@ -1,14 +1,15 @@
 /* eslint-disable no-restricted-syntax */
 /* eslint-disable @typescript-eslint/no-namespace */
 
-import {ops, scalar, scalarExt, has} from './core';
+import {arithmeticOps, scalar, scalarExt, hasop} from './core';
 import gen from './gen';
-import complex from './complex';
-import { Polynomial, PolynomialN } from './polynomial';
+import { PolynomialN } from './polynomial';
 import {
 	characteristicN, characteristicT,
+	eigenvaluesN, eigenvaluesT,
 	LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT
 } from './linear';
+import { complexFor } from './complex';
 import { Blade } from './kvector';
 import { verticalArray, verticalStyles } from './string';
 
@@ -111,7 +112,7 @@ function make_swizzles4<T, T2, T3, T4>(fields: readonly string[], make2: (x: T, 
 // vector operations
 //-----------------------------------------------------------------------------
 
-export interface vops<C extends vops<C, S>, S = any> extends ops<C, S> {
+export interface vops<C extends vops<C, S>, S = any> extends arithmeticOps<C, S> {
 //export interface vops<C extends vops<C, S>, S = any> extends ops<C, S> {
 	create(...args: S[]): C;
 	_values:			S[];
@@ -222,16 +223,16 @@ function vecClass<E extends string, S>() {
 // general vector type over T
 //-----------------------------------------------------------------------------
 
-export type vscalar<C extends vscalar<C, S>, S=number> = scalar<C, S> & has<'sqrt'> & has<'recip'>;
+export type vscalar<C extends vscalar<C, S>, S=number> = scalar<C, S> & hasop<'sqrt'|'recip'>;
 
 export function vectorT<T extends vscalar<T>, E extends string>(e: readonly E[], ...v: T[]) {
 	return (new vecImpT<T, E>(vec(e, ...v))) as vector<E, T>;
 }
 
-function _cross2T<T extends ops<T>>(a: T[], b: T[]): T {
+function _cross2T<T extends arithmeticOps<T>>(a: T[], b: T[]): T {
 	return a[0].mul(b[1]).sub(a[1].mul(b[0]));
 }
-function _cross3T<T extends ops<T>>(a: T[], b: T[]): T[] {
+function _cross3T<T extends arithmeticOps<T>>(a: T[], b: T[]): T[] {
 	return [
 		a[1].mul(b[2]).sub(a[2].mul(b[1])),
 		a[2].mul(b[0]).sub(a[0].mul(b[2])),
@@ -363,26 +364,10 @@ export class floatN extends Array<number> implements vops<floatN, number> {
 	[Symbol.for("debug.description")]() { return this.toString(); }
 }
 
-
-function mulN(A: floatN[], b: floatN): floatN {
-	const r	= A[0].scale(b[0]);
-	for (let i = 1; i < A.length; i++) {
-		const a = A[i].scale(b[i]);
-		if (a.length > r.length)
-			r.push(...Array(a.length - r.length).fill(0));
-		r.selfAdd(a);
-	}
-	return r;
-}
-
-function matmulN(A: floatN[], B: floatN[]): floatN[] {
-	return B.map(b => mulN(A, b));
-}
-
 //-----------------------------------------------------------------------------
 // Modified Gram-Schmidt. Returns Q (array of floatNs) and R (numeric m x m upper-triangular)
 //-----------------------------------------------------------------------------
-
+/*
 function QR(cols: floatN[]) {
 	const n = cols.length;
 	const Q: floatN[] = [];
@@ -400,7 +385,7 @@ function QR(cols: floatN[]) {
 	});
 	return { Q, R };
 }
-
+*/
 //-----------------------------------------------------------------------------
 // Matrix operations
 //-----------------------------------------------------------------------------
@@ -419,7 +404,7 @@ export interface matOps<C extends vops<C, any>, R extends string, S = scalarOf<C
 	matmul<M2 extends vec<ColumnType<R>, any>>(m: M2): mat<C, vecKeys<M2, C>>;
 	trace():						S;
 	characteristic():				PolynomialN<S>;
-	eigenvalues():					complex[];
+	eigenvalues():					complexFor<S>[];
 }
 
 export type mat<C extends vops<C, any>, R extends string> = matOps<C, R> & vec<C, R>;
@@ -490,100 +475,22 @@ class matImp<C extends vops<C>, R extends string> {
 	[Symbol.for("debug.description")]() { return this.toString(true); }
 }
 
-// Basic QR-based eigensolver (returns array of complex eigenvalues).
-export function eigenvalues(A: number[][]): complex[] {
-	const n = A.length;
-
-	// For small matrices (<= 5) prefer the polynomial solver (uses closed-form/Aberth)
-	if (n <= 5)
-		return PolynomialN(characteristicN(A)).allRoots();
-
-	const	tol = 1e-12;
-	const	maxIter = Math.max(1000, 100 * n);
-	const	eigs: complex[] = [];
-	const	cols = A.map(c => c.slice());
-
-	let		m = n;
-	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
-		const a = cols[m - 2][m - 2];
-		const b = cols[m - 1][m - 2];
-		const c = cols[m - 2][m - 1];
-		const d = cols[m - 1][m - 1];
-
-		// Check deflation by looking at entry (m-1, m-2)
-		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
-			eigs.push(complex(d, 0));
-			m -= 1;
-			continue;
-		}
-
-		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
-		const tr	= a + d;
-		const disc	= tr * tr - 4 * (a * d - b * c);
-		let mu: number;
-		if (disc >= 0) {
-			const s = Math.sqrt(disc);
-			const mu1 = 0.5 * (tr + s);
-			const mu2 = 0.5 * (tr - s);
-			mu = Math.abs(mu1 - d) < Math.abs(mu2 - d) ? mu1 : mu2;
-		} else {
-			mu = tr * 0.5;
-		}
-
-		// Build truncated columns for top m x m block and apply shift
-		const ScolsTrunc = cols.slice(0, m).map(c => new floatN(...Object.values(c).slice(0, m)));
-		for (let j = 0; j < m; ++j)
-			ScolsTrunc[j][j] -= mu;
-
-		// QR decompose truncated S
-		const { Q, R } = QR(ScolsTrunc);
-		const RQ = matmulN(R, Q);
-
-		// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
-		for (let j = 0; j < m; ++j) {
-			for (let i = 0; i < m; ++i)
-				cols[j][i] = RQ[j][i] + (i === j ? mu : 0);
-		}
-	}
-
-	// If not fully converged, extract remaining eigenvalues from trailing blocks
-	while (m > 1) {
-		const a = cols[m - 2][m - 2];
-		const b = cols[m - 1][m - 2];
-		const c = cols[m - 2][m - 1];
-		const d = cols[m - 1][m - 1];
-
-		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
-			eigs.push(complex(cols[m - 1][m - 1], 0));
-			m -= 1;
-			continue;
-		}
-		// take 2x2 block - delegate to polynomial solver for correctness
-		eigs.push(...PolynomialN([a * d - b * c, -(a + d)]).allRoots());
-		m -= 2;
-	}
-
-	if (m === 1)
-		eigs.push(complex((cols[0])[0], 0));
-
-	// eigenvalues collected bottom-up; reverse to have original order
-	return eigs.reverse();
-}
-
 class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> implements matOps<C, R> {
 	inverse(): this {
 		const A		= this.columns().map(col => col._values);
 		const n		= A.length;
 	
-		const { perm, swaps } = LUDecomposeBareiss(A, true);
+		const { perm, swaps } = LUDecomposeBareiss(A);
 		const B		= Array.from({ length: n }, (_, j) => Array.from({ length: n }, (_, i) => i === j ? 1 : 0));
 		const inv	= LUSolveBareissMulti(A, B, swaps ? perm : undefined);
+		if (!inv)
+			throw new Error("not invertible");
 		return this.create(...inv.map(c => this.x.create(...c)));
 	}
 	det(): scalarOf<C> {
 		const A = this.columns().map(col => col._values);
 		const n = A.length;
-		const { swaps } = LUDecomposeBareiss(A, true);
+		const { swaps } = LUDecomposeBareiss(A);
 		return (swaps & 1 ? -A[n - 1][n - 1] : A[n - 1][n - 1]) as scalarOf<C>;
 	}
 	trace(): scalarOf<C> {
@@ -596,8 +503,8 @@ class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> i
 		return PolynomialN(characteristicN(this.columns().map(col => col._values))) as any;
 	}
 
-	eigenvalues(): complex[] {
-		return eigenvalues(this.columns().map(col => col._values));
+	eigenvalues() {
+		return eigenvaluesN(this.columns().map(col => col._values)) as complexFor<scalarOf<C>>[];
 	}
 }
 
@@ -607,15 +514,17 @@ class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any
 		const n		= A.length;
 		const zero	= A[0][0].from(0), one = A[0][0].from(1);
 
-		const { perm, swaps } = LUDecomposeBareissT(A, true);
+		const { perm, swaps } = LUDecomposeBareissT(A);
 		const B		= Array.from({ length: n }, (_, j) => Array.from({ length: n }, (_, i) => i === j ? one : zero));
 		const inv	= LUSolveBareissMultiT(A, B, swaps ? perm : undefined);
+		if (!inv)
+			throw new Error("not invertible");
 		return this.create(...inv.map(c => this.x.create(...c)));
 	}
 	det(): scalarOf<C> {
 		const A = this.columns().map(col => col._values);
 		const n = A.length;
-		const { swaps } = LUDecomposeBareissT(A, true);
+		const { swaps } = LUDecomposeBareissT(A);
 		return (swaps & 1 ? A[n - 1][n - 1].neg() : A[n - 1][n - 1]) as scalarOf<C>;
 	}
 	trace(): scalarOf<C> {
@@ -627,8 +536,8 @@ class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any
 	characteristic(): PolynomialN<scalarOf<C>> {
 		return PolynomialN(characteristicT(this.columns().map(col => col._values))) as any;
 	}
-	eigenvalues(): complex[] {
-		return [];
+	eigenvalues() {
+		return eigenvaluesT(this.columns().map(col => col._values)) as complexFor<scalarOf<C>>[];
 	}
 }
 
@@ -738,7 +647,7 @@ export function mid<C extends vops<C>>(a: C, b: C) {
 	return a.add(b).scale(0.5);
 }
 
-export function normalise<T extends has<'recip'> | number, C extends vops<C, T>>(a: C) {
+export function normalise<T extends hasop<'recip'> | number, C extends vops<C, T>>(a: C) {
 	const len = a.len();
 	return a.scale(typeof len === 'number' ? 1 / len : len.recip());
 }
@@ -878,11 +787,12 @@ class _float2x2 extends matClass<float2, E2>() {
 	mulPos(v: float2)	{ return this.mul(v); }
 	det()				{ return this.x.cross(this.y); }
 	inverse(): this		{ const r = 1 / this.det(); return this.create(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
-
-	eigenvalues(): complex[] {
+/*
+	eigenvalues(): eigenPair<number>[] {
 		//return new polynomial([this.det(), -this.trace(), 1]).allRoots();
 		return Polynomial([this.det(), -this.trace(), 1]).allRoots!();
 	}
+		*/
 }
 export const float2x2 = Object.assign(
 	function(x: float2, y: float2): float2x2 {

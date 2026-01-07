@@ -1,196 +1,162 @@
-import { ops1, hasop, builtinNumber } from './core';
+import { hasop, builtinNumber } from './core';
+import complex, { complexT, complexOps, complexFor, canMakeComplex } from './complex';
+
+export interface eigenPair<T> {
+	value:	T;
+	vector:	T[];
+}
 
 //-----------------------------------------------------------------------------
 // Vector/Matrix helpers
 //-----------------------------------------------------------------------------
 
-function scaleVecN<T extends builtinNumber>(A: T[], b: T): T[] {
-	return A.map(a => a * b) as T[];
-}
-function scaleVecT<T extends hasop<'mul'>>(A: T[], b: T): T[] {
-	return A.map(a => a.mul(b));
+export interface Matrix<T extends number|hasop<'mul'|'add'>> {
+	c: T[][];
+	rows: number;
+	cols: number;
+
+	from(b: T)			: Matrix<T>;
+	from<U extends hasop<'mul'|'add'|'from'>>(this: Matrix<U>, b: number) : Matrix<T>;
+	scale(b: T|number)	: Matrix<T>;
+	add(b: Matrix<T>)	: Matrix<T>;
+	mul(b: Matrix<T>)	: Matrix<T>;
+	div(b: Matrix<T>)	: Matrix<T> | undefined;
+	mulVec(b: T[])		: T[];
+	nullspace()			: T[][] | undefined;
+	trace()				: T;
+	det()				: T;
+	characteristic()	: T[];
+	inverse()			: Matrix<T> | undefined;
+	fillHoles(b: T)		: Matrix<T>;
 }
 
-function mulVecN<T extends builtinNumber>(A: T[][], b: T[]): T[] {
-	const r: T[] = [];
-	for (const i in b) {
-		const a = scaleVecN(A[i], b[i]);
-		for (const j in a)
-			r[j] = r[j] ? r[j] + (a[j] as any) : a[j];
+class _matN {
+	constructor(public c: number[][]) {}
+	get rows() { return this.c[0].length; }
+	get cols() { return this.c.length; }
+
+	from(b: number) {
+		const rows = this.rows;
+		const cols = this.cols;
+		const m = Array.from({length: cols}, () => Array<number>(rows));
+		const n = Math.min(cols, rows);
+		for (let i = 0; i < n; i++)
+			m[i][i] = b;
+		return new _matN(m);
 	}
-	return r;
-}
-function mulVecT<T extends hasop<'mul'|'add'>>(A: T[][], b: T[]): T[] {
-	const r: T[] = [];
-	for (const i in b) {
-		const a = scaleVecT(A[i], b[i]);
-		for (const j in a)
-			r[j] = r[j] ? r[j].add(a[j]) : a[j];
+
+	scale(b: number)		{ return new _matN(this.c.map(c => scaleVecN(c, b))); }
+	add(b: _matN)			{ return new _matN(this.c.map((a, i) => addVecN(a, b.c[i]))); }
+	mul(b: _matN)			{ return new _matN(b.c.map(b => mulVecN(this.c, b))); }
+	mulVec(b: number[])		{ return mulVecN(this.c, b); }
+	nullspace()				{ return nullspaceN(this.c); }
+	trace()					{ return traceN(this.c); }
+	characteristic()		{ return characteristicN(this.c); }
+	fillHoles(b: number)	{ fillHoles(this.c, this.rows, b); return this; }
+
+	div(b: _matN) {
+		const B		= copyFillHoles(b.c, b.rows, 0);
+		const { perm, swaps } = LUDecomposeBareiss(B);
+		const sol	= LUSolveBareissMulti(B, copyFillHoles(this.c, this.rows, 0), swaps ? perm : undefined);
+		if (sol)
+			return new _matN(sol);
 	}
-	return r;
+	det() {
+		const A = copyFillHoles(this.c, this.rows, 0);
+		const { swaps } = LUDecomposeBareiss(A);
+		const n = A.length;
+		return (swaps & 1 ? -A[n - 1][n - 1] : A[n - 1][n - 1]);
+	}
+	inverse() {
+		const A		= copyFillHoles(this.c, this.rows, 0);
+		const { perm, swaps } = LUDecomposeBareiss(A);
+		const inv	= LUSolveBareissMulti(A, Matrix.identity(this.cols, 1).fillHoles(0).c, swaps ? perm : undefined);
+		if (inv)
+			return new _matN(inv);
+	}
 }
 
-export function matMulN<T extends builtinNumber>(A: T[][], B: T[][]): T[][] {
-	return B.map(b => mulVecN(A, b));
+class _matT<T extends hasop<'mul'|'add'>> {
+	constructor(public c: T[][]) {}
+	get rows() { return this.c[0].length; }
+	get cols() { return this.c.length; }
+
+	from<U extends hasop<'mul'|'add'|'from'>>(this: _matT<U>, b: number) : _matT<T>;
+	from(b: T) : _matT<T>;
+	from(b: T|number) {
+		if (typeof b === 'number') {
+			if (!hasop('from')(this.c[0][0]))
+				throw new Error('');
+			b = this.c[0][0].from(b);
+		}
+		const rows = this.rows;
+		const cols = this.cols;
+		const m = Array.from({length: cols}, () => Array<T>(rows));
+		const n = Math.min(cols, rows);
+		for (let i = 0; i < n; i++)
+			m[i][i] = b;
+		//return new _matT(m).fillHoles((b as any).from(0));
+		return new _matT(m);
+	}
+
+	scale(b: T): _matT<T>;
+	scale<U extends hasop<'scale'>>(this: U, b: number): _matT<T>;
+	scale(b: T|number) {
+		if (typeof b === 'number') {
+			if (!hasop('scale')(this.c[0][0]))
+				throw new Error('');
+			return new _matT(this.c.map(c => scaleVecTN(c as (T & hasop<'scale'>)[], b)));
+		}
+		return new _matT(this.c.map(c => scaleVecT(c, b)));
+	}
+
+	add(b: _matT<T>) 	{ return new _matT(this.c.map((a, i) => addVecT(a, b.c[i]))); }
+	mul(b: _matT<T>) 	{ return new _matT(b.c.map(b => mulVecT(this.c, b))); }
+	mulVec(b: T[]) 		{ return mulVecT(this.c, b); }
+	nullspace() 		{ return nullspaceT(this.c as any); }
+	trace() 			{ return traceT(this.c); }
+	characteristic() 	{ return characteristicT(this.c as any); }
+	fillHoles(b: T) 	{ fillHoles(this.c, this.rows, b); return this; }
+
+	div<U extends bareissOps<U> & hasop<'from', U>>(this: _matT<U>, b: _matT<U>) {
+		const zero	= this.c[0][0].from(0);
+		const B		= copyFillHoles(b.c, b.rows, zero);
+		const { perm, swaps } = LUDecomposeBareissT(B);
+		const sol	= LUSolveBareissMultiT(B, copyFillHoles(this.c, this.rows, zero), swaps ? perm : undefined);
+		if (sol)
+			return new _matT(sol);
+	}
+	det<U extends bareissOps<U> & hasop<'from', U>>(this: _matT<U>) {
+		const A = copyFillHoles(this.c, this.rows, this.c[0][0].from(0));
+		const { swaps } = LUDecomposeBareissT(A);
+		const n = A.length;
+		return (swaps & 1 ? A[n - 1][n - 1].neg() : A[n - 1][n - 1]);
+	}
+	inverse<U extends bareissOps<U> & hasop<'from', U>>(this: _matT<U>) {
+		const t		= this.c[0][0];
+		const zero	= t.from(0);
+		const A		= copyFillHoles(this.c, this.rows, zero);
+		const { perm, swaps } = LUDecomposeBareissT(A);
+		const inv	= LUSolveBareissMultiT(A, Matrix.identity(this.cols, t.from(1)).fillHoles(zero).c, swaps ? perm : undefined);
+		if (inv)
+			return new _matT(inv);
+	}
 }
-
-export function matMulT<T extends hasop<'add'|'mul'>>(A: T[][], B: T[][]): T[][] {
-	return B.map(b => mulVecT(A, b));
-}
-
-export function traceN<T extends builtinNumber>(A: T[][]): T {
-	const N = A.length;
-	let s = A[0][0];
-	for (let i = 1; i < N; i++)
-		s += A[i][i] as any;
-	return s;
-}
-export function traceT<T extends hasop<'add'>>(A: T[][]): T {
-	const N = A.length;
-	let s = A[0][0];
-	for (let i = 1; i < N; i++)
-		s = s.add(A[i][i]);
-	return s;
-}
-
-export function characteristicN<T extends builtinNumber>(A: T[][]): T[] {
-	const n = A.length;
-	const B = A.map(col => col.slice());
-	const coeffs: T[] = [];
-
-	for (let k = 1; k < n; ++k) {
-		const ck	= -traceN(B) / k;
-		coeffs.push(ck as any);
-
-		for (let i = 0; i < n; i++) {
-			B[i][i] += ck as any;
-			B[i] = mulVecN(A, B[i]);
+export const Matrix = Object.assign(
+	function (c: any[][]) {
+		return typeof c[0][0] === 'number' ? new _matN(c) : new _matT(c);
+	},
+	{
+		identity(n: number, one: any) {
+			return Matrix(Array.from({ length: n }, (_, i) => { const col = Array(n); col[i] = one; return col; }));
 		}
 	}
-	coeffs.push(-traceN(B) / n as any);
-	coeffs.reverse();
-	return coeffs;
-}
-
-export function characteristicT<T extends hasop<'add'|'mul'|'scale'>>(A: T[][]): T[] {
-	const n = A.length;
-
-	const B = A.map(col => col.slice());
-	const coeffs: T[] = [];
-
-	for (let k = 1; k < n; ++k) {
-		const ck	= traceT(B).scale(-1 / k);
-		coeffs.push(ck);
-
-		for (let i = 0; i < n; i++) {
-			B[i][i] = B[i][i].add(ck);
-			B[i] = mulVecT(A, B[i]);
-		}
-	}
-	coeffs.push(traceT(B).scale(-1 /n));
-	coeffs.reverse();
-	return coeffs;
-}
-
-export function matPowN<T extends builtinNumber>(A: T[][], e: number): T[][] {
-	if (e === 0) {
-		return (typeof A[0][0] === 'number'
-			? A.map((row, i) => row.map((_, j) => i === j ? 1 : 0))
-			: A.map((row, i) => row.map((_, j) => i === j ? 1n : 0n))
-		 ) as T[][];
-	}
-    let R = e & 1 ? A : undefined;
-	for (e >>= 1; e; e >>= 1) {
-		A = matMulN(A, A);
-		if (e & 1)
-			R = R ? matMulN(R, A) : A;
-	}
-    return R!;
-}
-
-export function matPow<T extends hasop<'add'|'mul'>>(A: T[][], e: number): T[][] {
-	if (e === 0) {
-		const c = A[0][0];
-		if (hasop('from')(c)) {
-			const c0 = c.from(0), c1 = c.from(1);
-			return A.map((row, i) => row.map((_, j) => i === j ? c1 : c0));
-		}
-		throw new Error('matPow: cannot create identity matrix for this type');
-	}
-    let R = e & 1 ? A : undefined;
-	for (e >>= 1; e; e >>= 1) {
-		A = matMulT(A, A);
-		if (e & 1)
-			R = R ? matMulT(R, A) : A;
-	}
-    return R!;
-}
-
-// Evaluate an integer-coefficient polynomial at a matrix given in column-major form.
-export function evaluateIntegerPolyAtMatrix<T extends hasop<'add'|'mul'>>(poly: number[], M: T[][], from: (n: builtinNumber) => T): T[][] {
-	const size	= M.length;
-	const zero	= from(0), c0 = from(poly[0] ?? 0);
-	const R		= Array.from({ length: size }, (_, i) => Array.from({ length: size }, (_, j) => i === j ? c0 : zero));
-
-	let Mpow = M, lastPow = 1;
-
-	for (const k in poly) {
-		const pow = +k;
-		if (pow === 0)
-			continue;
-
-		while (lastPow < pow) {
-			Mpow = matMulT(Mpow, M);
-			++lastPow;
-		}
-
-		const ck = from(poly[k]);
-		for (const i in Mpow) {
-			const r = R[i];
-			const Mcol = Mpow[i];
-			for (const j in Mcol)
-				r[j] = r[j].add(Mcol[j].mul(ck));
-		}
-	}
-
-	return R;
-}
-
-// Project matrix M (column-major) into the invariant subspace spanned by `nsCols` (array of column vectors).
-// Returns the small m x m matrix M_sub with columns expressed in the basis `nsCols`.
-export function projectSubspace<T extends ops1<T> & hasop<'recip'|'sign'>>(Mcol: T[][], nsCols: T[][], zero: T): T[][] {
-	const N			= Mcol.length;
-	const m			= nsCols.length;
-	// build T_rows as N x m matrix where column j is nsCols[j]
-	const T_rows	= Array.from({ length: N }, (_, row) => Array.from({ length: m }, (_, col) => nsCols[col][row] ?? zero));
-	const M_sub		= Array.from({ length: m }, () => Array.from({ length: m }, () => zero));
-
-	for (let j = 0; j < m; j++) {
-		// w = M * nsCols[j]
-		const w: T[] = Array.from({ length: N }, () => zero);
-		for (let row = 0; row < N; row++) {
-			let sum = zero;
-			for (let col = 0; col < N; col++) {
-				const mv = Mcol[col][row];
-				if (mv === undefined)
-					continue;
-				const bv = nsCols[j][col] ?? zero;
-				if ((bv as any).sign && (bv as any).sign() === 0)
-					continue;
-				sum = sum.add(mv.mul(bv));
-			}
-			w[row] = sum;
-		}
-		const sol = solveRectangularBareissT(T_rows, [w]);
-		if (!sol)
-			continue;
-		const ccol = sol[0];
-		for (let i = 0; i < m; i++)
-			M_sub[i][j] = ccol[i];
-	}
-	return M_sub;
-}
-
+) as {
+	(c: number[][]): Matrix<number>;
+	<T extends hasop<'mul' | 'add'>>(c: T[][]): Matrix<T>;
+	identity(n: number, one: number): Matrix<number>;
+	identity<T extends hasop<'mul' | 'add'>>(n: number, one: T): Matrix<T>;
+};
 
 export function transpose<T>(A: T[][]): T[][] {
 	const R: T[][] = [];
@@ -202,51 +168,919 @@ export function transpose<T>(A: T[][]): T[][] {
 	return R;
 }
 
+export function makeVec<T>(width: number, value: T) {
+	return Array.from({length: width}, () => value);
+}
+
+export function makeMat<T>(width: number, height: number, value: T) {
+	return Array.from({length: height}, () => Array.from({length: width}, () => value));
+}
+
+function fillHoles<T>(A: T[][], n: number, t: T) {
+	for (const c of A)
+		for (let i = 0; i < n; i++)
+			c[i] ??= t;
+	return A;
+}
+function copyFillHoles<T>(A: T[][], n: number, t: T) {
+	return A.map(c => Array.from({length: n}, (_, i) => c[i] ?? t));
+}
+
+
+function scaleVecN<T extends builtinNumber>(A: T[], b: T): T[] {
+	return A.map(a => a * b) as T[];
+}
+
+function scaleVecTN<T extends hasop<'scale',T>>(A: T[], b: number): T[] {
+	return A.map(a => a.scale(b));
+}
+function scaleVecT<T extends hasop<'mul',T>>(A: T[], b: T): T[] {
+	return A.map(a => a.mul(b));
+}
+
+function addVecN<T extends builtinNumber>(A: T[], B: T[], offset = 0): T[] {
+	const r = A.map((a, i) => B[i + offset] ? a + (B[i + offset] as any) : a);
+	for (const i in B) {
+		if (+i >= offset)
+			r[+i - offset] ??= B[i];
+	}
+	return r;
+}
+function addVecT<T extends hasop<'add'>>(A: T[], B: T[], offset = 0): T[] {
+	const r = A.map((a, i) => B[i + offset] ? a.add(B[i + offset]) : a);
+	for (const i in B) {
+		if (+i >= offset)
+			r[+i - offset] ??= B[i];
+	}
+	return r;
+}
+function addScaleVecN<T extends builtinNumber>(R: T[], A: T[], b: T) {
+	for (const j in A)
+		R[j] = R[j] ? R[j] + (A[j] * b as any) : A[j] * b;
+	return R;
+}
+function addScaleVecT<T extends hasop<'add'|'mul'>>(R: T[], A: T[], b: T) {
+	for (const j in A)
+		R[j] = R[j] ? R[j].add(A[j].mul(b)) : A[j].mul(b);
+	return R;
+}
+
+function dotN(A: number[], B: number[], offset = 0): number {
+	return A.reduce((acc, a, i) => acc + a * (B[i + offset] ?? 0), 0);
+}
+function dotT<T extends hasop<'add'|'mul', T>>(A: T[], B: T[], offset = 0): T {
+	return A.reduce((acc, a, i) => B[i + offset] ? (acc ? acc.add(a.mul(B[i + offset])) : a.mul(B[i + offset])) : acc, undefined as unknown as T);
+}
+
+function norm2N(A: number[]): number {
+	return A.reduce((acc, a) => acc + a * a, 0);
+}
+function norm2T<T extends hasop<'add'|'mul', T>>(A: T[]): T {
+	return A.reduce((acc, a) => acc ? acc.add(a.mul(a)) : a.mul(a), undefined as unknown as T);
+}
+
+function mulVecN<T extends builtinNumber>(A: T[][], b: T[]): T[] {
+	const r: T[] = [];
+	for (const i in b)
+		addScaleVecN(r, A[i], b[i]);
+	return r;
+}
+function mulVecT<T extends hasop<'mul'|'add'>>(A: T[][], b: T[]): T[] {
+	const r: T[] = [];
+	for (const i in b)
+		addScaleVecT(r, A[i], b[i]);
+	return r;
+}
+
+function traceN<T extends builtinNumber>(A: T[][]): T {
+	const N = A.length;
+	let s = A[0][0];
+	for (let i = 1; i < N; i++)
+		s += A[i][i] as any;
+	return s;
+}
+function traceT<T extends hasop<'add'>>(A: T[][]): T {
+	const N = A.length;
+	let s = A[0][0];
+	for (let i = 1; i < N; i++)
+		s = s.add(A[i][i]);
+	return s;
+}
+
+//-----------------------------------------------------------------------------
+// characteristic
+//-----------------------------------------------------------------------------
+
+export function characteristicN<T extends builtinNumber>(A: T[][]): T[] {
+	const n = A.length;
+	const B = A.map(col => col.slice());
+	const coeffs: T[] = [];
+
+	for (let k = 1; k < n; ++k) {
+		const ck = traceN(B) / -k;
+		coeffs.push(ck as any);
+
+		for (let i = 0; i < n; i++) {
+			B[i][i] += ck as any;
+			B[i] = mulVecN(A, B[i]);
+		}
+	}
+	coeffs.push(traceN(B) / -n as any);
+	return coeffs.reverse();
+}
+
+export function characteristicT<T extends hasop<'add'|'mul'|'scale'>>(A: T[][]): T[] {
+	const n = A.length;
+	const B = A.map(col => col.slice());
+	const coeffs: T[] = [];
+
+	for (let k = 1; k < n; ++k) {
+		const ck = traceT(B).scale(-1 / k);
+		coeffs.push(ck);
+
+		for (let i = 0; i < n; i++) {
+			B[i][i] = B[i][i].add(ck);
+			B[i] = mulVecT(A, B[i]);
+		}
+	}
+	coeffs.push(traceT(B).scale(-1 /n));
+	return coeffs.reverse();
+}
+
+export function characteristic<T extends builtinNumber|hasop<'add'|'mul'|'scale'>>(A: T[][]): T[] {
+	return typeof A[0][0] === 'object'
+		? characteristicT(A as any) as any
+		: characteristicN(A as any) as any;
+}
+
+//-----------------------------------------------------------------------------
+// Basic QR-based eigensolver (returns array of complex eigenvalues).
+//-----------------------------------------------------------------------------
+export function eigenvaluesN(A: number[][]): complex[] {
+	const n = A.length;
+
+	const	tol		= 1e-12;
+	const	maxIter	= Math.max(1000, 100 * n);
+	const	eigs: complex[] = [];
+	const	cols	= A.map(c => c.slice());
+
+	let		m = n;
+	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		// Check deflation by looking at entry (m-1, m-2)
+		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
+			eigs.push(complex(d, 0));
+			m -= 1;
+			continue;
+		}
+
+		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
+		const tr	= a + d;
+		const disc	= tr * tr - 4 * (a * d - b * c);
+		let mu: number;
+		if (disc >= 0) {
+			const s = Math.sqrt(disc);
+			const mu1 = 0.5 * (tr + s);
+			const mu2 = 0.5 * (tr - s);
+			mu = Math.abs(mu1 - d) < Math.abs(mu2 - d) ? mu1 : mu2;
+		} else {
+			mu = tr * 0.5;
+		}
+
+		for (let j = 0; j < m; j++)
+			cols[j][j] -= mu;
+		const { Q, R } = QRN(cols, m, m);
+		const RQ = Matrix(R).mul(Matrix(Q));
+
+		// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
+		for (let j = 0; j < m; ++j) {
+			for (let i = 0; i < m; ++i)
+				cols[j][i] = RQ.c[j][i] + (i === j ? mu : 0);
+		}
+	}
+
+	// If not fully converged, extract remaining eigenvalues from trailing blocks
+	while (m > 1) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
+			eigs.push(complex(cols[m - 1][m - 1], 0));
+			m -= 1;
+
+		} else {
+			const tr = a + d;
+			const s = complex.sqrt(tr * tr - 4 * (a * d - b * c));
+			eigs.push(complex(tr).add(s), complex(tr).sub(s));
+			m -= 2;
+		}
+	}
+
+	if (m === 1)
+		eigs.push(complex((cols[0])[0], 0));
+
+	// eigenvalues collected bottom-up; reverse to have original order
+	return eigs.reverse();
+}
+
+export function eigenvaluesT<T extends complexOps<T> & hasop<'recip'|'lt'>>(A: T[][]): complexT<T>[] {
+	const n = A.length;
+	if (n === 0)
+		return [];
+
+	const	maxIter = Math.max(1000, 100 * n);
+	const	cols = A.map(c => c.slice());
+	const 	tol = 1e-12;
+	const	eigs: complexT<T>[] = [];
+
+	let		m = n;
+	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		// Check deflation by looking at subdiagonal entry (row m-1, col m-2) => cols[m-2][m-1]
+		if (!c || c.abs().lt(a.abs().add(d.abs()).scale(tol))) {
+			eigs.push(complexT(d));
+			m -= 1;
+			continue;
+		}
+
+		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
+		const tr	= a.add(d);
+		const disc	= tr.mul(tr).sub(a.mul(d).sub(b.mul(c)).scale(4));
+		let mu;
+		if (disc.sign() < 0) {
+			mu = tr.scale(0.5);
+		} else {
+			const s = disc.sqrt();
+			const mu1 = tr.add(s).scale(0.5);
+			const mu2 = tr.sub(s).scale(0.5);
+			mu = mu1.sub(d).abs() < mu2.sub(d).abs() ? mu1 : mu2;
+		}
+
+		// QR decompose truncated S
+		for (let j = 0; j < m; j++)
+			cols[j][j] = cols[j][j].sub(mu);
+		const { Q, R } = QRT(cols, m, m);
+		const RQ = Matrix(R).mul(Matrix(Q));
+
+		// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
+		for (let j = 0; j < m; ++j) {
+			for (let i = 0; i < m; ++i)
+				cols[j][i] = i == j ? RQ.c[j][i].add(mu) : RQ.c[j][i];
+		}
+	}
+
+	// If not fully converged, extract remaining eigenvalues from trailing blocks
+	while (m > 1) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		if (!c || c.abs().lt(a.abs().add(d.abs()).scale(tol))) {
+			eigs.push(complexT<T>(d));
+			m -= 1;
+
+		} else {
+			const tr = a.add(d);
+			const s = complexT.sqrt(tr.mul(tr).sub(a.mul(d).sub(b.mul(c)).scale(4)));
+			eigs.push(complexT(tr).add(s), complexT(tr).sub(s));
+			m -= 2;
+		}
+	}
+
+	if (m === 1)
+		eigs.push(complexT((cols[0])[0]));
+
+	// eigenvalues collected bottom-up; reverse to have original order
+	return eigs.reverse();
+}
+
+export function eigenvalues<T extends canMakeComplex>(A: T[][]): complexFor<T>[] {
+	return typeof A[0][0] === 'number'
+		? eigenvaluesN(A as any) as any
+		: eigenvaluesT(A as any) as any;
+}
+
+export function eigenVectorN(A: number[][], eigenvalue: number) {
+	const M = copyFillHoles(A, A[0].length, 0);
+	for (let i = 0; i < A.length; i++)
+		M[i][i] -= eigenvalue;
+	return nullspaceN(M);
+}
+export function eigenVectorT<T extends bareissOps<T> & hasop<'from'>>(A: T[][], eigenvalue: T) {
+	const M = copyFillHoles(A, A[0].length, eigenvalue.sub(eigenvalue));
+	for (let i = 0; i < A.length; i++)
+		M[i][i] = M[i][i].sub(eigenvalue);
+	return nullspaceT(M);
+}
+
+/*
+export function eigenPairsN(A: number[][]): eigenPair<complex>[] {
+	const n = A.length;
+	if (n === 0)
+		return [];
+
+	const	tol = 1e-12;
+	const	maxIter = Math.max(1000, 100 * n);
+	const	cols = A.map(c => c.slice());
+
+	// Initialize V as identity (column-major, sparse is OK)
+	const	V = Matrix.identity(n, 1);
+
+	let		m = n;
+	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		// Check deflation by looking at subdiagonal entry (row m-1, col m-2) => cols[m-2][m-1]
+		if (Math.abs(c || 0) <= tol * (Math.abs(a) + Math.abs(d))) {
+			m -= 1;
+			continue;
+		}
+
+		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
+		const tr	= a + d;
+		const disc	= tr * tr - 4 * (a * d - b * c);
+		let mu: number;
+		if (disc < 0) {
+			mu = tr * 0.5;
+		} else {
+			const s = Math.sqrt(disc);
+			const mu1 = 0.5 * (tr + s);
+			const mu2 = 0.5 * (tr - s);
+			mu = Math.abs(mu1 - d) < Math.abs(mu2 - d) ? mu1 : mu2;
+		}
+
+		// QR decompose truncated S
+		for (let j = 0; j < m; j++)
+			cols[j][j] -= mu;
+		const { Q, R } = QRN(cols, m, m);
+		const RQ = Matrix(R).mul(Matrix(Q));
+
+		// Apply Q transformation to the relevant part of V
+		V.c = V.mul(Matrix(Q)).c;
+
+		// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
+		for (let j = 0; j < m; ++j) {
+			for (let i = 0; i < m; ++i)
+				cols[j][i] = RQ.c[j][i] + (i === j ? mu : 0);
+		}
+	}
+
+	// After convergence: cols ≈ real Schur form T, V = Schur vectors
+	const eigs: complex[] = [];
+	const eigenvectors: complexFor<number>[][] = [];
+	for (let i = 0; i < n; i++) {
+		// Check if we have a 2×2 block: subdiagonal (row i+1, col i) or superdiagonal (row i, col i+1)
+		const a = cols[i + 0][i + 0];
+		const b = cols[i + 1][i + 0];
+		const c = cols[i + 0][i + 1];
+		if (i < n - 1 && (Math.abs(c) > tol || Math.abs(b) > tol)) {
+			const d = cols[i + 1][i + 1];
+			const tr = a + d;
+			const s = complex.sqrt(tr * tr - 4 * (a * d - b * c));
+			const l1 = complex(tr).add(s);
+			const l2 = complex(tr).sub(s);
+			eigs.push(l1, l2);
+
+			// Choose stable equation for ratio (complex-aware)
+			const ratio = Math.abs(c) >= Math.abs(b)
+				? complex(a, 0).sub(l1).scale(1 / c)
+				: complex(-b, 0).div(complex(d, 0).sub(l1));
+
+			// Eigenvector in Schur basis: [1, ratio]
+			const	col0	= V.c[i + 0], col1 = V.c[i + 1];
+			let		ev		= addScaleVecT(col0 ? col0.map(complex) : [], col1 ? col1.map(complex) : [], ratio);
+			if (ev.length) {
+				const pivot	= ev.reduce((besti, v, i) => v.magSq() > ev[besti].magSq() ? i : besti, 0);
+				const phase	= ev[pivot].recip();
+				ev	= ev.map(v => v.mul(phase));
+			}
+
+			eigenvectors.push(ev, ev.map(i => i.conj()));
+			++i;
+		} else {
+			// 1×1 block
+			eigs.push(complex(a, 0));
+			eigenvectors.push(V.c[i] && V.c[i].some(Boolean) ? V.c[i].map(complex) : Array.from({length: n}, (_, j) => complex(i === j ? 1 : 0, 0)));
+		}
+	}
+
+	return eigs.map((value, i) => ({ value, vector: Math.abs(value.i) <= tol ? eigenvectors[i].map(v => complex(v.r, 0)) : eigenvectors[i] }));
+}
+
+export function eigenPairsT<T extends complexOps<T>&hasop<'from'|'recip'>>(A: T[][]): eigenPair<complexT<T>>[] {
+	const n = A.length;
+	if (n === 0)
+		return [];
+
+	const	maxIter = Math.max(1000, 100 * n);
+	const	cols = A.map(c => c.slice());
+	const 	tol = 1e-12;
+	const	one = A[0][0].from(1);
+
+	// Initialize V as identity (column-major, sparse is OK)
+	const	V = Matrix.identity(n, A[0][0].from(1));
+
+	let		m = n;
+	for (let iter = 0; m > 1 && iter < maxIter; iter++) {
+		const a = cols[m - 2][m - 2];
+		const b = cols[m - 1][m - 2];
+		const c = cols[m - 2][m - 1];
+		const d = cols[m - 1][m - 1];
+
+		// Check deflation by looking at subdiagonal entry (row m-1, col m-2) => cols[m-2][m-1]
+		if (!c || c.abs().lt(a.abs().add(d.abs()).scale(tol))) {
+			m -= 1;
+			continue;
+		}
+
+		// Wilkinson shift from bottom 2x2 (extracting using the truncated top-m entries)
+		const tr	= a.add(d);
+		const disc	= tr.mul(tr).sub(a.mul(d).sub(b.mul(c)).scale(4));
+		let mu;
+		if (disc.sign() < 0) {
+			mu = tr.scale(0.5);
+		} else {
+			const s = disc.sqrt();
+			const mu1 = tr.add(s).scale(0.5);
+			const mu2 = tr.sub(s).scale(0.5);
+			mu = mu1.sub(d).abs() < mu2.sub(d).abs() ? mu1 : mu2;
+		}
+
+		// QR decompose truncated S
+		for (let j = 0; j < m; j++)
+			cols[j][j] = cols[j][j].sub(mu);
+		const { Q, R } = QRT(cols, m, m);
+		const RQ = Matrix(R).mul(Matrix(Q));
+
+		// Apply Q transformation to the relevant part of V
+		V.c = V.mul(Matrix(Q)).c;
+
+		// A_next (top m block) = R * Q + mu * I; write back into fullCols top m entries
+		for (let j = 0; j < m; ++j) {
+			for (let i = 0; i < m; ++i)
+				cols[j][i] = i == j ? RQ.c[j][i].add(mu) : RQ.c[j][i];
+		}
+	}
+
+	// After convergence: cols ≈ real Schur form T, V = Schur vectors
+	const eigs: complexT<T>[] = [];
+	const eigenvectors: complexT<T>[][] = [];
+	for (let i = 0; i < n; i++) {
+		// Check if we have a 2×2 block: subdiagonal (row i+1, col i) or superdiagonal (row i, col i+1)
+		const a = cols[i + 0][i + 0];
+		const b = cols[i + 1][i + 0];
+		const c = cols[i + 0][i + 1];
+		if (i < n - 1 && (c.sign() || b.sign())) {
+			const d = cols[i + 1][i + 1];
+			const tr = a.add(d);
+			const s = complexT.sqrt(tr.mul(tr).sub(a.mul(d).sub(b.mul(c)).scale(4)));
+			const l1 = complexT(tr).add(s);
+			const l2 = complexT(tr).sub(s);
+			eigs.push(l1, l2);
+
+			// Choose stable equation for ratio (complex-aware)
+			const ratio = b.abs().lt(c.abs())
+				? complexT(a).sub(l1).div(complexT(c))
+				: complexT(b.neg()).div(complexT(d).sub(l1));
+
+			// Eigenvector in Schur basis: [1, ratio]
+			const	col0	= V.c[i + 0], col1 = V.c[i + 1];
+			let		ev		= addScaleVecT(col0 ? col0.map(complexT) : [], col1 ? col1.map(complexT) : [], ratio) as complexT<T>[];
+			if (ev.length) {
+				const pivot	= ev.reduce((besti, v, i) => v.magSq() > ev[besti].magSq() ? i : besti, 0);
+				const phase	= ev[pivot].recip();
+				ev	= ev.map(v => v.mul(phase));
+			}
+
+			eigenvectors.push(ev, ev.map(i => i.conj()));
+			++i;
+		} else {
+			// 1×1 block
+			eigs.push(complexT(a));
+			eigenvectors.push(V.c[i] && V.c[i].some(Boolean) ? V.c[i].map(complexT) : Array.from({length: n}, (_, j) => complexT(one.scale(j ? 1 : 0))));
+		}
+	}
+
+	return eigs.map((value, i) => ({ value, vector: value.i.sign() ? eigenvectors[i].map(v => complexT(v.r)) : eigenvectors[i] }));
+}
+
+export function eigenPairs<T extends canMakeComplex>(A: T[][]): eigenPair<complexFor<T>>[] {
+	return typeof A[0][0] === 'number'
+		? eigenPairsN(A as any) as any
+		: eigenPairsT(A as any) as any;
+}
+*/
+//-----------------------------------------------------------------------------
+// projectSubspace
+// Project matrix M (column-major) into the invariant subspace spanned by `nsCols` (array of column vectors).
+// Returns the small m x m matrix M_sub with columns expressed in the basis `nsCols`.
+//-----------------------------------------------------------------------------
+
+export function projectSubspaceN(M: number[][], ns: number[][]): number[][] {
+	const N			= M.length;
+	const m			= ns.length;
+	const M_sub		= makeMat(m, m, 0);
+	const A			= Array.from({ length: N }, (_, row) => Array.from({ length: m }, (_, col) => ns[col][row] ?? 0));
+	const { perm }	= LUDecomposeBareiss(A);
+
+	for (let j = 0; j < m; j++) {
+		// w = M * nsCols[j]
+		const w = makeVec(N, 0);
+		for (let row = 0; row < N; row++) {
+			let sum = 0;
+			for (let col = 0; col < N; col++) {
+				if (M[col][row] && ns[j][col])
+					sum += M[col][row] * ns[j][col];
+			}
+			w[row] = sum;
+		}
+		const sol = LUSolveBareiss(A, w, perm);
+		if (sol) {
+			for (let i = 0; i < m; i++)
+				M_sub[i][j] = sol[i];
+		}
+	}
+	return M_sub;
+}
+
+export function projectSubspaceT<T extends bareissOps<T>>(M: T[][], ns: T[][], zero: T): T[][] {
+	const N			= M.length;
+	const m			= ns.length;
+	const M_sub		= makeMat(m, m, zero);
+	const A			= Array.from({ length: N }, (_, row) => Array.from({ length: m }, (_, col) => ns[col][row] ?? zero));
+	const { perm, swaps } = LUDecomposeBareissT(A);
+
+	for (let j = 0; j < m; j++) {
+		// w = M * nsCols[j]
+		const w = makeVec(N, zero);
+		for (let row = 0; row < N; row++) {
+			let sum = zero;
+			for (let col = 0; col < N; col++) {
+				if (M[col][row] && ns[j][col])
+					sum = sum.add(M[col][row].mul(ns[j][col]));
+			}
+			w[row] = sum;
+		}
+		
+		// Handle full-rank case: when A is m x m and full rank, solution is direct
+			// A is identity matrix; solution is just w
+		const sol = m === N && swaps === 0 ? w : LUSolveBareissT(A, w, perm);
+		if (sol) {
+			for (let i = 0; i < m; i++)
+				M_sub[i][j] = sol[i];
+		}
+	}
+	return M_sub;
+}
+
+export function projectSubspace<T extends number|bareissOps<T>>(M: T[][], ns: T[][], zero: T): T[][] {
+	return typeof zero === 'number'
+		? projectSubspaceN(M as any, ns as any) as any
+		: projectSubspaceT(M as any, ns as any, zero as any) as any;
+}
+
+//-----------------------------------------------------------------------------
+// QR factorisation: modified Gram-Schmidt
+// Returns Q (array of number[]) and R (numeric m x m upper-triangular)
+//-----------------------------------------------------------------------------
+
+export function QRN(cols: number[][], n = cols.length, m = cols[0]?.length ?? 0) {
+	const Q: number[][] = [];
+	const R = cols.map(() => Array(m).fill(0));
+
+	for (let j = 0; j < n; ++j) {
+		const v = cols[j].slice();
+		for (let i = 0; i < j; ++i) {
+			const rij = dotN(Q[i], v);
+			R[j][i] = rij;
+			for (let k = 0; k < m; ++k)
+				v[k] -= Q[i][k] * rij;
+		}
+		const norm	= Math.sqrt(norm2N(v));
+		const scale	= norm ? 1 / norm : 0;
+		R[j][j]	= norm;
+		Q[j]	= v.map(v => v * scale);
+	}
+	return { Q, R };
+}
+
+export function QRT<T extends hasop<'add'|'sub'|'mul'|'sqrt'|'sign'|'recip', T>>(cols: T[][], n = cols.length, m = cols[0]?.length ?? 0) {
+	const Q: T[][] = [];
+	const R = cols.map(() => Array(m).fill(0));
+
+	for (let j = 0; j < n; ++j) {
+		const v = cols[j].slice();
+		for (let i = 0; i < j; ++i) {
+			const rij = dotT(Q[i], v);
+			R[j][i] = rij;
+			for (let k = 0; k < m; ++k)
+				v[k] = v[k].sub(Q[i][k].mul(rij));
+		}
+		const norm	= norm2T(v).sqrt();
+		const scale	= norm.sign() ? norm.recip() : norm;
+		R[j][j]	= norm;
+		Q[j]	= v.map(v => v.mul(scale));
+	}
+	return { Q, R };
+}
+
+export function QR<T extends number|hasop<'add'|'sub'|'mul'|'sqrt'|'sign'|'recip', T>>(cols: T[][], n = cols.length, m = cols[0]?.length ?? 0) {
+	return typeof cols[0][0] === 'number'
+		? QRN(cols as any, n, m) as any
+		: QRT(cols as any, n, m) as any;
+}
+
+//-----------------------------------------------------------------------------
+// QR factorisation: householder
+//-----------------------------------------------------------------------------
+
+export function QRHouseholder(cols: number[][]) {
+	const n = cols.length;
+	const m = cols[0].length;
+
+	const Q = Array.from({ length: m }, (_, k) => {
+		const col = makeVec(m, 0);
+		col[k] = 1;
+		return col;
+	});
+
+	// Process each column
+	for (let j = 0; j < Math.min(n, m); j++) {
+		const x = cols[j].slice(j);
+		let xlen2 = norm2N(x);
+		if (xlen2 === 0)
+			continue;
+
+		const xlen	= Math.sqrt(xlen2);
+		xlen2 = 2 * (xlen2 + xlen * Math.abs(x[0]));
+		x[0] += Math.sign(x[0]) * xlen;
+
+		// Apply H = I - 2*v*v^T to columns of A
+		for (let k = j; k < n; k++) {
+			const dot = dotN(x, cols[k], j) * 2 / xlen2;
+			for (let i = 0; i < x.length; i++)
+				cols[k][j + i] -= dot * x[i];
+		}
+
+		// Apply H to Q: for each column of Q, apply the reflection
+		for (let k = 0; k < m; k++) {
+			const dot = dotN(x, Q[k], j) * 2 / xlen2;
+			for (let i = 0; i < x.length; i++)
+				Q[k][j + i] -= dot * x[i];
+		}
+	}
+
+	return Q;
+}
 
 //-----------------------------------------------------------------------------
 // LU Decomposition and Solvers
 //-----------------------------------------------------------------------------
 
-export function LUDecomposeBareiss(A: number[][], pivot = true) {
-	const	N		= A.length;
-	const	perm	= Array.from({ length: N }, (_, i) => i);
+export type bareissOps<T> = hasop<'neg'|'add'|'sub'|'mul'|'div'|'recip'|'sign', T>;
+
+export function LUDecomposeBareiss(A: number[][], pivot = 1) {
+	const	m		= A.length;
+	const	n		= A[0].length;
+	const	cperm	= Array.from({length: Math.min(m, n)}, (_,i) => i);
+	const	rperm	= Array.from({length: Math.min(m, n)}, (_,i) => i);
 	let		prev	= 1;
 	let		swaps	= 0;
 
-	for (let k = 0; k < N - 1; k++) {
-		if (pivot && A[k][k] === 0) {
-			let swap = k + 1;
-			while (swap < N && A[swap][k] === 0)
-				swap++;
-			if (swap === N)
-				return { perm, swaps };
-			[A[k], A[swap]] = [A[swap], A[k]];
-			[perm[k], perm[swap]] = [perm[swap], perm[k]];
-			swaps++;
+	function pivotCol(k: number) {
+		let swap = k + 1;
+		while (swap < m && !A[swap][k])
+			swap++;
+		if (swap === m)
+			return false;
+		[A[k], A[swap]] = [A[swap], A[k]];
+		[cperm[k], cperm[swap]] = [cperm[swap], cperm[k]];
+		swaps++;
+		return true;
+	}
+	function pivotRow(k: number) {
+		let swap = k + 1;
+		while (swap < n && !A[k][swap])
+			swap++;
+		if (swap === n)
+			return false;
+		for (let i = 0; i < m; i++)
+			[A[i][k], A[i][swap]] = [A[i][swap], A[i][k]];
+		[rperm[k], rperm[swap]] = [rperm[swap], rperm[k]];
+		swaps++;
+		return true;
+	}
+
+	for (let k = 0; k < Math.min(m, n); k++) {
+		if (pivot && !A[k][k]) {
+			if (!(((pivot & 1) && pivotCol(k)) || ((pivot & 2) && pivotRow(k))))
+				return { swaps, perm: cperm.slice(0, k), rperm: rperm.slice(0, k) };
 		}
 
 		const akk = A[k][k];
-		for (let i = k + 1; i < N; i++) {
-			for (let j = k + 1; j < N; j++)
+		for (let i = k + 1; i < m; i++) {
+			for (let j = k + 1; j < n; j++)
 				A[i][j] = (A[i][j] * akk - A[i][k] * A[k][j]) / prev;
 		}
 		prev = akk;
 	}
-	return { perm, swaps };
+	return { swaps, perm: cperm, rperm };
+}
+
+export function LUDecomposeBareissT<T extends bareissOps<T>>(A: T[][], pivot = 1) {
+	const	m		= A.length;
+	const	n		= A[0].length;
+	const	cperm	= Array.from({length: Math.min(m, n)}, (_,i) => i);
+	const	rperm	= Array.from({length: Math.min(m, n)}, (_,i) => i);
+	let		prev: T | undefined;
+	let		swaps	= 0;
+
+	function pivotCol(k: number) {
+		let swap = k + 1;
+		while (swap < m && A[swap][k].sign() === 0)
+			swap++;
+		if (swap === m)
+			return false;
+		[A[k], A[swap]] = [A[swap], A[k]];
+		[cperm[k], cperm[swap]] = [cperm[swap], cperm[k]];
+		swaps++;
+		return true;
+	}
+	function pivotRow(k: number) {
+		let swap = k + 1;
+		while (swap < n && A[k][swap].sign() === 0)
+			swap++;
+		if (swap === n)
+			return false;
+		for (let i = 0; i < m; i++)
+			[A[i][k], A[i][swap]] = [A[i][swap], A[i][k]];
+		[rperm[k], rperm[swap]] = [rperm[swap], rperm[k]];
+		swaps++;
+		return true;
+	}
+
+	for (let k = 0; k < Math.min(m, n); k++) {
+		if (pivot && A[k][k].sign() === 0) {
+			if (!(((pivot & 1) && pivotCol(k)) || ((pivot & 2) && pivotRow(k))))
+				return { swaps, perm: cperm.slice(0, k), rperm: rperm.slice(0, k) };
+		}
+
+		const akk = A[k][k];
+		for (let i = k + 1; i < m; i++) {
+			for (let j = k + 1; j < n; j++) {
+				const Aik = A[i][k], Akj = A[k][j];
+				if (Aik && Akj) {
+					const t = Aik.mul(Akj);
+					A[i][j] = A[i][j] ? ((prev ? A[i][j].div(prev) : A[i][j]).mul(akk).sub(t)) : t.neg();
+				} else if (prev && A[i][j]) {
+					A[i][j] = A[i][j].div(prev);
+				}
+			}
+		}
+		prev = akk;
+	}
+	return { swaps, perm: cperm, rperm };
+}
+
+export function LUSolveBareiss(A: number[][], X: number[], perm?: number[]) {
+	const m = A.length;
+	const n = A[0].length;
+	const rank = perm ? perm.length : Math.min(m, n);
+
+	if (rank === 0)
+		return [];
+
+	const inv = Array.from({ length: rank }, (_, k) => 1 / A[k][k]);
+	const Y: number[] = [];
+
+	// Forward: solve L * Y = B  (lower-triangular)
+	Y[0] = X[0] * inv[0];
+	for (let i = 1; i < rank; ++i) {
+		const Ai	= A[i];
+		let s = Ai[0] * Y[0];
+		for (let k = 1; k < i; ++k)
+			s += Ai[k] * Y[k] * inv[k - 1];
+		Y[i] = (X[i] - s) * A[i - 1][i - 1] / Ai[i];
+	}
+
+	// For overdetermined systems, check consistency
+	if (m > n) {
+		for (let i = rank; i < m; ++i) {
+			const Ai = A[i];
+			let s = 0;
+			for (let k = 0; k < rank; ++k)
+				s += Ai[k] * Y[k];
+			if (Math.abs(X[i] - s) > 1e-10)
+				return undefined;
+		}
+	}
+
+	// Backward: solve U * X = Y  (upper-triangular)
+	for (let i = rank - 2; i >= 0; --i) {
+		const Ai	= A[i];
+		let s = 0;
+		for (let k = i + 1; k < rank; ++k)
+			s += Ai[k] * Y[k];
+		Y[i] -= s * inv[i];
+	}
+
+	if (perm && perm.length > 0) {
+		const invperm: number[] = [];
+		for (let i = 0; i < perm.length; i++)
+			invperm[perm[i]] = i;
+		return Array.from({ length: n }, (_, i) => i < rank ? Y[invperm[i]] : 0);
+	}
+
+	for (let i = rank; i < n; ++i)
+		Y[i] = 0;
+	return Y;
+}
+
+export function LUSolveBareissT<T extends bareissOps<T>>(A: T[][], X: T[], perm?: number[]) {
+	const m		= A.length;
+	const n		= A[0].length;
+	const rank	= perm ? perm.length : Math.min(m, n);
+
+	if (rank === 0)
+		return [];
+
+	const inv	= Array.from({ length: rank }, (_, k) => A[k][k].recip());
+	const Y: T[] = [];
+
+	// Forward: solve L * Y = B  (lower-triangular)
+	Y[0] = X[0].mul(inv[0]);
+	for (let i = 1; i < rank; ++i) {
+		const Ai	= A[i];
+		let s = Ai[0].mul(Y[0]);
+		for (let k = 1; k < i; ++k)
+			s = s.add(Ai[k].mul(Y[k]).mul(inv[k - 1]));
+		Y[i] = X[i].sub(s).mul(A[i - 1][i - 1]).div(Ai[i]);
+	}
+
+	// For overdetermined systems, check consistency
+	if (m > n) {
+		for (let i = rank; i < m; ++i) {
+			const Ai = A[i];
+			let s = Ai[0].mul(Y[0]);
+			for (let k = 1; k < rank; ++k)
+				s = s.add(Ai[k].mul(Y[k]));
+			if (X[i].sub(s).sign() !== 0)
+				return undefined;
+		}
+	}
+
+	// Backward: solve U * X = Y  (upper-triangular)
+	for (let i = rank - 2; i >= 0; --i) {
+		const Ai	= A[i];
+		let s = Ai[i + 1].mul(Y[i + 1]);
+		for (let k = i + 2; k < rank; ++k)
+			s = s.add(Ai[k].mul(Y[k]));
+		Y[i] = Y[i].sub(s.mul(inv[i]));
+	}
+
+	// For underdetermined systems, pad with zeros
+	const zero = X[0].sub(X[0]);
+
+	if (perm) {
+		const invperm: number[] = [];
+		for (let i = 0; i < m; i++)
+			invperm[perm[i]] = i;
+		return Array.from({ length: n }, (_, i) => i < rank ? Y[invperm[i]] : zero);
+	}
+
+	for (let i = rank; i < n; ++i)
+		Y[i] = zero;
+	return Y;
 }
 
 export function LUSolveBareissMulti(A: number[][], X: number[][], perm?: number[]) {
-	const N = A.length;
+	const m = A.length;
+	const n = A[0].length;
 	const R = X.length;
+	const rank = Math.min(m, n);
 
-	const inv = Array.from({ length: N }, (_, k) => 1 / A[k][k]);
+	const inv = Array.from({ length: rank }, (_, k) => 1 / A[k][k]);
 
 	// Forward: solve L * Y = B  (lower-triangular)
 	for (let r = 0; r < R; ++r)
 		X[0][r] *= inv[0];
-	for (let i = 0; i < N; ++i) {
+	for (let i = 1; i < rank; ++i) {
 		const Ai	= A[i];
-		const rAii	= (i > 0 ? A[i - 1][i - 1] : 1) / Ai[i];
+		const rAii	= A[i - 1][i - 1] / Ai[i];
 		for (let r = 0; r < R; ++r) {
 			let s = Ai[0] * X[0][r];
 			for (let k = 1; k < i; ++k)
@@ -255,107 +1089,59 @@ export function LUSolveBareissMulti(A: number[][], X: number[][], perm?: number[
 		}
 	}
 
+	// For overdetermined systems, check consistency
+	if (m > n) {
+		for (let i = rank; i < m; ++i) {
+			const Ai = A[i];
+			for (let r = 0; r < R; ++r) {
+				let s = 0;
+				for (let k = 0; k < rank; ++k)
+					s += Ai[k] * X[k][r];
+				if (Math.abs(X[i][r] - s) > 1e-10)
+					return undefined;
+			}
+		}
+	}
+
 	// Backward: solve U * X = Y  (upper-triangular)
-	for (let i = N - 2; i >= 0; --i) {
+	for (let i = rank - 2; i >= 0; --i) {
 		const Ai	= A[i];
-		const rAii	= 1 / Ai[i];
+		const rAii	= inv[i];
 		for (let r = 0; r < R; ++r) {
 			let s = 0;
-			for (let k = i + 1; k < N; ++k)
+			for (let k = i + 1; k < rank; ++k)
 				s += Ai[k] * X[k][r];
 			X[i][r] = X[i][r] - s * rAii;
 		}
 	}
 
-	if (perm) {
-		const invperm: number[] = [];
-		for (let i = 0; i < N; i++)
-			invperm[perm[i]] = i;
-		return X.map(x => invperm.map(i => x[i]));
-	}
-	return X;
-}
-
-// Multi-RHS version: solve A^T * X = B where B is an array of RHS columns (each length N).
-export function LUSolveBareissTransposeMulti(A: number[][], X: number[][], perm?: number[]) {
-	const N = A.length;
-	const R = X.length;
-
-	const invPrev = Array.from({ length: N }, (_, k) => (k > 0 ? 1 / A[k - 1][k - 1] : 1));
-
-	// Forward: solve U^T * Y = B  (lower-triangular)
-	for (let i = 0; i < N; ++i) {
-		const rAii = (i > 0 ? A[i - 1][i - 1] : 1) / A[i][i];
-		for (let r = 0; r < R; ++r) {
-			const x = X[r];
-			let s = 0;
-			for (let k = 0; k < i; ++k)
-				s += A[k][i] * x[k] * invPrev[k];
-			x[i] = (x[i] - s) * rAii;
-		}
-	}
-
-	// Backward: solve L^T * X = Y  (upper-triangular, unit diagonal)
-	for (let i = N - 1; i >= 0; --i) {
-		const Aii = A[i][i];
-		for (let r = 0; r < R; ++r) {
-			const x = X[r];
-			let s = 0;
-			for (let k = i + 1; k < N; ++k)
-				s += A[k][i] * x[k];
-			x[i] = x[i] - s / Aii;
-		}
-	}
+	// Resize solution to n rows
+	const Y = Array.from({ length: n }, (_, i) => Array.from({ length: R }, (_, r) => X[i]?.[r] ?? 0));
 
 	if (perm) {
 		const invperm: number[] = [];
-		for (let i = 0; i < N; i++)
+		for (let i = 0; i < m; i++)
 			invperm[perm[i]] = i;
-		return X.map(x => invperm.map(i => x[i]));
+		return Y.map((_, i) => {
+			const pi = invperm[i];
+			return pi < n ? Array.from({ length: R }, (_, r) => Y[pi][r]) : Array.from({ length: R }, () => 0);
+		});
 	}
-	return X;
+	return Y;
 }
 
-export function LUDecomposeBareissT<T extends ops1<T> & hasop<'sign'>>(A: T[][], pivot = true) {
-	const	N		= A.length;
-	const	perm	= Array.from({ length: N }, (_, i) => i);
-	let		prev: T | undefined;//	= A[0][0].from(1);
-	let		swaps	= 0;
-
-	for (let k = 0; k < N - 1; k++) {
-		if (pivot && A[k][k].sign() === 0) {
-			let swap = k + 1;
-			while (swap < N && A[swap][k].sign() === 0)
-				swap++;
-			if (swap === N)
-				return { perm, swaps };
-			[A[k], A[swap]] = [A[swap], A[k]];
-			[perm[k], perm[swap]] = [perm[swap], perm[k]];
-			swaps++;
-		}
-
-		const akk = A[k][k];
-		for (let i = k + 1; i < N; i++) {
-			for (let j = k + 1; j < N; j++)
-				A[i][j] = (prev ? A[i][j].div(prev) : A[i][j]).mul(akk).sub(A[i][k].mul(A[k][j]));
-		}
-		prev = akk;
-	}
-	return { perm, swaps };
-
-}
-
-export function LUSolveBareissMultiT<T extends ops1<T> & hasop<'recip'>>(A: T[][], X: T[][], perm?: number[]) {
-	const N = A.length;
+export function LUSolveBareissMultiT<T extends bareissOps<T>>(A: T[][], X: T[][], perm?: number[]) {
+	const m = A.length;
+	const n = A[0].length;
 	const R = X.length;
+	const rank = Math.min(m, n);
 
-	// Precompute invPrev[k] = recip(prev_k) where prev_k = k>0 ? A[k-1][k-1] : one
-	const inv: T[] = Array.from({ length: N }, (_, k) => A[k][k].recip());
+	const inv: T[] = Array.from({ length: rank }, (_, k) => A[k][k].recip());
 
 	// Forward: solve L * Y = B  (lower-triangular)
 	for (let r = 0; r < R; ++r)
 		X[0][r] = X[0][r].mul(inv[0]);
-	for (let i = 1; i < N; ++i) {
+	for (let i = 1; i < rank; ++i) {
 		const Ai	= A[i];
 		const rAii	= A[i - 1][i - 1].div(Ai[i]);
 		for (let r = 0; r < R; ++r) {
@@ -366,38 +1152,118 @@ export function LUSolveBareissMultiT<T extends ops1<T> & hasop<'recip'>>(A: T[][
 		}
 	}
 
-	// Backward: solve U * X = Y  (upper-triangular) skip the i = N-1 iteration (it has no terms to sum)
-	for (let i = N - 2; i >= 0; --i) {
+	// For overdetermined systems, check consistency
+	if (m > n) {
+		for (let i = rank; i < m; ++i) {
+			const Ai = A[i];
+			for (let r = 0; r < R; ++r) {
+				let s = Ai[0].mul(X[0][r]);
+				for (let k = 1; k < rank; ++k)
+					s = s.add(Ai[k].mul(X[k][r]));
+				if (X[i][r].sub(s).sign() !== 0)
+					return undefined;
+			}
+		}
+	}
+
+	// Backward: solve U * X = Y  (upper-triangular)
+	for (let i = rank - 2; i >= 0; --i) {
 		const Ai	= A[i];
 		const rAii	= inv[i];
 		for (let r = 0; r < R; ++r) {
 			let s = Ai[i + 1].mul(X[i + 1][r]);
-			for (let k = i + 2; k < N; ++k)
+			for (let k = i + 2; k < rank; ++k)
 				s = s.add(Ai[k].mul(X[k][r]));
 			X[i][r] = X[i][r].sub(s.mul(rAii));
 		}
 	}
 
+	// Resize solution to n rows
+	const zero = X[0][0].sub(X[0][0]);
+	const Y = Array.from({ length: n }, (_, i) => Array.from({ length: R }, (_, r) => X[i]?.[r] ?? zero));
+
 	if (perm) {
 		const invperm: number[] = [];
-		for (let i = 0; i < N; i++)
+		for (let i = 0; i < m; i++)
 			invperm[perm[i]] = i;
-		return X.map(x => invperm.map(i => x[i]));
+		return Y.map((_, i) => {
+			const pi = invperm[i];
+			return pi < n ? Array.from({ length: R }, (_, r) => Y[pi][r]) : Array.from({ length: R }, () => zero);
+		});
 	}
-	return X;
+	return Y;
 }
 
-export function LUSolveBareissTransposeMultiT<T extends ops1<T> & hasop<'recip'>>(A: T[][], X: T[][], perm?: number[]) {
-	const N = A.length;
+// Multi-RHS version: solve A^T * X = B where B is an array of RHS columns (each length n).
+export function LUSolveBareissTransposeMulti(A: number[][], X: number[][], perm?: number[]) {
+	const m = A.length;
+	const n = A[0].length;
 	const R = X.length;
+	const rank = Math.min(m, n);
 
-	// Precompute invPrev[k] = recip(prev_k) where prev_k = k>0 ? A[k-1][k-1] : one
-	const inv: T[] = Array.from({ length: N }, (_, k) => A[k][k].recip());
+	const inv = Array.from({ length: rank }, (_, k) => 1 / A[k][k]);
 
-	// Forward: solve U^T * Y = B  (lower-triangular)
+	// Forward: solve U^T * Y = B  (upper-triangular)
 	for (let r = 0; r < R; ++r)
-		X[r][0] = X[r][0].mul(inv[0]);
-	for (let i = 1; i < N; ++i) {
+		X[r][0] = X[r][0] * inv[0];
+	for (let i = 1; i < rank; ++i) {
+		const rAii = A[i - 1][i - 1] / A[i][i];
+		for (let r = 0; r < R; ++r) {
+			const x = X[r];
+			let s = 0;
+			for (let k = 1; k < i; ++k)
+				s += A[k][i] * x[k] * inv[k - 1];
+			x[i] = (x[i] - s) * rAii;
+		}
+	}
+
+	// For overdetermined systems, check consistency
+	if (n > m) {
+		for (let r = 0; r < R; ++r) {
+			for (let i = rank; i < n; ++i) {
+				if (Math.abs(X[r][i]) > 1e-10)
+					return undefined;
+			}
+		}
+	}
+
+	// Backward: solve L^T * X = Y  (lower-triangular, unit diagonal)
+	for (let i = rank - 2; i >= 0; --i) {
+		const rAii = inv[i];
+		for (let r = 0; r < R; ++r) {
+			const x = X[r];
+			let s = 0;
+			for (let k = i + 1; k < rank; ++k)
+				s += A[k][i] * x[k];
+			x[i] = x[i] - s * rAii;
+		}
+	}
+
+	// Resize solution to m rows
+	const Y = X.map(x => Array.from({ length: m }, (_, i) => x[i] ?? 0));
+
+	if (perm) {
+		const invperm: number[] = [];
+		for (let i = 0; i < m; i++)
+			invperm[perm[i]] = i;
+		return Y.map(x => invperm.map(i => x[i]));
+	}
+	return Y;
+}
+
+export function LUSolveBareissTransposeMultiT<T extends bareissOps<T>>(A: T[][], X: T[][], perm?: number[]) {
+	const m = A.length;
+	const n = A[0].length;
+	const R = X.length;
+	const rank = Math.min(m, n);
+
+	const inv: T[] = Array.from({ length: rank }, (_, k) => A[k][k].recip());
+
+	// Forward: solve U^T * Y = B  (upper-triangular)
+	for (let r = 0; r < R; ++r)
+		if (X[r][0])
+			X[r][0] = X[r][0].mul(inv[0]);
+	for (let i = 1; i < rank; ++i) {
 		const rAii = A[i - 1][i - 1].div(A[i][i]);
 		for (let r = 0; r < R; ++r) {
 			let	s = A[0][i].mul(X[r][0]);
@@ -407,289 +1273,101 @@ export function LUSolveBareissTransposeMultiT<T extends ops1<T> & hasop<'recip'>
 		}
 	}
 
-	// Backward: solve L^T * X = Y  (upper-triangular) skip the i = N-1 iteration (it has no terms to sum)
-	for (let i = N - 2; i >= 0; --i) {
+	// For overdetermined systems, check consistency
+	if (n > m) {
+		for (let r = 0; r < R; ++r) {
+			for (let i = rank; i < n; ++i) {
+				if (X[r][i].sign() !== 0)
+					return undefined;
+			}
+		}
+	}
+
+	// Backward: solve L^T * X = Y  (lower-triangular)
+	for (let i = rank - 2; i >= 0; --i) {
 		const rAii = inv[i];
 		for (let r = 0; r < R; ++r) {
 			let s = A[i + 1][i].mul(X[r][i + 1]);
-			for (let k = i + 2; k < N; ++k)
+			for (let k = i + 2; k < rank; ++k)
 				s = s.add(A[k][i].mul(X[r][k]));
 			X[r][i] = X[r][i].sub(s.mul(rAii));
 		}
 	}
 
+	// Resize solution to m rows
+	const zero = X[0][0].sub(X[0][0]);
+	const Y = X.map(x => Array.from({ length: m }, (_, i) => x[i] ?? zero));
+
 	if (perm) {
 		const invperm: number[] = [];
-		for (let i = 0; i < N; i++)
+		for (let i = 0; i < m; i++)
 			invperm[perm[i]] = i;
-		return X.map(x => invperm.map(i => x[i]));
+		return Y.map(x => invperm.map(i => x[i]));
 	}
-	return X;
-}
-
-// Solve rectangular system A * x = B for exact scalar types T.
-// A is m x n, B is array of column vectors length m (column-major): B.length === R, B[r].length === m
-// Returns array of column vectors length n (one column per RHS) when a unique solution exists (full column rank and consistent), otherwise undefined.
-
-export function solveRectangularBareiss(A: number[][], B: number[][]): number[][] | undefined {
-	const m = A.length;
-	if (m === 0)
-		return;
-
-	const n = A[0].length;
-	if (A.some(row => row.length !== n) || B.some(row => row.length !== m))
-		return undefined;
-
-	const R = B.length;
-
-	// augmented matrix m x (n+R)
-	A = Array.from({ length: m }, (_, i) =>
-		Array.from({ length: n + R }, (_, j) => j < n ? A[i][j] : B[j - n][i])
-	);
-
-	let row = 0;
-	const pivotCol: number[] = [];
-	for (let col = 0; col < n && row < m; col++) {
-		let pivot = -1;
-		for (let r = row; r < m; r++) {
-			if (A[r][col] !== 0) {
-				pivot = r;
-				break;
-			}
-		}
-		if (pivot !== -1) {
-			if (pivot !== row)
-				[A[row], A[pivot]] = [A[pivot], A[row]];
-
-			const piv = A[row][col];
-			for (let j = col; j < n + R; j++)
-				A[row][j] = A[row][j] / piv;
-
-			for (let r = 0; r < m; r++) {
-				if (r !== row) {
-					const factor = A[r][col];
-					if (factor !== 0) {
-						for (let j = col; j < n + R; j++)
-							A[r][j] = A[r][j] - A[row][j] * factor;
-					}
-				}
-			}
-			pivotCol.push(col);
-			row++;
-		}
-	}
-
-	const rank = pivotCol.length;
-	for (let r = rank; r < m; r++) {
-		if (A[r].some(i => i === 0)) {
-			for (let rr = 0; rr < R; rr++) {
-				if (A[r][n + rr] !== 0)
-					return undefined;
-			}
-		}
-	}
-	if (rank !== n)
-		return undefined;
-
-	const sol = Array.from({ length: R }, () => new Array<number>());
-	for (let idx = 0; idx < pivotCol.length; idx++) {
-		const c = pivotCol[idx];
-		for (let rr = 0; rr < R; rr++)
-			sol[rr][c] = A[idx][n + rr];
-	}
-	return sol;
-}
-
-export function solveRectangularBareissT<T extends ops1<T> & hasop<'recip'|'sign'>>(A: T[][], B: T[][]): T[][] | undefined {
-	const m = A.length;
-	if (m === 0)
-		return;
-
-	const n = A[0].length;
-	//if (A.some(row => row.length !== n) || B.some(row => row.length !== m))
-	//	return undefined;
-
-	const R = B.length;
-
-	// augmented matrix m x (n+R)
-	A = Array.from({ length: m }, (_, i) =>
-		Array.from({ length: n + R }, (_, j) => j < n ? A[i][j] : B[j - n][i])
-	);
-
-	let row = 0;
-	const pivotCol: number[] = [];
-	for (let col = 0; col < n && row < m; col++) {
-		let pivot = -1;
-		for (let r = row; r < m; r++) {
-			if (A[r][col].sign() !== 0) {
-				pivot = r;
-				break;
-			}
-		}
-		if (pivot !== -1) {
-			if (pivot !== row)
-				[A[row], A[pivot]] = [A[pivot], A[row]];
-
-			const piv = A[row][col];
-			for (let j = col; j < n + R; j++)
-				A[row][j] = A[row][j].div(piv);
-
-			for (let r = 0; r < m; r++) {
-				if (r !== row) {
-					const factor = A[r][col];
-					if (factor.sign() !== 0) {
-						for (let j = col; j < n + R; j++)
-							A[r][j] = A[r][j].sub(A[row][j].mul(factor));
-					}
-				}
-			}
-			pivotCol.push(col);
-			row++;
-		}
-	}
-
-	const rank = pivotCol.length;
-	for (let r = rank; r < m; r++) {
-		// If the coefficient part of the row (first n entries) is all zero but the RHS (augmented columns) is non-zero, the system is inconsistent.
-		// Previously this checked `some` zeros which was incorrect; we must test that all coefficient entries are zero.
-		if (A[r].slice(0, n).every(i => i.sign() === 0)) {
-			for (let rr = 0; rr < R; rr++) {
-				if (A[r][n + rr].sign() !== 0)
-					return undefined;
-			}
-		}
-	}
-	// If rank < n there are free variables and infinitely many solutions.
-	// We return one particular solution by setting all non-pivot (free) variables to zero (constructed as `x.sub(x)`), and filling pivot variables from the reduced augmented matrix
-	// This mirrors the numeric solver's behavior but avoids outright failure on underdetermined but consistent systems.
-	const zero = A[0][0].sub(A[0][0]);
-	const sol = Array.from({ length: R }, () => Array.from({ length: n }, () => zero));
-	for (let idx = 0; idx < pivotCol.length; idx++) {
-		const c = pivotCol[idx];
-		for (let rr = 0; rr < R; rr++)
-			sol[rr][c] = A[idx][n + rr];
-	}
-	return sol;
-}
-
-// Compute a nullspace basis for A (column vectors) for exact scalar types T.
-// Returns an array of column vectors (each length n) forming a basis for the nullspace.
-// mutates A
-export function nullspaceRowT<T extends ops1<T> & hasop<'recip'|'sign'|'from'>>(A: T[][]): T[][] {
-	const m = A.length;
-	if (m === 0)
-		return [];
-	const n = A[0].length;
-
-	const pivots: number[] = [];
-	let row = 0;
-	for (let col = 0; col < n && row < m; col++) {
-		let r = row;
-		while (r < m && A[r][col].sign() === 0)
-			r++;
-		if (r === m)
-			continue;
-
-		if (r !== row)
-			[A[row], A[r]] = [A[r], A[row]];
-
-		pivots.push(col);
-		const piv = A[row][col];
-		for (let j = col; j < n; j++)
-			A[row][j] = A[row][j].div(piv);
-
-		for (let i = 0; i < m; i++) {
-			if (i !== row && A[i][col].sign()) {
-				const f = A[i][col];
-				for (let j = col; j < n; j++)
-					A[i][j] = A[i][j].sub(A[row][j].mul(f));
-			}
-		}
-		row++;
-	}
-
-	if (pivots.length === 0)
-		return [];
-
-	const pivotSet = new Set(pivots);
-	const freeCols = Array.from({ length: n }, (_, i) => i).filter(i => !pivotSet.has(i));
-	if (freeCols.length === 0)
-		return [];
-
-	const U = pivots.map((_, r) => pivots.map(c => A[r][c]));
-	const { perm } = LUDecomposeBareissT(U, true);
-	
-	const one	= A[0][0].from(1);
-	return LUSolveBareissTransposeMultiT(U, freeCols.map(fc => pivots.map((_, i) => A[i][fc].neg())), perm).map((xpiv, idx) => {
-		const x: T[] = [];
-		x[freeCols[idx]] = one;
-		for (let i = 0; i < pivots.length; i++)
-			x[pivots[i]] = xpiv[i];
-		return x;
-	});
+	return Y;
 }
 
 // Column-major nullspace: accepts A as array of columns (each column length m)
-// Returns an array of column vectors (each length n) forming a basis for the nullspace.
+// Returns an array of column vectors (each length n) forming a basis for the nullspace
 // mutates A
-export function nullspaceColT<T extends ops1<T> & hasop<'recip'|'sign'|'from'>>(A: T[][]): T[][] {
+export function nullspaceN(A: number[][]): number[][] {
 	const n = A.length; // number of columns
 	if (n === 0)
 		return [];
-	const m = A[0].length; // number of rows
 
-	const pivotCols: number[] = [];
-	const pivotRows: number[] = [];
+	const m		= A[0].length; // number of rows
 
-	// Select pivots without moving heavy data: pick an unused column with a non-zero at the current row.
-	const usedCols = Array.from({ length: n }, () => false);
-	for (let row = 0; row < m && pivotCols.length < n; row++) {
-		let col = -1;
-		for (let k = 0; k < n; k++) {
-			if (!usedCols[k] && A[k][row].sign() !== 0) {
-				col = k;
-				break;
-			}
-		}
-		if (col === -1)
-			continue;
+	fillHoles(A, m, 0);
 
-		usedCols[col] = true;
-		pivotCols.push(col);
-		pivotRows.push(row);
+	// LU decomposition to determine rank and pivot structure
+	const { perm } = LUDecomposeBareiss(A);
+	const rank = perm.length;
 
-		const piv = A[col][row];
-		// normalize this pivot row across all columns
-		for (let j = 0; j < n; j++)
-			A[j][row] = A[j][row].div(piv);
+	// All rows zero -> entire space is the nullspace
+	if (rank === 0)
+		return Array.from({ length: n }, (_, j) => Array.from({ length: n }, (_, i) => i === j ? 1 : 0));
 
-		// eliminate other rows using this pivot
-		for (let i = 0; i < m; i++) {
-			if (i !== row && A[col][i].sign()) {
-				const f = A[col][i];
-				for (let j = 0; j < n; j++)
-					A[j][i] = A[j][i].sub(A[j][row].mul(f));
-			}
-		}
+	// Free columns (in permuted order) are those at indices >= rank
+	// Solve for each free column, then map result back to original column position via perm
+	const result: number[][] = [];
+	for (let i = rank; i < n; i++) {
+		const sol = LUSolveBareiss(A, Array.from({ length: m }, (_, j) => j === i ? 1 : 0), perm);
+		if (sol)
+			result.push(sol);
 	}
+	return result;
+}
 
-	if (pivotCols.length === 0)
+
+// Column-major nullspace: accepts A as array of columns (each column length m)
+// Returns an array of column vectors (each length n) forming a basis for the nullspace
+// mutates A
+export function nullspaceT<T extends bareissOps<T> & hasop<'from',T>>(A: T[][]): T[][] {
+	const n = A.length; // number of columns
+	if (n === 0)
 		return [];
 
-	const freeCols = Array.from({ length: n }, (_, i) => i).filter(i => !usedCols[i]);
-	if (freeCols.length === 0)
-		return [];
+	const m		= A[0].length; // number of rows
+	const zero	= A[0][0].from(0);
+	const one	= A[0][0].from(1);
+	
+	fillHoles(A, m, zero);
 
-	// Build U from pivot columns restricted to the recorded pivotRows
-	const U = pivotRows.map(r => pivotCols.map(c => A[c][r]));
-	const { perm } = LUDecomposeBareissT(U, true);
+	// LU decomposition to determine rank and pivot structure
+	const { perm, rperm } = LUDecomposeBareissT(A, 3);
+	const rank = perm.length;
 
-	const one = A[0][0].from(1);
-	return LUSolveBareissTransposeMultiT(U, freeCols.map(fc => pivotRows.map(pr => A[fc][pr].neg())), perm).map((xpiv, idx) => {
-		const out: T[] = [];
-		out[freeCols[idx]] = one;
-		for (let i = 0; i < pivotCols.length; i++)
-			out[pivotCols[i]] = xpiv[i];
-		return out;
-	});
+	// All columns are free; return standard basis vectors for the full space
+	if (rank === 0)
+		return Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => i === j ? one : zero));
+
+	// Free columns (in permuted order) are those at indices >= rank
+	// Solve for each free column, then map result back to original column position via perm
+	const result: T[][] = [];
+	for (let i = rank; i < n; i++) {
+		const sol = LUSolveBareissT(A, Array.from({ length: m }, (_, j) => j === i ? one : zero), perm);
+		if (sol)
+			result.push(sol);
+	}
+	return result;
 }

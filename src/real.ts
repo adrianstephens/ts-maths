@@ -1,11 +1,11 @@
-import {Operators, scalar, scalarExt, isScalar, isScalarExt, ops1, hasop} from "./core";
+import {Operators, scalar, powerOps} from "./core";
 import integer from "./integer";
 
 //-----------------------------------------------------------------------------
 // number
 //-----------------------------------------------------------------------------
 
-class _real implements scalarExt<_real> {
+class _real implements scalar<_real>, powerOps<_real> {
 	constructor(public value: number) {}
 	dup(): 				real	{ return real(this.value); }
 	neg(): 				real	{ return real(-this.value); }
@@ -218,31 +218,3 @@ export default real;
 export namespace real {
 	export type extent = _extent;
 }
-
-
-export function asScalar(x: number|bigint|ops1<any>): scalar<any> {
-	if (typeof x === 'bigint' || typeof x === 'number')
-		return real(Number(x));
-	if (isScalar(x))
-		return x;
-	if (hasop('mag')(x))
-		 return asScalarExt(x.mag());
-		
-	throw new Error(`Not a scalar: ${x}`);
-//	if (typeof x === 'bigint')
-//		x = Number(x);
-//	return typeof x === 'number' ? real(x) : x;
-}
-
-export function asScalarExt(x: number|bigint|ops1<any>): scalarExt<any> {
-	if (typeof x === 'bigint' || typeof x === 'number')
-		return real(Number(x));
-	if (isScalarExt(x))
-		return x;
-	if (hasop('mag')(x))
-		 return asScalarExt(x.mag());
-
-	throw new Error(`Not a scalar: ${x}`);
-}
-
-

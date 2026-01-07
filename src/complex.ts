@@ -1,8 +1,12 @@
 /* eslint-disable no-restricted-syntax */
 
-import { scalar, hasop } from "./core";
+import { hasop } from "./core";
 import real from "./real";
 import gen from "./gen";
+
+export type complexOps<T>	= hasop<'dup'|'neg'|'scale'|'add'|'sub'|'mul'|'div'|'abs'|'sign'|'sqrt', T>;
+export type canMakeComplex	= number | complexOps<any>;
+export type complexFor<T>	= T extends number ? complex : T extends complexOps<any> ? complexT<T> : never;
 
 class _complex {
 	constructor(public r: number, public i: number) {}
@@ -106,9 +110,8 @@ complex.prototype	= _complex.prototype;
 export type complex	= _complex;
 export default complex;
 
-export type scalarComplex<T extends scalar<T>> = scalar<T> & hasop<'sqrt'|'rpow'>;
 
-class _complexT<T extends scalarComplex<T>> {
+class _complexT<T extends complexOps<T>> {
 	constructor(public r: T, public i: T) {}
 	dup() 		{ return complexT(this.r.dup(), this.i.dup()); }
 	neg() 		{ return complexT(this.r.neg(), this.i.neg()); }
@@ -133,13 +136,16 @@ class _complexT<T extends scalarComplex<T>> {
 	}
 
 	npow(n: number)		{
-		return complexT.fromPolar(this.mag().npow(n), this.arg() * n);
+		if (!hasop('npow')(this.r))
+			throw new Error('no npow');
+		return complexT.fromPolar((this.mag() as any).npow(n), this.arg() * n);
 	}
 	rpow(n: number, d: number) {
 		if (n === 1 && d === 2)
 			return this.sqrt();
-
-		return complexT.fromPolar(this.mag().rpow(n, d), this.arg() * n / d);
+		if (!hasop('rpow')(this.r))
+			throw new Error('no rpow');
+		return complexT.fromPolar((this.mag() as any).rpow(n, d), this.arg() * n / d);
 	}
 
 	toString()	{ return `${this.r} ${this.i.sign() >= 0 ? '+' : '-'} ${this.i.abs()}i`; }
@@ -147,15 +153,17 @@ class _complexT<T extends scalarComplex<T>> {
 }
 
 export const complexT = Object.assign(
-	function<T extends scalarComplex<T>>(r: T, i: T) {
+	function<T extends complexOps<T>>(r: T, i = r.scale(0)) {
 		return new _complexT(r, i);
 	},
 	{// statics
-	zero()				{ return complex(0, 0); },
-	fromPolar<T extends scalarComplex<T>>(r: T, t: number)		{ return complexT(r.scale(Math.cos(t)), r.scale(Math.sin(t))); },
-	conjugatePair<T extends scalarComplex<T>>(c: complexT<T>)	{ return [c, c.conj()]; },
+	fromPolar<T extends complexOps<T>>(r: T, t: number)		{ return complexT(r.scale(Math.cos(t)), r.scale(Math.sin(t))); },
+	conjugatePair<T extends complexOps<T>>(c: complexT<T>)	{ return [c, c.conj()]; },
+	sqrt<T extends complexOps<T>>(a: T|complexT<T>)			{ return a instanceof _complexT ? a.sqrt() : a.sign() < 0 ? complexT(a.scale(0), a.neg().sqrt()) : complexT(a.sqrt(), a.scale(0)); }
 });
 
 complexT.prototype = _complexT.prototype;
-export type complexT<T extends scalarComplex<T>> = _complexT<T>;
+export type complexT<T extends complexOps<T>> = _complexT<T>;
+
+
 

@@ -1,4 +1,4 @@
-import {ops, hasop} from './core';
+import {arithmeticOps, hasop} from './core';
 
 interface WithZero<T> {
 	zero(): T;
@@ -47,7 +47,7 @@ export class statistics1 {
 	}
 }
 
-type statsOps<T> = ops<T> & hasop<'min'|'max'>
+type statsOps<T> = arithmeticOps<T> & hasop<'min'|'max'>
 
 export class statistics<T extends statsOps<T>> {
 	sum:	T;

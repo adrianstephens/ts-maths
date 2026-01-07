@@ -12,7 +12,8 @@ export function hasStatic(x: any, f: string) {
 		return c[f] as (...args: any[]) => any;
 	return undefined;
 }
-export function arrayOf<U>(arr: any[], g: (x: any) => x is U): arr is U[] {
+
+export function arrayOf<T, U extends T>(arr: T[], g: (x: T) => x is U): arr is U[] {
 	for (const i in arr)
 		return g(arr[i]);
 	return false;
@@ -45,7 +46,7 @@ export interface Operators<T> {
 }
 
 export function Type<T>(operators: Operators<T>) {
-	return class Ops implements ops<Ops> {
+	return class Ops implements arithmeticOps<Ops> {
 		constructor(public value: T) {}
 		from(n: number): Ops 	{ return new Ops(operators.from(n)); }
 		dup(): Ops				{ return new Ops(operators.dup(this.value)); }
@@ -78,7 +79,7 @@ export function Type<T>(operators: Operators<T>) {
 	};
 }
 
-export interface allOps<C, S=number> {
+export interface ops<C, S=number> {
 	//group
 	dup():				C;
 	neg(): 				C;
@@ -112,84 +113,29 @@ export interface allOps<C, S=number> {
 	max(b: C):			C;
 }
 
-export type hasop<K extends keyof allOps<any>, T = any, S = number> = Pick<allOps<T, S>, K>;
-export function hasop<K extends keyof allOps<any>>(f: K) {
-	return (x: any): x is hasop<K> => f in x;
-}
-export function hasopT<T, K extends keyof allOps<any>>(f: K) {
-	return (x: T): x is (T & hasop<K>) => f in (x as any);
-}
-
 export type divmodto<T, R = any> = hasProperty<'divmod', (b: T)=>R>
-
-export interface ops0<C, S=number> extends hasop<'dup'|'neg'|'scale'|'add'|'sub', C, S> {};
-export interface ops1<C, S=number> extends ops0<C,S>, hasop<'mul'|'div', C, S> {};
-//export interface ops<C, S=number> extends ops1<C,S>, hasop<'mag', C, S> {};
-export type ops<C, S=number> = ops1<C,S>;
-export interface scalar<C, S=number> extends ops<C, S>, hasop<'from'|'ipow'|'abs'|'sign'|'eq'|'lt'|'valueOf', C, S> {};
-export interface scalarExt<C, S=number> extends scalar<C, S>, hasop<'sqrt'|'recip'|'rpow'|'npow'|'divmod', C, S> {};
-
-/*
-//group
-export interface ops0<C extends ops0<C, S>, S=number> {
-	dup():				C;
-	neg(): 				C;
-	scale(b: S):		C;
-	add(b: C): 			C;
-	sub(b: C): 			C;
-}
-
-export interface ops1<C extends ops1<C, S>, S=number> extends ops0<C, S>{
-	mul(b: C):			C;
-	div(b: C):			C;
-}
-export interface ops<C extends ops<C, S>, S=number> extends ops1<C, S>{
-	mag():				number | scalarExt<any>;
-}
-
-export interface scalar<C extends scalar<C, S>, S=number> extends ops<C, S> {
-	from(n: number | bigint):	C;
-	ipow(n: number):	C;
-	abs():				C;
-	sign():				number;
-	eq(b: C):			boolean;
-	lt(b: C):			boolean;
-	valueOf():			number | bigint;
-}
-
-export interface scalarPow<C extends scalarPow<C>> extends scalar<C> {
-	sqrt(): 			C;
-	recip():			C;
-	rpow(n: number, d: number):	C;
-	npow(n: number):	C;
-}
-
-export interface scalarExt<C extends scalarExt<C>> extends scalarPow<C> {
-	divmod(this: C, b: C):	number | bigint;
-}
-*/
 export type Immutable<T> = Omit<T, 'divmod'>;
 
-//export type has0<K extends keyof scalarExt<any>> = Pick<scalarExt<any>, K>;
-export type has0<K extends keyof allOps<any>> = Pick<allOps<any>, K>;
-export function has0<K extends keyof scalarExt<any>>(f: K) {
-	return (x: object): x is has0<K> => f in x;
+export type hasop<K extends keyof ops<any>, T = any, S = number> = Pick<ops<T, S>, K>;
+export function hasop<K extends keyof ops<any>>(f: K) {
+	return <T>(x: T): x is (T & hasop<K, T>) => f in (x as any);
 }
 
-export type has<K extends keyof scalarExt<any>> = ops1<any> & Pick<scalarExt<any>, K>;
-export function has<K extends keyof scalarExt<any>>(f: K) {
-	return (x: ops1<any>): x is has<K> => f in x;
-}
-
-export type hasFree<K extends keyof scalarExt<any>> = {[P in K]: AsFreeFunction<scalarExt<any>, K> };
-export function hasFree<K extends keyof scalarExt<any>>(f: K) {
+export type hasFree<K extends keyof ops<any>> = {[P in K]: AsFreeFunction<ops<any>, K> };
+export function hasFree<K extends keyof ops<any>>(f: K) {
 	return (x: object): x is hasFree<K> => f in x;
 }
 
-export function isScalar(x: ops1<any>): x is scalar<any> {
+export interface groupOps<C, S=number> extends hasop<'dup'|'neg'|'scale'|'add'|'sub', C, S> {};
+export interface arithmeticOps<C, S=number> extends groupOps<C,S>, hasop<'mul'|'div', C, S> {};
+export interface scalar<C, S=number> extends arithmeticOps<C, S>, hasop<'from'|'ipow'|'abs'|'sign'|'eq'|'lt'|'valueOf', C, S> {};
+export interface powerOps<C, S=number> extends hasop<'sqrt'|'recip'|'rpow'|'npow'|'divmod', C, S> {};
+export interface scalarExt<C, S=number> extends scalar<C, S>, hasop<'sqrt'|'recip'|'rpow'|'npow'|'divmod', C, S> {};
+
+export function isScalar(x: arithmeticOps<any>): x is scalar<any> {
 	return 'lt' in x;
 }
-export function isScalarExt(x: ops1<any>): x is scalarExt<any> {
+export function isScalarExt(x: arithmeticOps<any>): x is scalarExt<any> {
 	return 'rpow' in x && 'divmod' in x;
 }
 

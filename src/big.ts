@@ -1,4 +1,4 @@
-import {Operators, scalarExt} from "./core";
+import {Operators, scalar, powerOps} from "./core";
 import {real} from "./real";
 
 //-----------------------------------------------------------------------------
@@ -9,7 +9,7 @@ export function isBigInt(x: any): x is bigint {
 	return typeof x === 'bigint';
 }
 
-class _Big implements scalarExt<_Big, number> {
+class _big implements scalar<_big, number>, powerOps<_big, number> {
 	constructor(public value: bigint) {}
 	dup(): 				big			{ return big(this.value); }
 	neg(): 				big			{ return big(-this.value); }
@@ -87,7 +87,7 @@ class extentB {
 
 export const big = Object.assign(
 	function (value: bigint) {
-		return new _Big(value);
+		return new _big(value);
 	}, {
 	func(_name, _args) 	{ return undefined; },
 	variable(_name) 	{ return undefined; },
@@ -253,8 +253,8 @@ export const big = Object.assign(
 	extent: extentB
 });
 
-big.prototype = _Big.prototype;
-export type big = _Big;
+big.prototype = _big.prototype;
+export type big = _big;
 export default big;
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace big {

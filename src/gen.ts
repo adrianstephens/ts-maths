@@ -1,10 +1,10 @@
-import {Operators, ops1, scalar, scalarExt, has, has0, hasop, divmodto, Immutable, hasProperty} from "./core";
+import { Operators, arithmeticOps, scalar, hasop, divmodto, Immutable } from "./core";
 
 //-----------------------------------------------------------------------------
 // Generics
 //-----------------------------------------------------------------------------
 
-class extentT<T extends has<'lt'>> {
+class extentT<T extends hasop<'add'|'sub'|'lt'>> {
 	static fromCentreExtent<T extends scalar<T>>(centre: T, size: T) {
 		const half = size.scale(0.5);
 		return new extentT(centre.sub(half), centre.add(half));
@@ -51,11 +51,12 @@ class extentT<T extends has<'lt'>> {
 	}
 }
 
-export type canDenominator = Pick<scalarExt<any>, 'from'|'recip'|'lt'> & divmodto<any>;
+export type canDenominator = hasop<'from'|'recip'|'lt'> & divmodto<any>;
 
-export type GenTypes = number | bigint | ops1<any, any>;
+export type GenTypes = number | bigint | arithmeticOps<any, any>;
 
 export const gen = {
+	from<T extends number|bigint|hasop<'from'>>(a: T, n: number|bigint) { return typeof a === 'object' ? a.from(n) : n; },
 	dup<T extends GenTypes>(a: T) 		{ return typeof a === 'object' ? a.dup() : a; },
 	neg<T extends GenTypes>(a: T) 		{ return typeof a === 'object' ? a.neg() : -a; },
 	add<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.add(b) : (a as number) + (b as number); },
@@ -63,7 +64,7 @@ export const gen = {
 	mul<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.mul(b) : (a as number) * (b as number); },
 	div<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.div(b) : (a as number) / (b as number); },
 
-	ipow<T extends has0<'mul'>>(base: T, exp: number, one?: T): T {
+	ipow<T extends hasop<'mul'>>(base: T, exp: number, one?: T): T {
 		let result = exp & 1 ? base : one;
 		for (exp >>= 1; exp; exp >>= 1) {
 			base = base.mul(base);
@@ -73,25 +74,25 @@ export const gen = {
 		return result!;
 	},
 
-	eq<T extends has0<'eq'>>(a: T, b: T) { return a.eq(b); },
-	lt<T extends has0<'lt'>>(a: T, b: T) { return a.lt(b); },
+	eq<T extends hasop<'eq'>>(a: T, b: T) { return a.eq(b); },
+	lt<T extends hasop<'lt'>>(a: T, b: T) { return a.lt(b); },
 
 	copySign<T extends scalar<T>>(a: T, b: T) {
 		return b.sign() < 0 ? a.abs().neg() : a.abs();
 	},
 
-	max<T extends has0<'lt'>>(...values: T[]) {
+	max<T extends hasop<'lt'>>(...values: T[]) {
 		return values.reduce((a, b) => a.lt(b) ? b : a);
 	},
-	min<T extends has0<'lt'>>(...values: T[]) {
+	min<T extends hasop<'lt'>>(...values: T[]) {
 		return values.reduce((a, b) => a.lt(b) ? a : b);
 	},
 
-	compare<T extends has0<'lt'>>(a: T, b: T): number {
+	compare<T extends hasop<'lt'>>(a: T, b: T): number {
 		return a.lt(b) ? -1 : b.lt(a) ? 1 : 0;
 	},
 
-	gcd<T extends Pick<scalarExt<any>, 'sign'|'abs'|'dup'> & divmodto<any>>(...values: T[]): T {
+	gcd<T extends hasop<'sign'|'abs'|'dup'> & divmodto<any>>(...values: T[]): T {
 		let a: T | undefined;
 		for (let b of values) {
 			b = b.dup().abs();
@@ -107,7 +108,7 @@ export const gen = {
 		return a!;
 	},
 
-	extendedGcd<T extends has<'scale'|'sign'|'abs'|'dup'> & divmodto<any>>(a: T, b: T, one: T) {
+	extendedGcd<T extends hasop<'sub'|'mul'|'scale'|'sign'|'abs'|'dup'> & divmodto<any>>(a: T, b: T, one: T) {
 		let s0 = one, s = one.scale(0), t0 = s, t = one;
 		while (b.sign() !== 0) {
 			const q	= a.divmod(b);
@@ -118,7 +119,7 @@ export const gen = {
 	},
 
 
-	lcm<T extends Pick<scalarExt<any>, 'divmod'|'sign'|'dup'|'abs'|'scale'>>(...values: T[]) {
+	lcm<T extends hasop<'divmod'|'sign'|'dup'|'abs'|'scale'>>(...values: T[]) {
 		let a: T | undefined;
 		for (const b of values)
 			a = a ? b.scale(Number(a.divmod(gen.gcd(a, b)))) : b;
@@ -139,7 +140,7 @@ export const gen = {
 		return k1;
 	},
 
-	commonDenominator<T extends canDenominator & has0<'scale'>>(numbers: T[], maxDen = 1000n, eps?: T) {
+	commonDenominator<T extends canDenominator & hasop<'scale'>>(numbers: T[], maxDen = 1000n, eps?: T) {
 		let scale = 1n;
 		for (const n of numbers) {
 			scale *= gen.denominator(n.scale(Number(scale)), maxDen, eps);
@@ -149,7 +150,7 @@ export const gen = {
 		return scale;
 	},
 
-	rationalApprox<T extends canDenominator & has0<'dup'>>(x: Immutable<T>, maxDen: bigint, eps?: T): [bigint, bigint] {
+	rationalApprox<T extends canDenominator & hasop<'dup'>>(x: Immutable<T>, maxDen: bigint, eps?: T): [bigint, bigint] {
 //		const den = this.denominator(x.dup(), maxDen, eps);
 //		return [BigInt(x.dup().divmod(x.from(den))), den];
 		const one = x.from(1);
@@ -170,7 +171,7 @@ export const gen = {
 		return [h1, k1];
 	},
 	
-	continuedFractionT<T extends canDenominator & has0<'dup'|'sign'|'abs'|'add'>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
+	continuedFractionT<T extends canDenominator & hasop<'dup'|'sign'|'abs'|'add'>>(x: T, maxTerms = 64, eps?: T): (bigint|number)[] {
 		const out: (bigint|number)[] = [];
 		const one = x.from(1);
 
@@ -203,7 +204,7 @@ export const gen = {
 		return result!;
 	},
 
-	OperatorsBase<T extends ops1<T>>(_con: new (...args: any[]) => T) {
+	OperatorsBase<T extends arithmeticOps<T>>(_con: new (...args: any[]) => T) {
 		const con		= _con as any;
 		const proto		= con.prototype as Record<string, any>;
 		
@@ -282,7 +283,7 @@ export type ModFactory<T> = (new (v: T) => Mod<T>) & {
 };
 
 // Generic polynomial-modulo-(r) wrapper factory for base=Polynomial<number>
-export function ModFactory<T extends has<'sign' | 'abs' | 'dup' | 'from' | 'eq'> & divmodto<any>>(r: T) {
+export function ModFactory<T extends arithmeticOps<any> & hasop<'sign' | 'abs' | 'dup' | 'from' | 'eq'> & divmodto<any>>(r: T) {
 	class M extends Mod<T> {
 		static wrap(p: T) {
 			p = p.dup();
@@ -293,29 +294,25 @@ export function ModFactory<T extends has<'sign' | 'abs' | 'dup' | 'from' | 'eq'>
 		static _create(p: T){ return new this(p); }
 
 		getMod() 			{ return r; }
-		_create(p: T): this { return new (this.constructor as any)(p); }
+		fixed(p: T): this	{ return new (this.constructor as any)(p); }
+		fix(p: T): this		{ p.divmod(r); return new (this.constructor as any)(p); }
 
-		wrap(p: T): this {
-			p = p.dup();
-			p.divmod(r);
-			return new (this.constructor as any)(p);
-		}
-		dup() 				{ return this.wrap(this.v.dup()); }
-		neg()				{ return this.wrap(this.v.neg()); }
-		scale(n: number)	{ return this.wrap(this.v.scale(n)); }
-		add(b: M)			{ return this.wrap(this.v.add(b.v)); }
-		sub(b: M)			{ return this.wrap(this.v.sub(b.v)); }
-		mul(b: M)			{ return this.wrap(this.v.mul(b.v)); }
+		dup() 				{ return this.fix(this.v.dup()); }
+		neg()				{ return this.fix(this.v.neg()); }
+		scale(n: number)	{ return this.fix(this.v.scale(n)); }
+		add(b: M)			{ return this.fix(this.v.add(b.v)); }
+		sub(b: M)			{ return this.fix(this.v.sub(b.v)); }
+		mul(b: M)			{ return this.fix(this.v.mul(b.v)); }
 		div(b: M)			{ return this.mul(b.recip()); }
 		recip() {
 			const { g, x } = gen.extendedGcd(this.v.dup(), r.dup(), r.from(1)); // x * this + y * r = g
-			return this.wrap(x.div(g));
+			return this.fix(x.div(g));
 			//throw new Error('Mod.recip: inverse does not exist');
 		}
-		from(n: number) { return this.wrap(this.v.from(n)); }
+		from(n: number) { return this.fix(this.v.from(n)); }
 		ipow(n: number): this {
 			if (n >= 0)
-				return this.wrap(gen.modPow(this.v, n, r));
+				return this.fix(gen.modPow(this.v, n, r));
 			return this.recip().ipow(-n);
 		}
 		// comparisons / sign
@@ -329,7 +326,7 @@ export function ModFactory<T extends has<'sign' | 'abs' | 'dup' | 'from' | 'eq'>
 export default gen;
 // eslint-disable-next-line @typescript-eslint/no-namespace
 export namespace gen {
-	export type extent<T extends has<'lt'>> = extentT<T>;
+	export type extent<T extends arithmeticOps<T> & hasop<'lt'>> = extentT<T>;
 }
 
 

@@ -1,14 +1,14 @@
-import { Operators, ops1, hasop, isInstance, lazySlice, divmodto } from "./core";
+import { Operators, arithmeticOps, hasop, isInstance, lazySlice, divmodto } from "./core";
 import real from './real';
 import big from './big';
 import gen from './gen';
 import { FractionOptions, fractionString } from "./string";
 
-export type rationalOps<T extends ops1<T>> = ops1<T> & hasop<'from'|'lt'|'sign'|'abs'|'ipow'> & divmodto<T>;
-export type canMakeRationalOps<T extends ops1<T>> = ops1<T> & hasop<'from'|'divmod'|'recip'|'lt'>;
+export type rationalOps<T extends arithmeticOps<T>> = arithmeticOps<T> & hasop<'from'|'lt'|'sign'|'abs'|'ipow'> & divmodto<T>;
+export type canMakeRationalOps<T extends arithmeticOps<T>> = arithmeticOps<T> & hasop<'from'|'divmod'|'recip'|'lt'>;
 export type canMakeRational = number|bigint|canMakeRationalOps<any>;
 
-export function canMakeRational(x: ops1<any>): x is canMakeRationalOps<any> {
+export function canMakeRational(x: arithmeticOps<any>): x is canMakeRationalOps<any> {
 	return 'divmod' in x;
 }
 

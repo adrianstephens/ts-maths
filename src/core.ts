@@ -5,6 +5,15 @@ export type builtinNumber = number | bigint;
 export function isInstance<T>(x: any, i: (new (...args: any[]) => T) | ((...args: any[]) => T)): x is T {
 	return x instanceof i || x.prototype === i.prototype;
 }
+export function isInstanceMaker<U>(i: (new (...args: any[]) => U) | ((...args: any[]) => U)) {
+	return (x: any): x is U => x instanceof i || x.prototype === i.prototype;
+}
+
+export function isType(t: 'object'): (x: any) => x is object;
+export function isType(t: 'number'): (x: any) => x is number;
+export function isType(t: 'bigint'): (x: any) => x is bigint;
+export function isType(t: 'boolean'): (x: any) => x is boolean;
+export function isType(type: string) { return (x: any) => typeof x === type; }
 
 export function hasStatic(x: any, f: string) {
 	const c = x.constructor;
@@ -13,14 +22,25 @@ export function hasStatic(x: any, f: string) {
 	return undefined;
 }
 
-export function arrayOf<T, U extends T>(arr: T[], g: (x: T) => x is U): arr is U[] {
-	for (const i in arr)
-		return g(arr[i]);
+export function arrayEntry<T>(array: T[]): T | undefined {
+	for (const i in array)
+		return array[i];
+}
+
+export function arrayOf<T, U extends T>(array: T[], g: (x: T) => x is U): array is U[] {
+	for (const i in array)
+		return g(array[i]);
 	return false;
 }
 
 // Transform method type to free function type
 export type AsFreeFunction<T, K extends keyof T> = T[K] extends (this: infer This, ...args: infer Args) => infer R ? (self: This, ...args: Args) => R : never;
+
+// call super implementation
+type MethodType<T, K extends keyof T> = T[K] extends (...args: any) => any ? T[K] : never;
+export function super2<T, K extends keyof T>(obj: T, f: K, ...args: Parameters<MethodType<T, K>>) {
+	return Object.getPrototypeOf(obj)[f].apply(obj, args) as ReturnType<MethodType<T, K>>;
+}
 
 export interface Operators<T> {
 	from(n: number): T;
@@ -40,9 +60,6 @@ export interface Operators<T> {
 	pow(a: T, b: T): T;
 	eq(a: T, b: T): any;
 	lt(a: T, b: T): any;
-
-//	optional
-//	npow(a: T, n: number): T;
 }
 
 export function Type<T>(operators: Operators<T>) {
@@ -80,20 +97,19 @@ export function Type<T>(operators: Operators<T>) {
 }
 
 export interface ops<C, S=number> {
-	//group
 	dup():				C;
+
+	// group
 	neg(): 				C;
 	scale(b: S):		C;
 	add(b: C): 			C;
 	sub(b: C): 			C;
 
-	//ring
+	// ring
 	mul(b: C):			C;
 	div(b: C):			C;
 
-	mag():				number | scalarExt<any>;
-
-	//scalar
+	// scalar
 	from(n: builtinNumber):	C;
 	ipow(n: number):	C;
 	abs():				C;
@@ -102,13 +118,15 @@ export interface ops<C, S=number> {
 	lt(b: C):			boolean;
 	valueOf():			builtinNumber;
 
-	//roots
+	// roots
 	sqrt(): 			C;
 	recip():			C;
 	rpow(n: number, d: number):	C;
 	npow(n: number):	C;
 	divmod(this: C, b: C):	builtinNumber;
 
+	// other
+	mag():				S | hasop<'valueOf'>;
 	min(b: C):			C;
 	max(b: C):			C;
 }
@@ -120,6 +138,14 @@ export type hasop<K extends keyof ops<any>, T = any, S = number> = Pick<ops<T, S
 export function hasop<K extends keyof ops<any>>(f: K) {
 	return <T>(x: T): x is (T & hasop<K, T>) => f in (x as any);
 }
+export function hasop0<K extends keyof ops<any>, T>(f: K, x: T): x is (T & hasop<K, T>) {
+	return f in (x as any);
+}
+
+export type canop<K extends keyof ops<any>, T = any, S = number> = builtinNumber | Pick<ops<T, S>, K>;
+export function canop<K extends keyof ops<any>>(f: K) {
+	return <T>(x: T): x is (T & canop<K, T>) => f in (x as any);
+}
 
 export type hasFree<K extends keyof ops<any>> = {[P in K]: AsFreeFunction<ops<any>, K> };
 export function hasFree<K extends keyof ops<any>>(f: K) {
@@ -130,7 +156,7 @@ export interface groupOps<C, S=number> extends hasop<'dup'|'neg'|'scale'|'add'|'
 export interface arithmeticOps<C, S=number> extends groupOps<C,S>, hasop<'mul'|'div', C, S> {};
 export interface scalar<C, S=number> extends arithmeticOps<C, S>, hasop<'from'|'ipow'|'abs'|'sign'|'eq'|'lt'|'valueOf', C, S> {};
 export interface powerOps<C, S=number> extends hasop<'sqrt'|'recip'|'rpow'|'npow'|'divmod', C, S> {};
-export interface scalarExt<C, S=number> extends scalar<C, S>, hasop<'sqrt'|'recip'|'rpow'|'npow'|'divmod', C, S> {};
+export interface scalarExt<C, S=number> extends scalar<C, S>, powerOps<C, S> {};
 
 export function isScalar(x: arithmeticOps<any>): x is scalar<any> {
 	return 'lt' in x;
@@ -139,7 +165,7 @@ export function isScalarExt(x: arithmeticOps<any>): x is scalarExt<any> {
 	return 'rpow' in x && 'divmod' in x;
 }
 
-export function asScalarT<T extends scalarExt<T>>(from: T, x: number|T): T {
+export function asScalarT<T extends hasop<'from'>>(from: T, x: number|T): T {
 	if (typeof x === 'number')
 		return from.from(x);
 	if (x instanceof from.constructor)

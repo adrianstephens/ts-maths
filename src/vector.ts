@@ -2,12 +2,11 @@
 /* eslint-disable @typescript-eslint/no-namespace */
 
 import {arithmeticOps, scalar, scalarExt, hasop} from './core';
+import real from './real';
 import gen from './gen';
 import { PolynomialN } from './polynomial';
 import {
-	characteristicN, characteristicT,
-	eigenvaluesN, eigenvaluesT,
-	LUSolveBareissMulti, LUSolveBareissMultiT, LUDecomposeBareiss, LUDecomposeBareissT
+	tempMatN, tempMatT
 } from './linear';
 import { complexFor } from './complex';
 import { Blade } from './kvector';
@@ -477,21 +476,13 @@ class matImp<C extends vops<C>, R extends string> {
 
 class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> implements matOps<C, R> {
 	inverse(): this {
-		const A		= this.columns().map(col => col._values);
-		const n		= A.length;
-	
-		const { perm, swaps } = LUDecomposeBareiss(A);
-		const B		= Array.from({ length: n }, (_, j) => Array.from({ length: n }, (_, i) => i === j ? 1 : 0));
-		const inv	= LUSolveBareissMulti(A, B, swaps ? perm : undefined);
+		const inv	= tempMatN(this.columns().map(col => col._values)).inverse();
 		if (!inv)
 			throw new Error("not invertible");
-		return this.create(...inv.map(c => this.x.create(...c)));
+		return this.create(...inv.c.map(c => this.x.create(...c)));
 	}
 	det(): scalarOf<C> {
-		const A = this.columns().map(col => col._values);
-		const n = A.length;
-		const { swaps } = LUDecomposeBareiss(A);
-		return (swaps & 1 ? -A[n - 1][n - 1] : A[n - 1][n - 1]) as scalarOf<C>;
+		return tempMatN(this.columns().map(col => col._values)).det() as scalarOf<C>;
 	}
 	trace(): scalarOf<C> {
 		let trace = 0;
@@ -500,32 +491,23 @@ class matImpN<C extends vops<C, number>, R extends string> extends matImp<C,R> i
 		return trace as scalarOf<C>;
 	}
 	characteristic(): PolynomialN<scalarOf<C>> {
-		return PolynomialN(characteristicN(this.columns().map(col => col._values))) as any;
+		return PolynomialN(tempMatN(this.columns().map(col => col._values)).characteristic()) as any;
 	}
 
 	eigenvalues() {
-		return eigenvaluesN(this.columns().map(col => col._values)) as complexFor<scalarOf<C>>[];
+		return tempMatN(this.columns().map(col => col._values)).eigenvalues() as complexFor<scalarOf<C>>[];
 	}
 }
 
 class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any> extends matImp<C,R> implements matOps<C, R> {
 	inverse(): this {
-		const A		= this.columns().map(col => col._values);
-		const n		= A.length;
-		const zero	= A[0][0].from(0), one = A[0][0].from(1);
-
-		const { perm, swaps } = LUDecomposeBareissT(A);
-		const B		= Array.from({ length: n }, (_, j) => Array.from({ length: n }, (_, i) => i === j ? one : zero));
-		const inv	= LUSolveBareissMultiT(A, B, swaps ? perm : undefined);
+		const inv	= tempMatT(this.columns().map(col => col._values)).inverse();
 		if (!inv)
 			throw new Error("not invertible");
-		return this.create(...inv.map(c => this.x.create(...c)));
+		return this.create(...inv.c.map(c => this.x.create(...c)));
 	}
 	det(): scalarOf<C> {
-		const A = this.columns().map(col => col._values);
-		const n = A.length;
-		const { swaps } = LUDecomposeBareissT(A);
-		return (swaps & 1 ? A[n - 1][n - 1].neg() : A[n - 1][n - 1]) as scalarOf<C>;
+		return tempMatT(this.columns().map(col => col._values)).det() as scalarOf<C>;
 	}
 	trace(): scalarOf<C> {
 		let trace = this.x._values[0].from(0);
@@ -534,10 +516,10 @@ class matImpT<C extends vops<C, T>, R extends string, T extends vscalar<T> = any
 		return trace as scalarOf<C>;
 	}
 	characteristic(): PolynomialN<scalarOf<C>> {
-		return PolynomialN(characteristicT(this.columns().map(col => col._values))) as any;
+		return PolynomialN(tempMatT(this.columns().map(col => col._values)).characteristic()) as any;
 	}
 	eigenvalues() {
-		return eigenvaluesT(this.columns().map(col => col._values)) as complexFor<scalarOf<C>>[];
+		return tempMatT(this.columns().map(col => col._values)).eigenvalues() as complexFor<scalarOf<C>>[];
 	}
 }
 
@@ -765,9 +747,7 @@ export namespace float2 {
 }
 
 export function sincos_half(sc: float2) {
-	const x = Math.sqrt(0.5 * (1 + sc.x));
-	const y = Math.sqrt(0.5 * (1 - sc.x));
-	return float2(x, sc.y < 0 ? -y : y);
+	return float2(Math.sqrt(0.5 * (1 + sc.x)), real.negate(Math.sqrt(0.5 * (1 - sc.x)), sc.y < 0));
 }
 
 // returns point on unit circle where |M.v| is largest
@@ -787,12 +767,9 @@ class _float2x2 extends matClass<float2, E2>() {
 	mulPos(v: float2)	{ return this.mul(v); }
 	det()				{ return this.x.cross(this.y); }
 	inverse(): this		{ const r = 1 / this.det(); return this.create(float2(this.y.y * r, -this.x.y * r), float2(-this.y.x * r, this.x.x * r)); }
-/*
-	eigenvalues(): eigenPair<number>[] {
-		//return new polynomial([this.det(), -this.trace(), 1]).allRoots();
-		return Polynomial([this.det(), -this.trace(), 1]).allRoots!();
-	}
-		*/
+	//eigenvalues(): complex[] {
+	//	return Polynomial([this.det(), -this.trace(), 1]).allRoots!();
+	//}
 }
 export const float2x2 = Object.assign(
 	function(x: float2, y: float2): float2x2 {

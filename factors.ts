@@ -19,8 +19,12 @@ export class Extension<T> {
 }
 
 export type MaybeExtension<T>	= Extension<T> | Polynomial<Polynomial<T>>;
-export type Factor<T> 			= _Factor<Polynomial<T>>;
-export type FactorExt<T> 		= _Factor<MaybeExtension<T>>;
+
+export type Factor<T> 		= _Factor<Polynomial<T>>;
+export type FactorExt<T> 	= _Factor<MaybeExtension<T>>;
+
+export type factorOps<T>	= coeffOps<T> & hasop<'recip'|'sign'|'from'>;
+export type factorType		= number | factorOps<any>;
 
 export type PolyMod<T>			= Mod<Polynomial<T>> & { shift(n: number): PolyMod<T>; };
 export type PolyModFactory<T>	= (new (v: Polynomial<T>) => PolyMod<T>) & { wrap(p: Polynomial<T>): PolyMod<T> };
@@ -32,8 +36,41 @@ export function PolyModFactory<T>(r: Polynomial<T>): PolyModFactory<T> {
 	return M as any;
 }
 
-export type factorOps<T>		= coeffOps<T> & hasop<'recip'|'sign'|'from'>;
-export type factorType			= number | factorOps<any>;
+
+/*
+export function polyGCD<T extends PolyTypes>(A: Polynomial<T>, B: Polynomial<T>): Polynomial<T> {
+	return gen.gcd(A, B);
+}
+
+function polyGCDT<T extends coeffOps<T>>(A: Polynomial<T>, B: Polynomial<T>) {
+	const seq = subresultantPRST(A, B);
+	for (let i = seq.length; i--;) {
+		if (seq[i].degree() >= 0)
+			return seq[i].rscale(seq[i].leadCoeff());//normalise();
+	}
+	return A.from(1);
+}
+
+// Build a simple subresultant PRS sequence using pseudoRemainder.
+function subresultantPRST<T extends coeffOps<T>>(A: Polynomial<T>, B: Polynomial<T>) {
+	A = A.dup();
+	B = B.dup();
+	const seq = [A.dup(), B.dup()];
+
+	while (B.degree() >= 0 && seq.length < 128) {	
+		// perform pseudo-remainder in-place on A (pseudoRemainder mutates its receiver)
+		A.pseudoRemainder(B);
+
+		const cont = A.content();
+		if (cont)
+			A.selfRscale(cont);
+
+		seq.push(A.dup());
+		[A, B] = [B, A];
+	}
+	return seq;
+}
+*/
 
 //-----------------------------------------------------------------------------
 //	squareFreeFactorization
@@ -72,7 +109,7 @@ export function squareFreeFactorization<T>(f0: Polynomial<T>|PolynomialN<T>): Fa
 }
 
 export function factorOverQ<T extends factorType>(f: Polynomial<T>|PolynomialN<T>) {
-	return squareFreeFactorization(f).map(({factor, multiplicity}) => {
+	function split({factor, multiplicity}: Factor<T>) {
 		const factors: Factor<number>[] = [];
 		const ipoly = integerPolynomial(factor);
 		const roots = squareFreeRationalRoots(ipoly);
@@ -84,7 +121,9 @@ export function factorOverQ<T extends factorType>(f: Polynomial<T>|PolynomialN<T
 			factors.push({factor: ipoly.map(c => Number(c)), multiplicity});
 
 		return factors;
-	}).flat();
+	}
+
+	return squareFreeFactorization(f).map(p => split(p)).flat();
 }
 
 //-----------------------------------------------------------------------------
@@ -101,13 +140,13 @@ export function matrixMinimalPolynomial<T extends factorType>(M: Matrix<T>): Pol
 		return PolynomialN(alpha as any) as PolynomialN<T>;
 }
 
-function minimalPolynomial<T extends factorType>(S: Polynomial<T>, X: Polynomial<T>): PolynomialN<T> | undefined {
-	const d		= S.degree();
-	const XmodS	= PolyModFactory(S).wrap(X);
-	const zero	= gen.zero(S.leadCoeff());
+function minimalPolynomial<T extends factorType>(M: Polynomial<T>, X: Polynomial<T>): PolynomialN<T> | undefined {
+	const N		= M.degree();
+	const e		= PolyModFactory(M).wrap(X);
+	const zero	= gen.zero(M.leadCoeff());
 	const alpha = computeMinimalPolynomial(function*(): Generator<T[]> {
-		yield [gen.from(S.leadCoeff(), 1)];
-		for (let i = 0, p = XmodS; i < d; i++, p = p.mul(XmodS))
+		yield [gen.from(M.leadCoeff(), 1)];
+		for (let m = 1, p = e; m <= N; m++, p = p.mul(e))
 			yield copyFillHolesVec(p.v.c, p.v.c.length, zero);//.slice();
 	});
 
@@ -118,14 +157,14 @@ function minimalPolynomial<T extends factorType>(S: Polynomial<T>, X: Polynomial
 // Factor a square-free polynomial S over K into irreducible factors over K
 function splitSquareFreeOverK<T extends factorType>(S: Polynomial<T>, coeffsToTry: T[] = []): Polynomial<T> | undefined {
 
-	const s = S.degree();
-	if (s <= 1)
+	const N = S.degree();
+	if (N <= 1)
 		return;
 
 	const one = gen.from(S.leadCoeff(), 1);
 
 	// compute minimal polynomial of multiplication operator (deterministic)
-	const lcm = minimalPolynomial(S, Polynomial(makeVec(s, one)));
+	const lcm = minimalPolynomial(S, Polynomial(makeVec(N, one)));
 	if (!lcm)
 		return;
 
@@ -136,8 +175,8 @@ function splitSquareFreeOverK<T extends factorType>(S: Polynomial<T>, coeffsToTr
 
 	// If operator minimal polynomial did not split S, try per-basis minimal polynomials (annihilators of basis elements)
 	// These can reveal nontrivial factors that the operator polynomial misses
-	for (let i = 0; i < s; i++) {
-		const m = minimalPolynomial(S, Polynomial([one]).shift(i));
+	for (let idx = 0; idx < N; idx++) {
+		const m = minimalPolynomial(S, Polynomial([one]).shift(idx));
 		if (m) {
 			const g = gen.gcd(S, m.unmonic());
 			if (g.degree() > 0 && g.degree() < S.degree())
@@ -148,7 +187,7 @@ function splitSquareFreeOverK<T extends factorType>(S: Polynomial<T>, coeffsToTr
 	// Try small deterministic linear combinations of basis elements as multiplication elements in A = K[x]/(S)
 
 	// generate combinations with 1 non-zero coefficients
-	for (let i = 0; i < s; i++) {
+	for (let i = 0; i < N; i++) {
 		for (const a of coeffsToTry) {
 			const m = minimalPolynomial(S, Polynomial([a]).shift(i));
 			if (m) {
@@ -160,8 +199,8 @@ function splitSquareFreeOverK<T extends factorType>(S: Polynomial<T>, coeffsToTr
 	}
 
 	// generate combinations 2 non-zero coefficients
-	for (let i = 0; i < s; i++) {
-		for (let j = i + 1; j < s; j++) {
+	for (let i = 0; i < N; i++) {
+		for (let j = i + 1; j < N; j++) {
 			for (const a of coeffsToTry) {
 				for (const b of coeffsToTry) {
 					const vec: T[] = [];
@@ -225,21 +264,23 @@ function computeEis(R: Polynomial<number>, NS: Matrix<number>, NSinv: Matrix<num
 }
 
 export function factorSquareFreeOverK_I(S: Polynomial<Polynomial<number>>, R: Polynomial<number>): MaybeExtension<number>[] {
-	let		s	= S.degree();
-	const	r	= R.degree();
+	S = S.scale(R.leadCoeff());
+
+	let s = S.degree();
+	const r = R.degree();
 	if (s <= 1 || r <= 0)
 		return [S];
 
-	const ModR	= PolyModFactory(R);
-	const SmodR = S.scale(R.leadCoeff()).map(i => ModR.wrap(i));
-	s	= SmodR.degree();
+	const ModR = PolyModFactory(R);
+	const SmodR = S.map(i => ModR.wrap(i));
+	s = SmodR.degree();
 	if (s < 0)
 		return [S];
 
-	const leadMod	= SmodR.leadCoeff();
-	const n			= s * r;
-	const Mc		= makeMat(n, n, 0);
-	const M			= Matrix(Mc);
+	const leadMod = SmodR.leadCoeff();
+	const n = s * r;
+	const Mc = makeMat(n, n, 0);
+	const M = Matrix(Mc);
 
 	// For each basis element t^i x^j (col = j*r + i) compute x * (t^i x^j)
 	for (let j = 0; j < s - 1; j++) {
@@ -264,100 +305,74 @@ export function factorSquareFreeOverK_I(S: Polynomial<Polynomial<number>>, R: Po
 		}
 	}
 
-	const char		= PolynomialN(M.characteristic());
-	const factors	= factorOverQ(char).map(f => f.factor);//ignore multiplicities
+	const char = PolynomialN(M.characteristic());
+	const factors = factorOverQ(char).map(f => f.factor);
 
-	// Try adjoin-root extraction: for each integer factor p(x) of the characteristic polynomial, adjoin a root ζ of p and attempt to find α ∈ K[ζ] with x - α | S in K[ζ][x].
 	for (const factor of factors) {
 		const d = factor.degree();
 
 		if (d === 1) {
-			const root	= Polynomial([factor.c[0]]);
-			const S2	= S.dup();
+			const root = Polynomial([factor.c[0]]);
+			const S2 = S.dup();
 			if (S2.syntheticDiv(root).degree() < 0)
 				return [Polynomial([root.neg(), Polynomial([1])])];
 			continue;
 		}
 
-		const P		= factor.evaluate(M);
-		const NS	= P.nullspace();
+		const P = factor.evaluate(M);
+		const NS = P.nullspace();
 		if (NS.cols === 0)
 			break;
 
-		// make T^-1
-		const NSinv	= NS.dup();
+		const NSinv = NS.dup();
 		const { perm: NSperm, rank: NSrank } = LUDecomposeBareiss(NSinv.c);
 
-		// build E_i = T^-1 * (multiplication-by-t^i) * T for i=0..dr-1
-		const Ei		= computeEis(R, NS, NSinv, NSperm, NSrank);
+		const Ei = computeEis(R, NS, NSinv, NSperm, NSrank);
+		const M_sub = similarityTransform0(M, NS, NSinv, NSperm, NSrank);
 
-		// compute M_sub = T^-1 M T
-		const M_sub 	= similarityTransform0(M, NS, NSinv, NSperm, NSrank);
-
-		// build F_{u,i} = M_sub^u * E[i]  where F_{u,i} represents ζ^u t^i
-		const Fmats	= Array<Matrix<number>>(d * r);
+		const Fmats = Array<Matrix<number>>(d * r);
 		for (let u = 0, t = M_sub.from(1); u < d; u++, t = t.mul(M_sub)) {
 			for (let i = 0; i < r; i++)
 				Fmats[u * r + i] = t.mul(Ei[i]);
 		}
 
-		// M_sub represents x in the nullspace. We want α = Σ α_{u,i} ζ^u t^i ∈ K[ζ] such that M_sub = Σ α_{u,i} F_{u,i}.
-		// This is a linear system. We need d·r equations for d·r unknowns. Use the first d·r entries of M_sub (flattened) to form a square system.
-		const m			= NS.cols;
-		const nvars 	= d * r;
-		const eqRows:	number[][] = [];
-		const eqB:		number[] = [];
-		
-		// Take first nvars matrix entries to form square system
+		const m = NS.cols;
+		const nvars = d * r;
+		const eqRows: number[][] = [];
+		const eqB: number[] = [];
+
 		for (let p = 0; eqB.length < nvars && p < m; p++) {
 			for (let q = 0; eqB.length < nvars && q < m; q++) {
-				eqRows.push(Array.from({length: nvars}, (_, j) => Fmats[j].c[p][q]));
+				eqRows.push(Array.from({ length: nvars }, (_, j) => Fmats[j].c[p][q]));
 				eqB.push(M_sub.c[p][q]);
 			}
 		}
 
-		const {perm, rank}	= LUDecomposeBareiss(eqRows);
-		const sol			= LUSolveBareiss(eqRows, permute(eqB, perm), rank);
+		const { perm, rank } = LUDecomposeBareiss(eqRows);
+		const sol = LUSolveBareiss(eqRows, permute(eqB, perm), rank);
 		if (!sol)
 			break;
 
-//		const alpha			= Polynomial(sparseClean(Array.from({length: d}, (_, u) => ModR.wrap(Polynomial(sparseClean(Array.from({length: r}, (_, i) => sol[u * r + i])))))));
-		const alpha			= Polynomial(sparseClean(Array.from({length: d}, (_, u) => ModR.wrap(Polynomial(sparseClean(sol.slice(u * r, (u + 1) * r)))))));
-		const ModZ			= ModFactory(factor.map(c => ModR.wrap(Polynomial([c]))));
-		const quot			= SmodR.map(c => ModZ.wrap(Polynomial([c])));
-		const rem			= quot.syntheticDiv(ModZ.wrap(alpha));
+		const alpha = Polynomial(sparseClean(Array.from({ length: d }, (_, u) => ModR.wrap(Polynomial(sparseClean(sol.slice(u * r, (u + 1) * r))))));
+		const ModZ = ModFactory(factor.map(c => ModR.wrap(Polynomial([c]))));
+		const quot = SmodR.map(c => ModZ.wrap(Polynomial([c])));
+		const rem = quot.syntheticDiv(ModZ.wrap(alpha));
 
-		// check remainder zero: need to verify all coefficients are zero
-		// Dividing degree-s polynomial by linear factor should yield degree s-1 quotient; if quotient degree is too small, this is a degenerate/trivial factorization
 		if (rem.v.degree() < 0 && quot.degree() >= S.degree() - 1) {
-			// Check if quotient and alpha both live in K (degree 0 in ζ), or if p(ζ) matches R(t)
 			if (R.eq(factor) || (alpha.degree() === 0 && quot.c.every(i => i.v.degree() <= 0))) {
-				const x	= Polynomial([0, 1]);
-				const λ	= alpha.map(i => i.v).evaluate(x);
-
-				// Recursively factor the linear factor and its cofactor
+				const x = Polynomial([0, 1]);
+				const λ = alpha.map(i => i.v).evaluate(x);
 				const S1 = Polynomial([λ.neg(), Polynomial([1])]);
 				return [
 					...factorSquareFreeOverK_I(S1, R),
 					...factorSquareFreeOverK_I(S.div(S1), R)
 				];
-/*
-				results.push(Polynomial([λ.neg(), Polynomial([1])]));
-
-				if (quot.c.every(i => i.v.c.every(j => j.v.degree() <= 0)))
-					results.push(quot.map(i => i.v.map(j => j.v.c[0])));
-				else
-					results.push({ alpha: quot.map(i => i.v.map(j => j.v).evaluate(x)), poly: factor });
-				continue;
-				*/
 			}
 			// Otherwise, this is an extension factor: return as Extension
 			return [new Extension(alpha.map(c => c.v), factor)];
-
 		}
 	}
 
-	// If no proper factor found, S is irreducible
 	return [S];
 }
 
@@ -378,7 +393,7 @@ export function factorOverK_I(S: Polynomial<Polynomial<number>>, R: Polynomial<n
 
 function maybeExtensionToRational(f: MaybeExtension<number>, den: number) : MaybeExtension<rational> {
 	return 'alpha' in f
-		? new Extension(f.alpha.map(c => c.map(c => rational(c, den))), f.poly.map(c => rational(c, den)))
+		? {alpha: f.alpha.map(c => c.map(c => rational(c, den))), poly: f.poly.map(c => rational(c, den))}
 		: f.map(c => c.map(c => rational(c, den)));
 }
 

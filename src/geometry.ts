@@ -1,5 +1,5 @@
 import {vops, float2, normalise, approx_equal, mid, lerp} from './vector';
-import {legendreTable, Polynomial} from './polynomial';
+import {Polynomial, refine_roots, legendreTable} from './polynomial';
 
 function NewtonRaphson(F: (t: number) => number, F_prime: (t: number) => number, t: number, maxIter = 20, tol = 1e-6) {
 	for (let i = 0; i < maxIter; i++) {
@@ -425,7 +425,7 @@ export function reduce_spline(b: bezier3<float2>, max: number, tol: number) : be
 			const	s0		= b3.spline().sub(p2);
 			const	s1		= s0.map(c => c.lensq());
 			const	s		= s1.deriv();
-			const	root	= s.refine_roots([0.5], 2);
+			const	root	= refine_roots(s, [0.5], 2);
 			const	p3		= b3.evaluate(root[0]);
 	
 			if (p3.sub(p2).lensq() > tol2) {

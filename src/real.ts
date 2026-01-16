@@ -119,6 +119,9 @@ export const real = Object.assign(
 	copySign(a: number, b: number) {
 		return b < 0 ? -Math.abs(a) : Math.abs(a);
 	},
+	negate(a: number, b: boolean) {
+		return b ? -a : a;
+	},
 	gcd(...values: number[]) {
 		let a = 0;
 		for (let b of values) {

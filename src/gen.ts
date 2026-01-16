@@ -1,4 +1,4 @@
-import { Operators, arithmeticOps, scalar, hasop, divmodto, Immutable } from "./core";
+import { Operators, arithmeticOps, scalar, arrayOf, isType, hasop0, hasop, canop, divmodto, Immutable, builtinNumber } from "./core";
 
 //-----------------------------------------------------------------------------
 // Generics
@@ -56,13 +56,25 @@ export type canDenominator = hasop<'from'|'recip'|'lt'> & divmodto<any>;
 export type GenTypes = number | bigint | arithmeticOps<any, any>;
 
 export const gen = {
-	from<T extends number|bigint|hasop<'from'>>(a: T, n: number|bigint) { return typeof a === 'object' ? a.from(n) : n; },
-	dup<T extends GenTypes>(a: T) 		{ return typeof a === 'object' ? a.dup() : a; },
-	neg<T extends GenTypes>(a: T) 		{ return typeof a === 'object' ? a.neg() : -a; },
-	add<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.add(b) : (a as number) + (b as number); },
-	sub<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.sub(b) : (a as number) - (b as number); },
-	mul<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.mul(b) : (a as number) * (b as number); },
-	div<T extends GenTypes>(a: T, b: T)	{ return typeof a === 'object' ? a.div(b) : (a as number) / (b as number); },
+	zero<T extends canop<'from'>|canop<'sub'>|canop<'scale'>>(a: T): T {
+		switch (typeof a) {
+			case 'object': return hasop0('from', a) ? a.from(0) : hasop0('scale', a) ? a.scale(0) : hasop0('sub', a) ? a.sub(a) : a;
+			case 'bigint': return 0n as T;
+			default: return 0 as T;
+		}
+	},
+	from<T extends canop<'from'>>(a: T, n: builtinNumber): T { return typeof a === 'object' ? a.from(n) : n as T; },
+	dup<T extends canop<'dup'>>(a: T) 		: T	{ return typeof a === 'object' ? a.dup() : a; },
+	neg<T extends canop<'neg'>>(a: T)		: T	{ return typeof a === 'object' ? a.neg() : -a as T; },
+	abs<T extends canop<'abs'>>(a: T) 		: T	{ return typeof a === 'object' ? a.abs() : Math.abs(a as number) as T; },
+	add<T extends canop<'add'>>(a: T, b: T)	: T	{ return typeof a === 'object' ? a.add(b) : (a as number) + (b as number) as T; },
+	sub<T extends canop<'sub'>>(a: T, b: T)	: T	{ return typeof a === 'object' ? a.sub(b) : (a as number) - (b as number) as T; },
+	mul<T extends canop<'mul'>>(a: T, b: T)	: T	{ return typeof a === 'object' ? a.mul(b) : (a as number) * (b as number) as T; },
+	div<T extends canop<'div'>>(a: T, b: T)	: T	{ return typeof a === 'object' ? a.div(b) : (a as number) / (b as number) as T; },
+
+	sign<T extends canop<'sign'>>(a: T) 		{ return typeof a === 'object' ? a.sign() : a as number; },
+	eq<T extends canop<'eq'>>(a: T, b: T)		{ return typeof a === 'object' ? a.eq(b) : a === b; },
+	lt<T extends canop<'lt'>>(a: T, b: T)		{ return typeof a === 'object' ? a.lt(b) : a < b; },
 
 	ipow<T extends hasop<'mul'>>(base: T, exp: number, one?: T): T {
 		let result = exp & 1 ? base : one;
@@ -74,18 +86,26 @@ export const gen = {
 		return result!;
 	},
 
-	eq<T extends hasop<'eq'>>(a: T, b: T) { return a.eq(b); },
-	lt<T extends hasop<'lt'>>(a: T, b: T) { return a.lt(b); },
 
-	copySign<T extends scalar<T>>(a: T, b: T) {
-		return b.sign() < 0 ? a.abs().neg() : a.abs();
+	copySign<A extends canop<'abs'|'neg'>, B extends canop<'sign'>>(a: A, b: B) {
+		return this.sign(b) < 0
+			? (typeof a === 'object' ? a.abs().neg() : -Math.abs(a as number))
+			: this.abs(a);
 	},
-
-	max<T extends hasop<'lt'>>(...values: T[]) {
+	negate<T extends canop<'neg'>>(a: T, b: boolean) {
+		return b ? this.neg(a) : a;
+	},
+	max<T extends hasop<'lt'>>(...values: T[]) : T {
 		return values.reduce((a, b) => a.lt(b) ? b : a);
 	},
-	min<T extends hasop<'lt'>>(...values: T[]) {
+	min<T extends hasop<'lt'>>(...values: T[]) : T {
 		return values.reduce((a, b) => a.lt(b) ? a : b);
+	},
+	genmax<T extends canop<'lt'>>(...values: T[]) : T {
+		return arrayOf(values, isType('number')) ? Math.max(...values) as T : this.max(...values as any) as T;
+	},
+	genmin<T extends canop<'lt'>>(...values: T[]) : T {
+		return arrayOf(values, isType('number')) ? Math.min(...values) as T : this.min(...values as any) as T;
 	},
 
 	compare<T extends hasop<'lt'>>(a: T, b: T): number {
@@ -145,7 +165,7 @@ export const gen = {
 		for (const n of numbers) {
 			scale *= gen.denominator(n.scale(Number(scale)), maxDen, eps);
 			if (scale > maxDen)
-				return 0;
+				return 0n;
 		}
 		return scale;
 	},

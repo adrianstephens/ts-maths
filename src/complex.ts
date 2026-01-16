@@ -1,10 +1,10 @@
 /* eslint-disable no-restricted-syntax */
 
-import { hasop } from "./core";
+import { hasop, arithmeticOps } from "./core";
 import real from "./real";
 import gen from "./gen";
 
-export type complexOps<T>	= hasop<'dup'|'neg'|'scale'|'add'|'sub'|'mul'|'div'|'abs'|'sign'|'sqrt', T>;
+export type complexOps<T>	= arithmeticOps<T> & hasop<'abs'|'sign'|'sqrt'|'valueOf', T>;
 export type canMakeComplex	= number | complexOps<any>;
 export type complexFor<T>	= T extends number ? complex : T extends complexOps<any> ? complexT<T> : never;
 
@@ -121,8 +121,8 @@ class _complexT<T extends complexOps<T>> {
 	mag()	 	{ return this.magSq().sqrt(); }
 	abs()	 	{ return this.mag(); }
 
-	scale(b: number)	{ return complexT(this.r.scale(b), this.i.scale(b)); }
-	rscale(b: T)		{ return complexT(this.r.div(b), this.i.div(b)); }
+	scale(b: T|number)	{ return typeof(b) === 'number' ? complexT(this.r.scale(b), this.i.scale(b)) : complexT(this.r.mul(b), this.i.mul(b)); }
+	rscale(b: T|number)	{ return typeof(b) === 'number' ? this.scale(1 / b) : complexT(this.r.div(b), this.i.div(b)); }
 	mul(b: complexT<T>)	{ return complexT(this.r.mul(b.r).sub(this.i.mul(b.i)), this.r.mul(b.i).add(this.i.mul(b.r))); }
 	add(b: complexT<T>)	{ return complexT(this.r.add(b.r), this.i.add(b.i)); }
 	sub(b: complexT<T>)	{ return complexT(this.r.sub(b.r), this.i.sub(b.i)); }
